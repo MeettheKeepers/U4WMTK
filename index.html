@@ -665,8 +665,9 @@ function defaultData(){
       {id:6, title:"County Fair Booth", date:"2026-06-20", startTime:"10:00", endTime:"15:00", staffNames:["Kyle","Asha"], vehicle:"Trailer", travelMinutes:40, arrivalBufferMinutes:30, clientName:"County Fairgrounds", clientPhone:"", childApplicable:false, childName:"", address:"County Fairgrounds", language:"English", showTypes:["Fairs/Festivals"], notes:"Past show — kept for reference.", paid:true}
     ],
     scheduleSettings: {
-      anchorStart: "2026-06-29",
-      editingStart: "2026-06-29",
+      anchorStart: "2026-07-04",
+      editingStart: "2026-07-04",
+      firstPeriodStart: "2026-06-22",
       visibility: "current_plus_1",
       firstPayDay: "2026-07-03",
       payFrequencyWeeks: 2,
@@ -733,8 +734,13 @@ function defaultData(){
    through here before using it. */
 function normalizeData(d){
   if(!d.scheduleSettings){
-    d.scheduleSettings = { anchorStart:"2026-06-29", editingStart:"2026-06-29", visibility:"current_plus_1", firstPayDay:"2026-07-03", payFrequencyWeeks:2, showPayDays:true };
+    d.scheduleSettings = { anchorStart:"2026-07-04", editingStart:"2026-07-04", firstPeriodStart:"2026-06-22", visibility:"current_plus_1", firstPayDay:"2026-07-03", payFrequencyWeeks:2, showPayDays:true };
   }
+  if(d.scheduleSettings.anchorStart === '2026-06-29'){
+    d.scheduleSettings.anchorStart = '2026-07-04';
+    d.scheduleSettings.editingStart = '2026-07-04';
+  }
+  if(!d.scheduleSettings.firstPeriodStart) d.scheduleSettings.firstPeriodStart = '2026-06-22';
   if(!d.scheduleOverrides) d.scheduleOverrides = [];
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"" };
@@ -2589,17 +2595,27 @@ function dateRangeArr(startStr, count){ const arr=[]; for(let i=0;i<count;i++) a
 function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00'))/86400000); }
 function currentPeriodStart(){
   const s = DATA.scheduleSettings;
-  const diff = daysBetween(s.anchorStart, todayStr());
+  const today = todayStr();
+  if(s.firstPeriodStart && today >= s.firstPeriodStart && today < s.anchorStart)
+    return s.firstPeriodStart;
+  const diff = daysBetween(s.anchorStart, today);
   const idx = diff<0 ? 0 : Math.floor(diff/14);
   return addDays(s.anchorStart, idx*14);
+}
+function getPeriodDays(start){
+  const s = DATA.scheduleSettings || {};
+  if(s.firstPeriodStart && start === s.firstPeriodStart)
+    return daysBetween(s.firstPeriodStart, s.anchorStart);
+  return 14;
 }
 function periodNumberFor(start){
   const cur = currentPeriodStart();
   return Math.round(daysBetween(cur, start)/14)+1;
 }
 function periodRangeLabel(start){
-  const dates = dateRangeArr(start,14);
-  return `${fmtShortDate(dates[0])} until ${fmtShortDate(dates[13])}`;
+  const days = getPeriodDays(start);
+  const dates = dateRangeArr(start, days);
+  return `${fmtShortDate(dates[0])} until ${fmtShortDate(dates[days-1])}`;
 }
 function isPayDay(date){
   const s = DATA.scheduleSettings;
@@ -2810,7 +2826,7 @@ function currentPayPeriodHoursFor(name){
   const ovr = getHoursOverride(name, start);
   if(ovr) return ovr.hours;
   let total = 0;
-  dateRangeArr(start,14).forEach(d=>{
+  dateRangeArr(start, getPeriodDays(start)).forEach(d=>{
     const h = hoursWorked(findTimeClockEntry(name, d));
     if(h) total += h;
   });
@@ -3944,7 +3960,7 @@ function renderEmployeeFile(m){
       ${(()=>{
         const periodStart = currentPeriodStart();
         const ovr = getHoursOverride(m.name, periodStart);
-        const calcHrs = (()=>{ let tot=0; dateRangeArr(periodStart,14).forEach(d=>{ const h=hoursWorked(findTimeClockEntry(m.name,d)); if(h) tot+=h; }); return Math.round(tot*100)/100; })();
+        const calcHrs = (()=>{ let tot=0; dateRangeArr(periodStart, getPeriodDays(periodStart)).forEach(d=>{ const h=hoursWorked(findTimeClockEntry(m.name,d)); if(h) tot+=h; }); return Math.round(tot*100)/100; })();
         const uid2 = 'hrso-' + m.name.replace(/[^a-zA-Z0-9]/g,'');
         return `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
