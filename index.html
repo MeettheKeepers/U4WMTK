@@ -561,10 +561,10 @@ function categoryLabel(id){ const c=SCHEDULE_CATEGORIES.find(x=>x.id===id); retu
 function categoryColor(id){ const c=SCHEDULE_CATEGORIES.find(x=>x.id===id); return c?c.color:'#e2e2dd'; }
 
 function blankWelcomeAck(){
-  return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null };
+  return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null, custom:{} };
 }
 function blankStaffExtras(){
-  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[] };
+  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"" };
 }
 function defaultData(){
   return {
@@ -741,11 +741,17 @@ function normalizeData(d){
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
     if(!m.welcomeAck) m.welcomeAck = blankWelcomeAck();
+    if(!m.welcomeAck.custom) m.welcomeAck.custom = {};
     const extras = blankStaffExtras();
     Object.keys(extras).forEach(k=>{ if(m[k]===undefined) m[k] = extras[k]; });
     if(m.approvedAnimals===undefined) m.approvedAnimals=[];
-    if(m.clockEnabled===undefined) m.clockEnabled=true;
+    if(m.clockEnabled===undefined){
+      // Managers default to no clock card; staff default to clock visible
+      const login = (d.logins||[]).find(l=>l.name===m.name);
+      m.clockEnabled = !(login && login.role==='manager');
+    }
     if(m.workFromHome===undefined) m.workFromHome=false;
+    if(m.birthday===undefined) m.birthday='';
   });
   if(!d.animalTakeLog) d.animalTakeLog=[];
   (d.incidents||[]).forEach(i=>{ if(i.staffName===undefined) i.staffName = ""; });
@@ -773,7 +779,11 @@ function normalizeData(d){
     if(r.requiresClosingPhoto===undefined) r.requiresClosingPhoto=false;
     if(r.closingPhoto===undefined) r.closingPhoto='';
   });
-  (d.animals||[]).forEach(a=>{ if(a.outreachEnabled===undefined) a.outreachEnabled=true; });
+  (d.animals||[]).forEach(a=>{
+    if(a.outreachEnabled===undefined) a.outreachEnabled=true;
+    if(a.approvedCrate===undefined) a.approvedCrate='';
+  });
+  if(d.welcome && !d.welcome.customTabs) d.welcome.customTabs=[];
   (d.shows||[]).forEach(s=>{
     if(s.packUpMinutes===undefined) s.packUpMinutes=SHOW_PACK_UP_MIN;
     if(s.endDate===undefined) s.endDate='';
@@ -915,10 +925,13 @@ function doLogin(){
   if(match){
     CURRENT_LOGIN = match;
     autoReturnAnimals();
+    autoClockOutStaff();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     buildTabs();
     showTab('dashboard');
+    // Check every 5 minutes for staff who need auto clock-out
+    setInterval(autoClockOutStaff, 5*60*1000);
   } else {
     document.getElementById('login-error').style.display = 'block';
   }
@@ -996,6 +1009,10 @@ const WELCOME_TABS = [
   {id:'shows', label:'Shows & Presentations'}
 ];
 let WELCOME_TAB = 'about';
+function getAllWelcomeTabs(){
+  const custom = (DATA.welcome && DATA.welcome.customTabs) || [];
+  return [...WELCOME_TABS, ...custom.map(ct=>({id:'custom_'+ct.id, label:ct.title, customId:ct.id}))];
+}
 function setWelcomeTab(tab){
   WELCOME_TAB = tab;
   showTab('welcome');
@@ -1008,17 +1025,40 @@ function ackWelcomeSection(sectionKey){
   const m = DATA.team.find(t=>t.name===name);
   if(!m){ alert("Your login isn't linked to a staff profile yet. Ask a manager to link your login to your name."); showTab('welcome'); return; }
   if(!m.welcomeAck) m.welcomeAck = blankWelcomeAck();
-  if(!m.welcomeAck[sectionKey]) m.welcomeAck[sectionKey] = new Date().toISOString();
+  if(!m.welcomeAck.custom) m.welcomeAck.custom={};
+  if(sectionKey.startsWith('custom_')){
+    const cid = sectionKey.slice(7);
+    if(!m.welcomeAck.custom[cid]) m.welcomeAck.custom[cid] = new Date().toISOString();
+  } else {
+    if(!m.welcomeAck[sectionKey]) m.welcomeAck[sectionKey] = new Date().toISOString();
+  }
   saveData();
   showTab('welcome');
 }
 function renderWelcome(){
-  const tabsHtml = WELCOME_TABS.map(t=>`<button class="detail-tab-btn ${WELCOME_TAB===t.id?'active':''}" onclick="setWelcomeTab('${t.id}')">${t.label}</button>`).join('');
-  const content = (DATA.welcome && DATA.welcome[WELCOME_TAB]) ? DATA.welcome[WELCOME_TAB] : '';
+  const allTabs = getAllWelcomeTabs();
+  const tabsHtml = allTabs.map(t=>`<button class="detail-tab-btn ${WELCOME_TAB===t.id?'active':''}" onclick="setWelcomeTab('${t.id}')">${t.label}</button>`).join('');
+  const isCustomTab = WELCOME_TAB.startsWith('custom_');
+  let content = '';
+  if(isCustomTab){
+    const cid = WELCOME_TAB.slice(7);
+    const ct = (DATA.welcome && DATA.welcome.customTabs||[]).find(x=>x.id==cid);
+    content = ct ? ct.content : '';
+  } else {
+    content = (DATA.welcome && DATA.welcome[WELCOME_TAB]) ? DATA.welcome[WELCOME_TAB] : '';
+  }
   const staffName = getWelcomeStaffName();
   const member = DATA.team.find(m=>m.name===staffName);
-  const ackDate = member && member.welcomeAck ? member.welcomeAck[WELCOME_TAB] : null;
-  const sectionLabel = (WELCOME_TABS.find(t=>t.id===WELCOME_TAB)||{}).label || 'this section';
+  let ackDate = null;
+  if(member && member.welcomeAck){
+    if(isCustomTab){
+      const cid = WELCOME_TAB.slice(7);
+      ackDate = (member.welcomeAck.custom||{})[cid] || null;
+    } else {
+      ackDate = member.welcomeAck[WELCOME_TAB] || null;
+    }
+  }
+  const sectionLabel = (allTabs.find(t=>t.id===WELCOME_TAB)||{}).label || 'this section';
 
   let ackHtml;
   if(!staffName){
@@ -1075,6 +1115,7 @@ function renderTeam(){
     <div class="card">
       <h2>My Employee File</h2>
       <div class="sub">Read-only. Contact a manager if anything here needs to be updated.</div>
+      <div class="field-block"><label>Birthday</label><div>${me.birthday ? fmtShortDate(me.birthday) : '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Name</label><div>${me.emergencyName || '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Phone</label><div>${me.emergencyPhone || '—'}</div></div>
       <div class="field-block"><label>Relationship</label><div>${me.emergencyRelation || '—'}</div></div>
@@ -1274,6 +1315,33 @@ function shiftClockCardHtml(myName){
       ${body}
     </div>`;
 }
+function getBirthdaysToday(){
+  const mmdd = todayStr().slice(5);
+  return DATA.team.filter(m=>m.birthday && m.birthday.slice(5)===mmdd);
+}
+function renderBirthdayBanner(myName){
+  const bdays = getBirthdaysToday();
+  if(!bdays.length) return '';
+  const myBday = bdays.find(m=>m.name===myName);
+  const others = bdays.filter(m=>m.name!==myName);
+  let html = '';
+  if(myBday){
+    html += `<div class="card" style="background:linear-gradient(135deg,#fff3cd,#ffe08a);border-left:5px solid #f0c000;text-align:center;padding:24px;">
+      <div style="font-size:36px;">🎂🎉🥳🎊🎈</div>
+      <h2 style="font-size:22px;margin:8px 0 4px;color:#7a4b00;">Happy Birthday, ${myBday.name}! 🎂</h2>
+      <div style="font-size:15px;color:#7a4b00;font-weight:600;">Wishing you an amazing day from the whole U4W team! 🐾🎁🌟</div>
+      <div style="font-size:28px;margin-top:10px;">🦎🐍🐢🦜🎂🎊🎈</div>
+    </div>`;
+  }
+  if(others.length){
+    html += `<div class="card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-left:5px solid #43a047;">
+      <div style="font-size:22px;">🎂 Today's Birthday${others.length>1?'s':''}!</div>
+      <div style="font-size:15px;margin-top:6px;color:#2a5a1a;font-weight:600;">${others.map(m=>`🎉 ${m.name}`).join(' &nbsp;·&nbsp; ')}</div>
+      <div style="font-size:13px;color:#388e3c;margin-top:4px;">Give them a shoutout — it's their special day! 🥳</div>
+    </div>`;
+  }
+  return html;
+}
 function renderLiveStatusBoard(){
   const today = todayStr();
   const rows = [];
@@ -1340,6 +1408,7 @@ function renderDashboard(){
   const openRepairsCount = DATA.repairs.filter(r=>!r.archived && r.status!=='Done').length;
   const openSupplyCount = (DATA.supplyRequests||[]).filter(r=>!r.archived && r.status!=='Fulfilled').length;
   return `
+    ${renderBirthdayBanner(myName)}
     ${isManagerLogin() ? renderLiveStatusBoard() : ''}
     ${myShiftHtml}
     ${(openRepairsCount+openSupplyCount) ? `
@@ -1838,6 +1907,26 @@ function getAnimalTakesLast7Days(animalId){
 function getAnimalCurrentOut(animalId){
   return (DATA.animalTakeLog||[]).find(e=> e.animalId===animalId && !e.returnedAt) || null;
 }
+function autoClockOutStaff(){
+  const today = todayStr();
+  const now = new Date();
+  const nowMins = now.getHours()*60 + now.getMinutes();
+  let changed = false;
+  (DATA.timeClock||[]).forEach(t=>{
+    if(t.date!==today || !t.clockIn || t.clockOut) return;
+    const cell = getScheduleCell(t.staffName, today);
+    if(!cell || cell.off || !cell.endTime) return;
+    const [h,mn] = cell.endTime.split(':').map(Number);
+    const shiftEndMins = h*60+mn;
+    if(nowMins >= shiftEndMins){
+      const autoOut = new Date(today+'T'+cell.endTime+':00');
+      t.clockOut = autoOut.toISOString();
+      if(t.breaks) t.breaks.forEach(b=>{ if(b.start&&!b.end) b.end=t.clockOut; });
+      changed = true;
+    }
+  });
+  if(changed) saveData();
+}
 function autoReturnAnimals(){
   const today = todayStr();
   let changed = false;
@@ -1948,6 +2037,7 @@ function renderAnimalDetail(a){
         <div class="detail-field"><div class="lbl">Scientific Name</div><div class="val">${a.scientificName || 'Not entered'}</div></div>
         <div class="detail-field"><div class="lbl">Birthday</div><div class="val">${a.birthday || 'Not entered'}</div></div>
         <div class="detail-field"><div class="lbl">Range</div><div class="val">${a.range || 'Not entered'}</div></div>
+        <div class="detail-field"><div class="lbl">Approved Crate</div><div class="val">${a.approvedCrate || 'Not entered'}</div></div>
       </div>
       <div class="detail-section-title">Rescue Story</div>
       <div class="detail-section-body">${a.rescueStory || 'Not entered yet.'}</div>
@@ -2625,7 +2715,8 @@ function ensureTimeClockEntry(name, date){
   return t;
 }
 function clockIn(name){
-  if(!todaysScheduleFor(name)) return;
+  const member = DATA.team.find(m=>m.name===name);
+  if(!todaysScheduleFor(name) && !(member && member.workFromHome)) return;
   const t = ensureTimeClockEntry(name, todayStr());
   if(t.clockIn) return;
   t.clockIn = new Date().toISOString();
@@ -3198,6 +3289,9 @@ function toggleArchivedAnimalsMgr(){
 function saveAnimalCard(id){
   const a = DATA.animals.find(x=>x.id===id);
   if(!a) return;
+  const newName = val(`m-name-${id}`);
+  if(newName) a.name = newName;
+  a.approvedCrate = val(`m-crate-${id}`);
   a.scientificName = val(`m-sci-${id}`);
   a.birthday = val(`m-bday-${id}`);
   a.range = val(`m-range-${id}`);
@@ -3274,6 +3368,14 @@ function renderAnimalManagerCard(a){
       <div style="margin-top:8px;"><span class="composition-pill">${comp}</span></div>
 
       <div class="field-block" style="margin-top:16px;">
+        <label>Animal Name</label>
+        <input type="text" id="m-name-${a.id}" value="${esc(a.name)}" placeholder="Animal name" oninput="saveAnimalCard(${a.id})">
+      </div>
+      <div class="field-block">
+        <label>Approved Crate Code</label>
+        <input type="text" id="m-crate-${a.id}" value="${esc(a.approvedCrate||'')}" placeholder="e.g. C1, C2, Large Blue" oninput="saveAnimalCard(${a.id})">
+      </div>
+      <div class="field-block">
         <label>Scientific name</label>
         <input type="text" id="m-sci-${a.id}" value="${esc(a.scientificName)}" placeholder="Example: Vulpes vulpes" onchange="saveAnimalCard(${a.id})">
       </div>
@@ -3811,7 +3913,11 @@ function deleteWriteUp(memberId, writeUpId){
 }
 function renderEmployeeFile(m){
   const ack = m.welcomeAck || blankWelcomeAck();
-  const doneCount = WELCOME_TABS.filter(t=>ack[t.id]).length;
+  const allWTabs = getAllWelcomeTabs();
+  const doneCount = allWTabs.filter(t=>{
+    if(t.id.startsWith('custom_')) return (ack.custom||{})[t.id.slice(7)];
+    return ack[t.id];
+  }).length;
   const incidents = DATA.incidents.filter(i=>i.staffName===m.name);
   const writeUps = m.writeUps || [];
   const stats = computeStaffStats(m.name);
@@ -3859,16 +3965,19 @@ function renderEmployeeFile(m){
       })()}
     </div>
     <div class="card">
-      <h2>Welcome Acknowledgments — ${doneCount}/${WELCOME_TABS.length}</h2>
+      <h2>Welcome Acknowledgments — ${doneCount}/${allWTabs.length}</h2>
       <div class="sub">Confirms ${m.name} has checked off having read and understood each Welcome tab section.</div>
       <table>
         <tr><th>Section</th><th>Status</th><th></th></tr>
-        ${WELCOME_TABS.map(t=>`
-          <tr>
+        ${allWTabs.map(t=>{
+          const isC = t.id.startsWith('custom_');
+          const ackVal = isC ? (ack.custom||{})[t.id.slice(7)] : ack[t.id];
+          return `<tr>
             <td>${t.label}</td>
-            <td>${ack[t.id] ? '✓ ' + fmtShortDate(ack[t.id].slice(0,10)) : 'Not yet'}</td>
-            <td>${ack[t.id] ? `<button class="btn-ghost" onclick="resetWelcomeAck(${m.id},'${t.id}')">Reset</button>` : ''}</td>
-          </tr>`).join('')}
+            <td>${ackVal ? '✓ ' + fmtShortDate(ackVal.slice(0,10)) : 'Not yet'}</td>
+            <td>${ackVal ? `<button class="btn-ghost" onclick="resetWelcomeAck(${m.id},'${t.id}')">Reset</button>` : ''}</td>
+          </tr>`;
+        }).join('')}
       </table>
     </div>
     <div class="card">
@@ -3876,6 +3985,7 @@ function renderEmployeeFile(m){
       <div class="field-block"><label>Phone</label><input type="text" value="${esc(m.phone)}" onchange="saveStaffField(${m.id},'phone',this.value)"></div>
       <div class="field-block"><label>Email</label><input type="text" value="${esc(m.email)}" onchange="saveStaffField(${m.id},'email',this.value)"></div>
       <div class="field-block"><label>Address</label><input type="text" value="${esc(m.address)}" onchange="saveStaffField(${m.id},'address',this.value)"></div>
+      <div class="field-block"><label>Birthday (YYYY-MM-DD)</label><input type="date" value="${esc(m.birthday||'')}" onchange="saveStaffField(${m.id},'birthday',this.value)"><div class="sub" style="margin-top:4px;">Visible only to this employee and managers. A birthday banner appears on the dashboard for everyone on their birthday.</div></div>
     </div>
     <div class="card">
       <h2>Emergency Contact</h2>
@@ -4466,6 +4576,7 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'welcome'){
+    const customTabs = (DATA.welcome && DATA.welcome.customTabs) || [];
     body = `
       <div class="card">
         <h2>Welcome Tab Content</h2>
@@ -4479,6 +4590,24 @@ function renderManager(){
           <span class="sub" id="welcome-saved-${s.key}" style="margin-left:10px; display:none;">Saved.</span>
         </div>
       `).join('')}
+      ${customTabs.map(ct=>`
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;" onchange="saveCustomTabTitle(${ct.id},this.value)" placeholder="Tab title">
+            <button class="btn-ghost" style="color:var(--red);" onclick="deleteWelcomeCustomTab(${ct.id})">Delete Tab</button>
+          </div>
+          <div class="welcome-editor" id="welcome-edit-custom-${ct.id}" contenteditable="true">${ct.content || ''}</div>
+          <button class="btn-small" style="margin-top:10px;" onclick="saveWelcomeCustomSection(${ct.id})">Save ${esc(ct.title)}</button>
+          <span class="sub" id="welcome-saved-custom-${ct.id}" style="margin-left:10px; display:none;">Saved.</span>
+        </div>
+      `).join('')}
+      <div class="card">
+        <h2>Add Custom Tab</h2>
+        <div class="add-row">
+          <input type="text" id="new-welcome-tab-title" placeholder="Tab title (e.g. Code of Conduct)">
+          <button class="btn-small" onclick="addWelcomeCustomTab()">Add Tab</button>
+        </div>
+      </div>
     `;
   } else if(MANAGER_TAB === 'data'){
     body = `
@@ -4628,9 +4757,47 @@ function resetWelcomeAck(memberId, sectionKey){
   if(!m) return;
   if(!confirm(`Clear ${m.name}'s acknowledgment for this section? They'll need to check it off again.`)) return;
   if(!m.welcomeAck) m.welcomeAck = blankWelcomeAck();
-  m.welcomeAck[sectionKey] = null;
+  if(!m.welcomeAck.custom) m.welcomeAck.custom={};
+  if(sectionKey.startsWith('custom_')){
+    m.welcomeAck.custom[sectionKey.slice(7)] = null;
+  } else {
+    m.welcomeAck[sectionKey] = null;
+  }
   saveData();
   showTab('manager');
+}
+function addWelcomeCustomTab(){
+  const title = val('new-welcome-tab-title');
+  if(!title) return;
+  if(!DATA.welcome.customTabs) DATA.welcome.customTabs=[];
+  const id = DATA.welcome.customTabs.length ? Math.max(...DATA.welcome.customTabs.map(t=>t.id))+1 : 1;
+  DATA.welcome.customTabs.push({id, title, content:''});
+  saveData();
+  showTab('manager');
+}
+function deleteWelcomeCustomTab(id){
+  if(!confirm('Delete this custom tab? Staff acknowledgments for it will also be cleared.')) return;
+  DATA.welcome.customTabs = (DATA.welcome.customTabs||[]).filter(t=>t.id!==id);
+  // Clear acks for this tab
+  DATA.team.forEach(m=>{ if(m.welcomeAck && m.welcomeAck.custom) delete m.welcomeAck.custom[id]; });
+  saveData();
+  showTab('manager');
+}
+function saveCustomTabTitle(id, title){
+  const ct = (DATA.welcome.customTabs||[]).find(t=>t.id===id);
+  if(!ct) return;
+  ct.title = title;
+  saveData();
+}
+function saveWelcomeCustomSection(id){
+  const el = document.getElementById('welcome-edit-custom-'+id);
+  if(!el) return;
+  const ct = (DATA.welcome.customTabs||[]).find(t=>t.id===id);
+  if(!ct) return;
+  ct.content = el.innerHTML;
+  saveData();
+  const flag = document.getElementById('welcome-saved-custom-'+id);
+  if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
 function saveWelcomeSection(key){
   const el = document.getElementById('welcome-edit-'+key);
