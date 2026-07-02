@@ -1411,16 +1411,28 @@ function handlePayStubFile(input){
   reader.onload = function(e){ PAYSTUB_PENDING_IMAGE = e.target.result; };
   reader.readAsDataURL(file);
 }
+function _commitPayStub(staffName, date, imageData){
+  if(!DATA.payStubs) DATA.payStubs = [];
+  DATA.payStubs.push({id:nextId(DATA.payStubs), staffName, dateAdded:date, image:imageData});
+  PAYSTUB_PENDING_IMAGE = null;
+  saveData();
+  showTab('paystubs');
+}
 function addPayStub(){
   const staffName = val('paystub-staff');
   const date = val('paystub-date') || todayStr();
   if(!staffName){ alert('Select a staff member.'); return; }
-  if(!PAYSTUB_PENDING_IMAGE){ alert('Choose an image to upload.'); return; }
-  if(!DATA.payStubs) DATA.payStubs = [];
-  DATA.payStubs.push({id:nextId(DATA.payStubs), staffName, dateAdded:date, image:PAYSTUB_PENDING_IMAGE});
-  PAYSTUB_PENDING_IMAGE = null;
-  saveData();
-  showTab('paystubs');
+  if(PAYSTUB_PENDING_IMAGE){
+    _commitPayStub(staffName, date, PAYSTUB_PENDING_IMAGE);
+    return;
+  }
+  // Drag-and-drop in Safari may skip onchange — read the file directly
+  const fileInput = document.getElementById('paystub-file');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  if(!file){ alert('Choose or drag an image to upload.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => _commitPayStub(staffName, date, e.target.result);
+  reader.readAsDataURL(file);
 }
 function deletePayStub(id){
   if(!confirm('Delete this pay stub?')) return;
