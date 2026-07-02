@@ -789,6 +789,10 @@ function normalizeData(d){
   ]};
   if(!d.inventory.tabs) d.inventory.tabs=[];
   if(!d.hoursOverrides) d.hoursOverrides=[];
+  // Migrate overrides stored under old period start (2026-06-29) to new first period (2026-06-22)
+  (d.hoursOverrides||[]).forEach(o=>{
+    if(o.periodStart === '2026-06-29') o.periodStart = '2026-06-22';
+  });
   if(!d.admin) d.admin = { accessList: [], customTabs: [], hiring: { interviews: [] } };
   if(!d.admin.accessList) d.admin.accessList = [];
   if(!d.admin.customTabs) d.admin.customTabs = [];
