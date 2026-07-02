@@ -797,6 +797,7 @@ function normalizeData(d){
   if(!d.admin.customTabs) d.admin.customTabs = [];
   if(!d.admin.hiring) d.admin.hiring = { interviews: [], notes: '' };
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
+  if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   // Migrate old global accessList → per-tab tabAccess
   if(!d.admin.tabAccess){
     const oldList = d.admin.accessList || [];
@@ -1140,8 +1141,9 @@ function saveManagerAdminHiring(){
 }
 function renderAdmin(){
   const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
+  const hiringEnabled = DATA.admin.hiringEnabled !== false;
   const allSubTabs = [
-    {id:'hiring', label:'Hiring'},
+    ...(hiringEnabled ? [{id:'hiring', label:'Hiring'}] : []),
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
   // Only show tabs this user has access to
@@ -4967,13 +4969,21 @@ function renderManager(){
   } else if(MANAGER_TAB === 'admin'){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
     const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
+    const hiringOn = DATA.admin.hiringEnabled !== false;
     const allSubTabs = [
-      {id:'hiring', label:'Hiring'},
+      ...(hiringOn ? [{id:'hiring', label:'Hiring'}] : []),
       ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title, ctId:ct.id}))
     ];
     body = `
       <div class="card">
-        <h2>Hiring</h2>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <h2 style="margin:0;">Hiring</h2>
+          ${hiringOn
+            ? `<button class="btn-ghost" style="color:var(--red);margin-left:auto;" onclick="if(confirm('Remove the Hiring tab from Admin?')){DATA.admin.hiringEnabled=false;saveData();MANAGER_TAB='admin';showTab('manager');}">Delete Tab</button>`
+            : `<button class="btn-small" style="margin-left:auto;" onclick="DATA.admin.hiringEnabled=true;saveData();MANAGER_TAB='admin';showTab('manager');">Restore Hiring Tab</button>`
+          }
+        </div>
+        ${hiringOn ? `
         <div class="sub">Edit the content staff with Hiring access see in the Admin tab.</div>
         <div class="rich-wrap">
           ${richToolbar('admin-hiring-editor')}
@@ -4981,6 +4991,7 @@ function renderManager(){
         </div>
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminHiring()">Save Hiring</button>
         <span class="sub" id="admin-hiring-saved" style="margin-left:10px;display:none;">Saved.</span>
+        ` : `<div class="sub" style="color:var(--red);">Hiring tab is currently hidden from Admin. Click Restore to bring it back.</div>`}
       </div>
       ${customTabs.map(ct=>`
       <div class="card">
