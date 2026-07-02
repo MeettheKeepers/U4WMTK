@@ -564,7 +564,7 @@ function blankWelcomeAck(){
   return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null, custom:{} };
 }
 function blankStaffExtras(){
-  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"" };
+  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"", startDate:"", endDate:"" };
 }
 function defaultData(){
   return {
@@ -1121,6 +1121,8 @@ function renderTeam(){
     <div class="card">
       <h2>My Employee File</h2>
       <div class="sub">Read-only. Contact a manager if anything here needs to be updated.</div>
+      <div class="field-block"><label>Start Date</label><div>${me.startDate ? fmtShortDate(me.startDate) : '—'}</div></div>
+      ${me.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(me.endDate)}</div></div>` : ''}
       <div class="field-block"><label>Birthday</label><div>${me.birthday ? fmtShortDate(me.birthday) : '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Name</label><div>${me.emergencyName || '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Phone</label><div>${me.emergencyPhone || '—'}</div></div>
@@ -1146,7 +1148,7 @@ function renderTeam(){
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <div>
-          <h2 style="margin-bottom:2px;">Approved Animals for Outreach</h2>
+          <h2 style="margin-bottom:2px;">Approved Animals</h2>
           <div class="sub" style="margin:0;font-style:italic;">You are only to take the animals you are approved for when doing outreach.</div>
         </div>
         <button class="btn-ghost" onclick="toggleApprovedAnimalsSection('${me.id}')" style="flex-shrink:0;">${APPROVED_ANIMALS_OPEN[me.id]?'▾ Collapse':'▸ Expand'}</button>
@@ -3942,6 +3944,16 @@ function renderEmployeeFile(m){
       <button class="btn-ghost" onclick="closeEmployeeFile()">← Back to Staff List</button>
       <h2>${m.name} — Employee File</h2>
       <div class="sub">${m.role} · ${m.biz}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>Start Date</label>
+          <input type="date" value="${m.startDate||''}" onchange="updateTeamField(${m.id},'startDate',this.value)">
+        </div>
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>End Date <span style="font-weight:400;color:var(--gray);font-size:12px;">(leave blank if ongoing)</span></label>
+          <input type="date" value="${m.endDate||''}" onchange="updateTeamField(${m.id},'endDate',this.value)">
+        </div>
+      </div>
     </div>
     <div class="card">
       <h2>Activity Summary</h2>
@@ -4040,7 +4052,7 @@ function renderEmployeeFile(m){
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <div>
-          <h2 style="margin-bottom:2px;">Approved Animals for Outreach</h2>
+          <h2 style="margin-bottom:2px;">Approved Animals</h2>
           <div class="sub" style="margin:0;font-style:italic;">${m.name} is only to take the animals checked below when doing outreach.</div>
         </div>
         <button class="btn-ghost" onclick="toggleApprovedAnimalsSection(${m.id})" style="flex-shrink:0;">${APPROVED_ANIMALS_OPEN[m.id]?'▾ Collapse':'▸ Expand'}</button>
