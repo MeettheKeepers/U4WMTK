@@ -793,10 +793,16 @@ function normalizeData(d){
   (d.hoursOverrides||[]).forEach(o=>{
     if(o.periodStart === '2026-06-29') o.periodStart = '2026-06-22';
   });
-  if(!d.admin) d.admin = { accessList: [], customTabs: [], hiring: { interviews: [] } };
-  if(!d.admin.accessList) d.admin.accessList = [];
+  if(!d.admin) d.admin = { tabAccess: {}, customTabs: [], hiring: { interviews: [], notes: '' } };
   if(!d.admin.customTabs) d.admin.customTabs = [];
-  if(!d.admin.hiring) d.admin.hiring = { interviews: [] };
+  if(!d.admin.hiring) d.admin.hiring = { interviews: [], notes: '' };
+  if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
+  // Migrate old global accessList → per-tab tabAccess
+  if(!d.admin.tabAccess){
+    const oldList = d.admin.accessList || [];
+    d.admin.tabAccess = { hiring: [...oldList] };
+    (d.admin.customTabs||[]).forEach(ct=>{ d.admin.tabAccess['custom_'+ct.id]=[...oldList]; });
+  }
   (d.tasks||[]).forEach(t=>{
     if(t.assignedTo===undefined) t.assignedTo='';
     if(t.visibility===undefined) t.visibility='all';
@@ -1022,11 +1028,18 @@ const TABS = [
 function isManagerLogin(){
   return !!(CURRENT_LOGIN && CURRENT_LOGIN.role === 'manager');
 }
+function hasAdminTabAccess(tabId){
+  if(isManagerLogin()) return true;
+  const myName = getWelcomeStaffName();
+  if(!myName) return false;
+  return ((DATA.admin && DATA.admin.tabAccess && DATA.admin.tabAccess[tabId]) || []).includes(myName);
+}
 function hasAdminAccess(){
   if(isManagerLogin()) return true;
   const myName = getWelcomeStaffName();
   if(!myName) return false;
-  return ((DATA.admin && DATA.admin.accessList) || []).includes(myName);
+  const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
+  return Object.values(tabAccess).some(arr => (arr||[]).includes(myName));
 }
 function visibleTabs(){
   return TABS.filter(t=>{
@@ -1073,13 +1086,14 @@ function showTab(id){
 /* ---------- ADMIN TAB ---------- */
 let ADMIN_TAB = 'hiring';
 function setAdminTab(id){ ADMIN_TAB = id; showTab('admin'); }
-function toggleAdminAccess(name, checked){
-  if(!DATA.admin) DATA.admin = { accessList:[], customTabs:[], hiring:{interviews:[]} };
-  if(checked){ if(!DATA.admin.accessList.includes(name)) DATA.admin.accessList.push(name); }
-  else { DATA.admin.accessList = DATA.admin.accessList.filter(n=>n!==name); }
+function toggleAdminTabAccess(tabId, name, checked){
+  if(!DATA.admin.tabAccess) DATA.admin.tabAccess = {};
+  if(!DATA.admin.tabAccess[tabId]) DATA.admin.tabAccess[tabId] = [];
+  if(checked){ if(!DATA.admin.tabAccess[tabId].includes(name)) DATA.admin.tabAccess[tabId].push(name); }
+  else { DATA.admin.tabAccess[tabId] = DATA.admin.tabAccess[tabId].filter(n=>n!==name); }
   saveData();
   buildTabs();
-  showTab('admin');
+  showTab('manager');
 }
 function addAdminCustomTab(){
   const title = val('new-admin-tab-title');
@@ -1087,16 +1101,19 @@ function addAdminCustomTab(){
   if(!DATA.admin.customTabs) DATA.admin.customTabs = [];
   const id = nextId(DATA.admin.customTabs);
   DATA.admin.customTabs.push({id, title:title.trim(), content:''});
+  if(!DATA.admin.tabAccess) DATA.admin.tabAccess = {};
+  DATA.admin.tabAccess['custom_'+id] = [];
   saveData();
-  ADMIN_TAB = 'custom_'+id;
-  showTab('admin');
+  MANAGER_TAB = 'admin';
+  showTab('manager');
 }
 function deleteAdminCustomTab(id){
   if(!confirm('Delete this tab and all its content?')) return;
   DATA.admin.customTabs = (DATA.admin.customTabs||[]).filter(t=>t.id!==id);
+  if(DATA.admin.tabAccess) delete DATA.admin.tabAccess['custom_'+id];
   saveData();
-  ADMIN_TAB = 'hiring';
-  showTab('admin');
+  MANAGER_TAB = 'admin';
+  showTab('manager');
 }
 function saveAdminTabTitle(id, title){
   const ct = (DATA.admin.customTabs||[]).find(t=>t.id===id);
@@ -1112,74 +1129,49 @@ function saveAdminCustomSection(id){
   const flag = document.getElementById('admin-saved-custom-'+id);
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
+function saveManagerAdminHiring(){
+  const el = document.getElementById('admin-hiring-editor');
+  if(!el) return;
+  if(!DATA.admin.hiring) DATA.admin.hiring = { interviews:[], notes:'' };
+  DATA.admin.hiring.notes = el.innerHTML;
+  saveData();
+  const flag = document.getElementById('admin-hiring-saved');
+  if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
+}
 function renderAdmin(){
-  const isManager = isManagerLogin();
   const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
-  const accessList = (DATA.admin && DATA.admin.accessList) || [];
-  const subTabs = [
+  const allSubTabs = [
     {id:'hiring', label:'Hiring'},
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
-  if(isManager) subTabs.push({id:'access', label:'⚙ Access & Tabs'});
-  const tabsHtml = subTabs.map(t=>`<button class="detail-tab-btn ${ADMIN_TAB===t.id?'active':''}" onclick="setAdminTab('${t.id}')">${t.label}</button>`).join('');
+  // Only show tabs this user has access to
+  const visibleSubTabs = allSubTabs.filter(t => hasAdminTabAccess(t.id));
+  if(!visibleSubTabs.length) return '<div class="card"><div class="empty">No admin sections available.</div></div>';
+  // Reset active tab if it's no longer visible
+  if(!visibleSubTabs.find(t=>t.id===ADMIN_TAB)) ADMIN_TAB = visibleSubTabs[0].id;
+  const tabsHtml = visibleSubTabs.map(t=>`<button class="detail-tab-btn ${ADMIN_TAB===t.id?'active':''}" onclick="setAdminTab('${t.id}')">${t.label}</button>`).join('');
   let body = '';
   if(ADMIN_TAB === 'hiring'){
-    body = `
-      <div class="card">
+    const notes = (DATA.admin && DATA.admin.hiring && DATA.admin.hiring.notes) || '';
+    body = `<div class="card">
         <h2>Hiring</h2>
-        <div class="sub">Interview notes, candidate tracking, and hiring documentation. More features coming soon.</div>
-        <div class="empty">No interviews on file yet.</div>
-      </div>`;
-  } else if(ADMIN_TAB === 'access' && isManager){
-    body = `
-      <div class="card">
-        <h2>Staff Access</h2>
-        <div class="sub">Grant specific staff members access to the Admin tab. Managers always have full access.</div>
-        ${DATA.team.map(m=>`
-          <label class="checkbox-line">
-            <input type="checkbox" ${accessList.includes(m.name)?'checked':''} onchange="toggleAdminAccess('${esc(m.name)}',this.checked)">
-            ${esc(m.name)} <span style="color:var(--gray);font-size:12px;">${esc(m.role)}</span>
-          </label>`).join('')}
-      </div>
-      <div class="card">
-        <h2>Add Custom Tab</h2>
-        <div class="sub">Add tabs for things like Social Media, Finance, HR Docs, etc.</div>
-        <div class="add-row">
-          <input type="text" id="new-admin-tab-title" placeholder="Tab title (e.g. Social Media)">
-          <button class="btn-small" onclick="addAdminCustomTab()">Add Tab</button>
-        </div>
+        ${notes ? `<div class="welcome-content">${notes}</div>` : '<div class="empty">No hiring information on file yet.</div>'}
       </div>`;
   } else {
     const cidStr = ADMIN_TAB.startsWith('custom_') ? ADMIN_TAB.slice(7) : null;
     const cid = cidStr !== null ? parseInt(cidStr) : null;
     const ct = cid !== null ? customTabs.find(t=>t.id===cid) : null;
     if(ct){
-      body = isManager ? `
-        <div class="card">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-            <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;" onchange="saveAdminTabTitle(${ct.id},this.value)" placeholder="Tab title">
-            <button class="btn-ghost" style="color:var(--red);" onclick="deleteAdminCustomTab(${ct.id})">Delete Tab</button>
-          </div>
-          <div class="rich-wrap">
-            ${richToolbar('admin-edit-custom-'+ct.id)}
-            <div class="welcome-editor" id="admin-edit-custom-${ct.id}" contenteditable="true">${ct.content||''}</div>
-          </div>
-          <button class="btn-small" style="margin-top:10px;" onclick="saveAdminCustomSection(${ct.id})">Save ${esc(ct.title)}</button>
-          <span class="sub" id="admin-saved-custom-${ct.id}" style="margin-left:10px;display:none;">Saved.</span>
-        </div>` : `
-        <div class="card">
+      body = `<div class="card">
           <h2>${esc(ct.title)}</h2>
           ${ct.content ? `<div class="welcome-content">${ct.content}</div>` : '<div class="empty">Nothing here yet.</div>'}
         </div>`;
-    } else {
-      ADMIN_TAB = 'hiring';
-      body = '';
-    }
+    } else { ADMIN_TAB = visibleSubTabs[0].id; body = ''; }
   }
   return `
     <div class="card">
       <h2>Admin</h2>
-      <div class="sub">Administrative documents and tools.${isManager ? ' Use <strong>⚙ Access & Tabs</strong> to manage who can see this tab and to add custom tabs.' : ''}</div>
+      <div class="sub">Administrative documents and information. Content is managed by the manager.</div>
       <div class="detail-tabs">${tabsHtml}</div>
     </div>
     ${body}`;
@@ -1649,7 +1641,7 @@ function renderLiveStatusBoard(){
   function statusInfo(entry){
     if(!entry || !entry.clockIn) return {color:'#aaa', bg:'#f4f4f0', label:'Not yet clocked in', dot:'⚪'};
     if(entry.clockOut) return {color:'#c0392b', bg:'#fde2e2', label:'Clocked out', dot:'🔴'};
-    if(isOnBreak(entry)) return {color:'#1a6fa3', bg:'#deeef9', label:'On break', dot:'🔵'};
+    if(isOnBreak(entry)) return {color:'#b8860b', bg:'#fff8dc', label:'On break', dot:'🟡'};
     return {color:'#1e6b2e', bg:'#d7f0dc', label:'Working', dot:'🟢'};
   }
 
@@ -4354,6 +4346,7 @@ const MANAGER_TABS = [
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
   {id:'welcome', label:'Welcome'},
+  {id:'admin', label:'Admin'},
   {id:'data', label:'Data Tools'}
 ];
 const WELCOME_EDIT_SECTIONS = [
@@ -4922,6 +4915,60 @@ function renderManager(){
           <input type="text" id="new-welcome-tab-title" placeholder="Tab title (e.g. Code of Conduct)">
           <button class="btn-small" onclick="addWelcomeCustomTab()">Add Tab</button>
         </div>
+      </div>
+    `;
+  } else if(MANAGER_TAB === 'admin'){
+    const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
+    const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
+    const allSubTabs = [
+      {id:'hiring', label:'Hiring'},
+      ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title, ctId:ct.id}))
+    ];
+    body = `
+      <div class="card">
+        <h2>Hiring</h2>
+        <div class="sub">Edit the content staff with Hiring access see in the Admin tab.</div>
+        <div class="rich-wrap">
+          ${richToolbar('admin-hiring-editor')}
+          <div class="welcome-editor" id="admin-hiring-editor" contenteditable="true">${(DATA.admin && DATA.admin.hiring && DATA.admin.hiring.notes)||''}</div>
+        </div>
+        <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminHiring()">Save Hiring</button>
+        <span class="sub" id="admin-hiring-saved" style="margin-left:10px;display:none;">Saved.</span>
+      </div>
+      ${customTabs.map(ct=>`
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;" onchange="saveAdminTabTitle(${ct.id},this.value)" placeholder="Tab title">
+          <button class="btn-ghost" style="color:var(--red);" onclick="deleteAdminCustomTab(${ct.id})">Delete Tab</button>
+        </div>
+        <div class="rich-wrap">
+          ${richToolbar('admin-edit-custom-'+ct.id)}
+          <div class="welcome-editor" id="admin-edit-custom-${ct.id}" contenteditable="true">${ct.content||''}</div>
+        </div>
+        <button class="btn-small" style="margin-top:10px;" onclick="saveAdminCustomSection(${ct.id})">Save ${esc(ct.title)}</button>
+        <span class="sub" id="admin-saved-custom-${ct.id}" style="margin-left:10px;display:none;">Saved.</span>
+      </div>`).join('')}
+      <div class="card">
+        <h2>Add Custom Tab</h2>
+        <div class="sub">Add tabs for things like Social Media, Finance, HR Docs, etc.</div>
+        <div class="add-row">
+          <input type="text" id="new-admin-tab-title" placeholder="Tab title (e.g. Social Media)">
+          <button class="btn-small" onclick="addAdminCustomTab()">Add Tab</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Per-Tab Access Control</h2>
+        <div class="sub">Choose which staff can view each tab in Admin. Managers always have full access. Staff see content as read-only.</div>
+        ${allSubTabs.map((subTab,i)=>`
+          ${i>0?'<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">':''}
+          <div style="font-weight:700;font-size:14px;color:var(--green-dark);margin-bottom:8px;">${esc(subTab.label)}</div>
+          ${DATA.team.map(m=>`
+            <label class="checkbox-line">
+              <input type="checkbox" ${(tabAccess[subTab.id]||[]).includes(m.name)?'checked':''}
+                onchange="toggleAdminTabAccess('${subTab.id}','${esc(m.name)}',this.checked)">
+              ${esc(m.name)}
+            </label>`).join('')}
+        `).join('')}
       </div>
     `;
   } else if(MANAGER_TAB === 'data'){
