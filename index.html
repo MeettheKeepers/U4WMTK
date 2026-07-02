@@ -464,16 +464,23 @@
   .medrecord-list{ margin-top:14px; }
   .medrecord-item{ border-top:1px solid var(--border); padding:10px 0; font-size:14px; }
   .medrecord-item:first-child{ border-top:none; padding-top:0; }
+  .rich-wrap{ border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:border-color .15s,box-shadow .15s; }
+  .rich-wrap:focus-within{ border-color:var(--green); box-shadow:0 0 0 3px rgba(63,94,63,0.12); }
+  .rich-toolbar{ display:flex; align-items:center; gap:3px; flex-wrap:wrap; padding:5px 8px; background:var(--light); border-bottom:1px solid var(--border); }
+  .rich-btn{ background:none; border:1px solid var(--border); border-radius:5px; padding:2px 8px; cursor:pointer; font-size:13px; color:var(--text); min-width:28px; line-height:1.6; }
+  .rich-btn:hover{ background:var(--light-green); border-color:var(--green); }
+  .rich-sep{ width:1px; height:18px; background:var(--border); margin:0 3px; flex-shrink:0; }
+  .rich-size{ border:1px solid var(--border); border-radius:5px; padding:2px 5px; font-size:12px; background:var(--bg); color:var(--text); cursor:pointer; }
   .welcome-editor{
-    border:1px solid var(--border);
-    border-radius:10px;
+    border:none;
+    border-radius:0;
     padding:14px 16px;
     min-height:160px;
     font-size:14.5px;
     line-height:1.6;
     outline:none;
   }
-  .welcome-editor:focus{ border-color:var(--green); box-shadow:0 0 0 3px rgba(63,94,63,0.12); }
+  .welcome-editor:focus{ outline:none; }
   .welcome-content{ font-size:15px; line-height:1.7; }
   .welcome-content h1,.welcome-content h2,.welcome-content h3{ margin-top:0; }
   .welcome-content ul,.welcome-content ol{ padding-left:22px; }
@@ -4675,7 +4682,10 @@ function renderManager(){
       ${WELCOME_EDIT_SECTIONS.map(s=>`
         <div class="card">
           <h2>${s.label}</h2>
-          <div class="welcome-editor" id="welcome-edit-${s.key}" contenteditable="true">${(DATA.welcome && DATA.welcome[s.key]) || ''}</div>
+          <div class="rich-wrap">
+            ${richToolbar('welcome-edit-'+s.key)}
+            <div class="welcome-editor" id="welcome-edit-${s.key}" contenteditable="true">${(DATA.welcome && DATA.welcome[s.key]) || ''}</div>
+          </div>
           <button class="btn-small" style="margin-top:10px;" onclick="saveWelcomeSection('${s.key}')">Save ${s.label}</button>
           <span class="sub" id="welcome-saved-${s.key}" style="margin-left:10px; display:none;">Saved.</span>
         </div>
@@ -4686,7 +4696,10 @@ function renderManager(){
             <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;" onchange="saveCustomTabTitle(${ct.id},this.value)" placeholder="Tab title">
             <button class="btn-ghost" style="color:var(--red);" onclick="deleteWelcomeCustomTab(${ct.id})">Delete Tab</button>
           </div>
-          <div class="welcome-editor" id="welcome-edit-custom-${ct.id}" contenteditable="true">${ct.content || ''}</div>
+          <div class="rich-wrap">
+            ${richToolbar('welcome-edit-custom-'+ct.id)}
+            <div class="welcome-editor" id="welcome-edit-custom-${ct.id}" contenteditable="true">${ct.content || ''}</div>
+          </div>
           <button class="btn-small" style="margin-top:10px;" onclick="saveWelcomeCustomSection(${ct.id})">Save ${esc(ct.title)}</button>
           <span class="sub" id="welcome-saved-custom-${ct.id}" style="margin-left:10px; display:none;">Saved.</span>
         </div>
@@ -4888,6 +4901,39 @@ function saveWelcomeCustomSection(id){
   saveData();
   const flag = document.getElementById('welcome-saved-custom-'+id);
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
+}
+function richCmd(editorId, cmd, value){
+  const el = document.getElementById(editorId);
+  if(el) el.focus();
+  document.execCommand(cmd, false, value !== undefined ? value : null);
+}
+function richFontSize(editorId, size){
+  if(!size) return;
+  const el = document.getElementById(editorId);
+  if(el) el.focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontSize', false, size);
+}
+function richToolbar(editorId){
+  const b = (cmd, label, title, val) =>
+    `<button type="button" class="rich-btn" title="${title}" onmousedown="event.preventDefault()" onclick="richCmd('${editorId}','${cmd}'${val!==undefined?`,'${val}'`:''})">${label}</button>`;
+  return `<div class="rich-toolbar">
+    ${b('bold','<b>B</b>','Bold')}
+    ${b('italic','<i>I</i>','Italic')}
+    ${b('underline','<u>U</u>','Underline')}
+    <div class="rich-sep"></div>
+    <select class="rich-size" title="Font size" onmousedown="event.stopPropagation()" onchange="richFontSize('${editorId}',this.value);this.value=''">
+      <option value="">Size</option>
+      <option value="1">Small</option>
+      <option value="3">Normal</option>
+      <option value="4">Large</option>
+      <option value="5">Larger</option>
+      <option value="6">Heading</option>
+    </select>
+    <div class="rich-sep"></div>
+    ${b('insertUnorderedList','• List','Bullet list')}
+    ${b('insertOrderedList','1. List','Numbered list')}
+  </div>`;
 }
 function saveWelcomeSection(key){
   const el = document.getElementById('welcome-edit-'+key);
