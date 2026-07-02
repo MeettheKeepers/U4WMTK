@@ -744,6 +744,8 @@ function normalizeData(d){
     const extras = blankStaffExtras();
     Object.keys(extras).forEach(k=>{ if(m[k]===undefined) m[k] = extras[k]; });
     if(m.approvedAnimals===undefined) m.approvedAnimals=[];
+    if(m.clockEnabled===undefined) m.clockEnabled=true;
+    if(m.workFromHome===undefined) m.workFromHome=false;
   });
   if(!d.animalTakeLog) d.animalTakeLog=[];
   (d.incidents||[]).forEach(i=>{ if(i.staffName===undefined) i.staffName = ""; });
@@ -1232,9 +1234,12 @@ function completedShowsLast3Months(){
 }
 function shiftClockCardHtml(myName){
   if(!myName) return '';
+  const member = DATA.team.find(m=>m.name===myName);
+  if(member && member.clockEnabled===false) return '';
   const cell = todaysScheduleFor(myName);
-  if(!cell) return '';
-  const catLabel = (SCHEDULE_CATEGORIES.find(c=>c.id===cell.category)||{}).label || 'Scheduled';
+  const isWFH = member && member.workFromHome;
+  if(!cell && !isWFH) return '';
+  const catLabel = cell ? ((SCHEDULE_CATEGORIES.find(c=>c.id===cell.category)||{}).label || 'Scheduled') : 'Work from Home';
   const t = findTimeClockEntry(myName, todayStr());
   const clockedIn = t && t.clockIn;
   const clockedOut = t && t.clockOut;
@@ -1265,10 +1270,64 @@ function shiftClockCardHtml(myName){
   return `
     <div class="card" style="border-left:5px solid var(--green, #3f8f4f);">
       <h2>⏱️ Today's Shift — ${catLabel}</h2>
-      <div class="sub">Scheduled ${cell.startTime||''}${cell.endTime?' – '+cell.endTime:''}</div>
+      ${cell ? `<div class="sub">Scheduled ${cell.startTime||''}${cell.endTime?' – '+cell.endTime:''}</div>` : '<div class="sub">Working from home today</div>'}
       ${body}
     </div>`;
 }
+function renderLiveStatusBoard(){
+  const today = todayStr();
+  const rows = [];
+  DATA.team.forEach(m=>{
+    if(m.clockEnabled===false) return;
+    const entry = (DATA.timeClock||[]).find(t=>t.staffName===m.name && t.date===today);
+    const hasShift = !!todaysScheduleFor(m.name);
+    const isWFH = !!m.workFromHome;
+    // Regular staff: show only if they have a shift OR clocked in. WFH: only show if clocked in.
+    if(!hasShift && !isWFH) return;
+    if(isWFH && (!entry || !entry.clockIn)) return;
+    rows.push({member:m, entry, hasShift, isWFH});
+  });
+  if(!rows.length) return '';
+
+  function statusInfo(entry){
+    if(!entry || !entry.clockIn) return {color:'#aaa', bg:'#f4f4f0', label:'Not yet clocked in', dot:'⚪'};
+    if(entry.clockOut) return {color:'#c0392b', bg:'#fde2e2', label:'Clocked out', dot:'🔴'};
+    if(isOnBreak(entry)) return {color:'#1a6fa3', bg:'#deeef9', label:'On break', dot:'🔵'};
+    return {color:'#1e6b2e', bg:'#d7f0dc', label:'Working', dot:'🟢'};
+  }
+
+  function tsLine(entry){
+    if(!entry || !entry.clockIn) return '';
+    const parts = [];
+    if(entry.clockIn) parts.push('In: ' + fmtClockTime(entry.clockIn));
+    (entry.breaks||[]).forEach((b,i)=>{
+      if(b.start) parts.push('Break'+(entry.breaks.length>1?' '+(i+1):'') +' start: '+fmtClockTime(b.start));
+      if(b.end)   parts.push('Return: '+fmtClockTime(b.end));
+    });
+    if(entry.clockOut) parts.push('Out: '+fmtClockTime(entry.clockOut));
+    return parts.join(' · ');
+  }
+
+  const cards = rows.map(({member, entry})=>{
+    const {color, bg, label, dot} = statusInfo(entry);
+    const ts = tsLine(entry);
+    return `<div style="background:${bg};border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px;">
+      <div style="font-size:20px;line-height:1.3;">${dot}</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;color:${color};font-size:14px;">${member.name}${member.workFromHome?' <span style="font-size:11px;font-weight:400;color:#888;">(WFH)</span>':''}</div>
+        <div style="font-size:12px;color:${color};font-weight:600;">${label}</div>
+        ${ts ? `<div style="font-size:11px;color:#555;margin-top:3px;">${ts}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card" style="border-left:5px solid var(--green-dark,#2f4a2f);">
+    <h2>👥 Team Status — Today</h2>
+    <div class="sub" style="margin-bottom:12px;">Live clock-in tracking. Resets each morning.</div>
+    ${cards}
+  </div>`;
+}
+
 function renderDashboard(){
   const todaysTasks = DATA.tasks.filter(t=>!t.archived && isTaskActiveToday(t));
   const total = todaysTasks.length;
@@ -1281,6 +1340,7 @@ function renderDashboard(){
   const openRepairsCount = DATA.repairs.filter(r=>!r.archived && r.status!=='Done').length;
   const openSupplyCount = (DATA.supplyRequests||[]).filter(r=>!r.archived && r.status!=='Fulfilled').length;
   return `
+    ${isManagerLogin() ? renderLiveStatusBoard() : ''}
     ${myShiftHtml}
     ${(openRepairsCount+openSupplyCount) ? `
     <div class="card" style="border-left:5px solid var(--amber, #c98a2a);">
@@ -3227,19 +3287,19 @@ function renderAnimalManagerCard(a){
       </div>
       <div class="field-block">
         <label>Rescue story</label>
-        <textarea id="m-rescue-${a.id}" placeholder="How this animal came to the rescue." onchange="saveAnimalCard(${a.id})">${a.rescueStory||''}</textarea>
+        <textarea id="m-rescue-${a.id}" placeholder="How this animal came to the rescue." oninput="saveAnimalCard(${a.id})">${a.rescueStory||''}</textarea>
       </div>
       <div class="field-block">
         <label>Scripts / presentation talking points</label>
-        <textarea id="m-script-${a.id}" style="min-height:120px;" placeholder="Add animal script here." onchange="saveAnimalCard(${a.id})">${a.script||''}</textarea>
+        <textarea id="m-script-${a.id}" style="min-height:120px;" placeholder="Add animal script here." oninput="saveAnimalCard(${a.id})">${a.script||''}</textarea>
       </div>
       <div class="field-block">
         <label>Fun facts</label>
-        <textarea id="m-funfacts-${a.id}" placeholder="Fun facts for staff and presentations." onchange="saveAnimalCard(${a.id})">${a.funFacts||''}</textarea>
+        <textarea id="m-funfacts-${a.id}" placeholder="Fun facts for staff and presentations." oninput="saveAnimalCard(${a.id})">${a.funFacts||''}</textarea>
       </div>
       <div class="field-block">
         <label>Medical notes</label>
-        <textarea id="m-mednotes-${a.id}" placeholder="Vet notes, vaccines, treatments, reminders." onchange="saveAnimalCard(${a.id})">${a.medicalNotes||''}</textarea>
+        <textarea id="m-mednotes-${a.id}" placeholder="Vet notes, vaccines, treatments, reminders." oninput="saveAnimalCard(${a.id})">${a.medicalNotes||''}</textarea>
       </div>
 
       <div class="medrecord-box">
@@ -3296,24 +3356,29 @@ function renderAnimalManagerCard(a){
       </div>
       <div class="field-block">
         <label>Important note (allergies, foods to avoid)</label>
-        <textarea id="m-importantnote-${a.id}" placeholder="e.g. Allergic to strawberries — do not feed" onchange="saveAnimalCard(${a.id})">${a.importantNote||''}</textarea>
+        <textarea id="m-importantnote-${a.id}" placeholder="e.g. Allergic to strawberries — do not feed" oninput="saveAnimalCard(${a.id})">${a.importantNote||''}</textarea>
       </div>
       <div class="field-block">
         <label>Diet</label>
-        <textarea id="m-diet-${a.id}" placeholder="Diet instructions" onchange="saveAnimalCard(${a.id})">${a.diet||''}</textarea>
+        <textarea id="m-diet-${a.id}" placeholder="Diet instructions" oninput="saveAnimalCard(${a.id})">${a.diet||''}</textarea>
       </div>
       <div class="field-block">
         <label>Water</label>
-        <textarea id="m-water-${a.id}" placeholder="Water instructions" onchange="saveAnimalCard(${a.id})">${a.water||''}</textarea>
+        <textarea id="m-water-${a.id}" placeholder="Water instructions" oninput="saveAnimalCard(${a.id})">${a.water||''}</textarea>
       </div>
       <div class="field-block">
         <label>Diet notes</label>
-        <textarea id="m-dietnotes-${a.id}" placeholder="Anything else staff should know about feeding" onchange="saveAnimalCard(${a.id})">${a.dietNotes||''}</textarea>
+        <textarea id="m-dietnotes-${a.id}" placeholder="Anything else staff should know about feeding" oninput="saveAnimalCard(${a.id})">${a.dietNotes||''}</textarea>
       </div>
 
       <div class="field-block">
         <label>Training video links</label>
-        <textarea id="m-training-${a.id}" placeholder="Paste one video/link per line." onchange="saveAnimalCard(${a.id})">${a.trainingVideos||''}</textarea>
+        <textarea id="m-training-${a.id}" placeholder="Paste one video/link per line." oninput="saveAnimalCard(${a.id})">${a.trainingVideos||''}</textarea>
+      </div>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+        <button class="btn-primary" onclick="saveAnimalCard(${a.id});this.textContent='✓ Saved!';setTimeout(()=>this.textContent='Save All Changes',1500);">Save All Changes</button>
+        <span style="font-size:12px;color:var(--gray);">Changes also save automatically as you type.</span>
       </div>
     </div>
   `;
@@ -4217,9 +4282,12 @@ function renderManager(){
         <h2>Logins</h2>
         <div class="sub">Give each person their own username and password. Staff logins can use every tab except Manager; Manager logins can see everything, including this page.</div>
         <table>
-          <tr><th>Username</th><th>Password</th><th>Name</th><th>Role</th><th></th></tr>
-          ${(DATA.logins||[]).map(l=>`
-            <tr>
+          <tr><th>Username</th><th>Password</th><th>Name</th><th>Role</th><th>Clock In/Out</th><th>Work from Home</th><th></th></tr>
+          ${(DATA.logins||[]).map(l=>{
+            const member = DATA.team.find(m=>m.name===l.name);
+            const clockEnabled = member ? member.clockEnabled!==false : true;
+            const isWFH = member ? !!member.workFromHome : false;
+            return `<tr>
               <td><input type="text" value="${esc(l.username)}" style="width:100%;min-width:80px;" onchange="saveLoginField(${l.id},'username',this.value)"></td>
               <td><input type="text" value="${esc(l.password)}" style="width:100%;min-width:80px;" onchange="saveLoginField(${l.id},'password',this.value)"></td>
               <td>
@@ -4234,8 +4302,15 @@ function renderManager(){
                   <option value="manager" ${l.role==='manager'?'selected':''}>Manager</option>
                 </select>
               </td>
+              <td style="text-align:center;">
+                ${member ? `<input type="checkbox" title="Show clock in/out on their dashboard" ${clockEnabled?'checked':''} onchange="setMemberClockEnabled('${esc(l.name)}',this.checked)">` : '—'}
+              </td>
+              <td style="text-align:center;">
+                ${member ? `<input type="checkbox" title="Work from home — show clock even without a scheduled shift" ${isWFH?'checked':''} onchange="setMemberWorkFromHome('${esc(l.name)}',this.checked)">` : '—'}
+              </td>
               <td><button class="btn-ghost" onclick="deleteLogin(${l.id})">Delete</button></td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </table>
       </div>
       <div class="card">
@@ -4531,6 +4606,20 @@ function setLoginRole(id, role){
     }
   }
   l.role = role;
+  saveData();
+  showTab('manager');
+}
+function setMemberClockEnabled(name, enabled){
+  const m = DATA.team.find(x=>x.name===name);
+  if(!m) return;
+  m.clockEnabled = !!enabled;
+  saveData();
+  showTab('manager');
+}
+function setMemberWorkFromHome(name, wfh){
+  const m = DATA.team.find(x=>x.name===name);
+  if(!m) return;
+  m.workFromHome = !!wfh;
   saveData();
   showTab('manager');
 }
