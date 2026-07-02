@@ -979,9 +979,11 @@ function buildTabs(){
 }
 let CURRENT_TAB = 'dashboard';
 let HOURS_SECTION_OPEN = true; // collapse toggle for My Hours / Hours-Payroll
+let VIEWING_STAFF_FILE_ID = null; // manager previewing a staff member's read-only file from Team tab
 function toggleHoursSection(){ HOURS_SECTION_OPEN = !HOURS_SECTION_OPEN; showTab(CURRENT_TAB); }
 function showTab(id){
   if(id==='manager' && !isManagerLogin()) id = 'dashboard';
+  if(id !== 'team') VIEWING_STAFF_FILE_ID = null;
   CURRENT_TAB = id;
   refreshRecurringTasks();
   visibleTabs().forEach(t=>{
@@ -1096,7 +1098,67 @@ function renderWelcome(){
 }
 
 /* ---------- TEAM (read-only directory + personal employee file for staff) ---------- */
+function openStaffFilePreview(id){ VIEWING_STAFF_FILE_ID = id; showTab('team'); }
+function closeStaffFilePreview(){ VIEWING_STAFF_FILE_ID = null; showTab('team'); }
+function renderStaffFileReadOnly(m){
+  const stats = computeStaffStats(m.name);
+  const incidents = DATA.incidents.filter(i=>i.staffName===m.name);
+  return `
+    <div class="card">
+      <button class="btn-ghost" onclick="closeStaffFilePreview()">← Back to Team Directory</button>
+      <h2>${esc(m.name)} — Employee File</h2>
+      <div class="sub">${esc(m.role)} · ${esc(m.biz)}</div>
+      <div class="sub" style="margin-top:6px;font-style:italic;color:var(--gray);">Viewing as ${esc(m.name)} sees it (read-only preview)</div>
+    </div>
+    <div class="card">
+      <h2>Activity</h2>
+      <table>
+        <tr><th>Shows Done</th><th>Upcoming Shows</th><th>Fairs &amp; Festivals</th><th>MTK Entertainment Events</th><th>Repairs Closed</th></tr>
+        <tr><td>${stats.showsCount}</td><td>${stats.upcomingShowsCount}</td><td>${stats.fairsCount}</td><td>${stats.mtkEventsCount}</td><td>${stats.repairsClosedCount}</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Employee File</h2>
+      <div class="sub">This is what ${esc(m.name)} sees — read-only.</div>
+      <div class="field-block"><label>Start Date</label><div>${m.startDate ? fmtShortDate(m.startDate) : '—'}</div></div>
+      ${m.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(m.endDate)}</div></div>` : ''}
+      <div class="field-block"><label>Birthday</label><div>${m.birthday ? fmtShortDate(m.birthday) : '—'}</div></div>
+      <div class="field-block"><label>Emergency Contact Name</label><div>${m.emergencyName || '—'}</div></div>
+      <div class="field-block"><label>Emergency Contact Phone</label><div>${m.emergencyPhone || '—'}</div></div>
+      <div class="field-block"><label>Relationship</label><div>${m.emergencyRelation || '—'}</div></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h2>Hours</h2>
+        <button class="btn-ghost" onclick="toggleHoursSection()" style="flex-shrink:0;">${HOURS_SECTION_OPEN ? '▾ Collapse' : '▸ Expand'}</button>
+      </div>
+      <div class="sub">Current work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong>. Total: <strong>${currentPayPeriodHoursFor(m.name)} hrs</strong>.</div>
+      ${HOURS_SECTION_OPEN ? hoursTableHtml(m.name, false) : ''}
+    </div>
+    <div class="card">
+      <h2>Incident Reports</h2>
+      ${incidents.length ? `<table>
+        <tr><th>Date</th><th>Description</th><th>Severity</th><th>Status</th></tr>
+        ${incidents.map(i=>`<tr><td>${i.date}</td><td>${i.desc}</td><td>${i.severity}</td><td>${i.status}</td></tr>`).join('')}
+      </table>` : '<div class="empty">No incidents on file.</div>'}
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <h2 style="margin-bottom:2px;">Approved Animals</h2>
+          <div class="sub" style="margin:0;font-style:italic;">${esc(m.name)} is only to take the animals checked below when doing outreach.</div>
+        </div>
+        <button class="btn-ghost" onclick="toggleApprovedAnimalsSection('${m.id}')" style="flex-shrink:0;">${APPROVED_ANIMALS_OPEN[m.id]?'▾ Collapse':'▸ Expand'}</button>
+      </div>
+      ${APPROVED_ANIMALS_OPEN[m.id] ? approvedAnimalsHtml(m, false) : ''}
+    </div>`;
+}
 function renderTeam(){
+  if(VIEWING_STAFF_FILE_ID){
+    const preview = DATA.team.find(m=>m.id===VIEWING_STAFF_FILE_ID);
+    if(preview) return renderStaffFileReadOnly(preview);
+    VIEWING_STAFF_FILE_ID = null;
+  }
   const myName = getWelcomeStaffName();
   const me = myName ? DATA.team.find(m=>m.name===myName) : null;
   const myIncidents = me ? DATA.incidents.filter(i=>i.staffName===me.name) : [];
@@ -1169,7 +1231,7 @@ function renderTeam(){
       <table>
         <tr><th>Name</th><th>Job Title</th><th>Phone</th></tr>
         ${DATA.team.map(m=>`
-          <tr><td>${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openEmployeeFile(${m.id})">${esc(m.name)}</button>` : esc(m.name)}</td><td>${m.role}</td><td>${m.phone || '—'}</td></tr>`).join('')}
+          <tr><td>${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}</td><td>${m.role}</td><td>${m.phone || '—'}</td></tr>`).join('')}
       </table>
     </div>
   `;
