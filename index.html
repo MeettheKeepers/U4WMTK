@@ -3130,14 +3130,37 @@ function hoursTableHtml(name, editable){
       ${rows.map(t=>{
         const h = hoursWorked(t);
         if(editable){
+          const breaks = t.breaks || [];
+          const breakRows = breaks.map((b,i)=>{
+            const bStart = b.start ? toTimeInputValue(b.start) : '';
+            const bEnd   = b.end   ? toTimeInputValue(b.end)   : '';
+            const bMins  = (b.start && b.end) ? Math.round((new Date(b.end)-new Date(b.start))/60000) : null;
+            return `<tr style="background:#fffbf0;">
+              <td colspan="5" style="padding:4px 8px 4px 28px;font-size:13px;">
+                <span style="color:#999;margin-right:6px;">Break ${i+1}</span>
+                <input type="time" value="${bStart}" style="width:106px;" onchange="setBreakField(${t.id},${i},'start',this.value)">
+                <span style="margin:0 5px;color:#aaa;">→</span>
+                <input type="time" value="${bEnd}" style="width:106px;" onchange="setBreakField(${t.id},${i},'end',this.value)">
+                ${bMins!=null?`<span style="color:#888;margin-left:6px;">(${bMins} min)</span>`:''}
+                <button class="btn-ghost" style="margin-left:8px;font-size:11px;color:var(--red);padding:2px 6px;" onclick="deleteBreak(${t.id},${i})">Remove</button>
+              </td>
+            </tr>`;
+          }).join('');
           return `<tr>
             <td>${fmtShortDate(t.date)}</td>
             <td><input type="time" value="${toTimeInputValue(t.clockIn)}" onchange="setTimeClockField(${t.id},'clockIn',this.value)"></td>
             <td><input type="time" value="${toTimeInputValue(t.clockOut)}" onchange="setTimeClockField(${t.id},'clockOut',this.value)"></td>
             <td>${h!=null?h+' hrs':'—'}</td>
             <td><button class="btn-ghost" onclick="deleteTimeClockEntry(${t.id})">Delete</button></td>
+          </tr>
+          ${breakRows}
+          <tr style="background:#fffbf0;">
+            <td colspan="5" style="padding:3px 8px 6px 28px;">
+              <a href="#" style="font-size:12px;color:var(--green);" onclick="addBreak(${t.id});return false;">+ Add break</a>
+            </td>
           </tr>`;
         }
+        // Staff read-only: no break details shown
         return `<tr>
           <td>${fmtShortDate(t.date)}</td>
           <td>${t.clockIn?fmtClockTime(t.clockIn):'—'}</td>
@@ -3175,6 +3198,30 @@ function addManualTimeClockEntry(name, uid){
   const t = ensureTimeClockEntry(name, date);
   if(inVal) t.clockIn = new Date(date+'T'+inVal+':00').toISOString();
   if(outVal) t.clockOut = new Date(date+'T'+outVal+':00').toISOString();
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function setBreakField(entryId, breakIdx, field, value){
+  const t = DATA.timeClock.find(x=>x.id===entryId);
+  if(!t || !t.breaks || !t.breaks[breakIdx]) return;
+  const date = t.date;
+  if(field==='start') t.breaks[breakIdx].start = value ? new Date(date+'T'+value+':00').toISOString() : null;
+  if(field==='end')   t.breaks[breakIdx].end   = value ? new Date(date+'T'+value+':00').toISOString() : null;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function deleteBreak(entryId, breakIdx){
+  const t = DATA.timeClock.find(x=>x.id===entryId);
+  if(!t || !t.breaks) return;
+  t.breaks.splice(breakIdx, 1);
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function addBreak(entryId){
+  const t = DATA.timeClock.find(x=>x.id===entryId);
+  if(!t) return;
+  if(!t.breaks) t.breaks = [];
+  t.breaks.push({start:null, end:null});
   saveData();
   showTab(CURRENT_TAB);
 }
