@@ -848,8 +848,11 @@ let CLOUD_READY = false;
 let SUPPRESS_NEXT_REALTIME = false;
 let SAVE_DEBOUNCE_TIMER = null;
 
+const LOCAL_SAVED_AT_KEY = 'ufw_local_saved_at_v1';
 function saveData(){
+  DATA._savedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+  localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
   if(!sb) return;
   clearTimeout(SAVE_DEBOUNCE_TIMER);
   SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 500);
@@ -858,7 +861,8 @@ async function pushCloudData(){
   if(!sb) return;
   SUPPRESS_NEXT_REALTIME = true;
   try{
-    await sb.from('app_state').update({ data: DATA, updated_at: new Date().toISOString() }).eq('id', 1);
+    const result = await sb.from('app_state').update({ data: DATA, updated_at: new Date().toISOString() }).eq('id', 1);
+    if(result.error) console.warn('Cloud save error:', result.error);
   }catch(e){ console.warn('Cloud save failed, kept locally.', e); }
 }
 function rerenderCurrentView(){
@@ -866,17 +870,36 @@ function rerenderCurrentView(){
   buildTabs();
   showTab(CURRENT_TAB || 'dashboard');
 }
+function _isValidCloudData(d){
+  // Guard against null/truncated realtime payloads (Supabase drops payloads > 1MB)
+  return d && typeof d === 'object' && Array.isArray(d.team) && Array.isArray(d.logins) && d.team.length > 0;
+}
 async function initCloudSync(){
   if(!sb){ markLoginReady('no-client'); return; }
   try{
-    const { data, error } = await sb.from('app_state').select('data').eq('id', 1).single();
+    const { data, error } = await sb.from('app_state').select('data, updated_at').eq('id', 1).single();
     if(error) throw error;
     const cloud = data && data.data;
-    if(cloud && Object.keys(cloud).length){
+    // Cloud time: prefer _savedAt embedded in data, fall back to Supabase updated_at column
+    const cloudTime = (cloud && cloud._savedAt) || (data && data.updated_at ? new Date(data.updated_at).getTime() : 0);
+    // Local time: prefer _savedAt in DATA, fall back to separate localStorage key (set by previous session)
+    const localTime = DATA._savedAt || parseInt(localStorage.getItem(LOCAL_SAVED_AT_KEY)||'0', 10);
+    if(_isValidCloudData(cloud) && cloudTime >= localTime){
+      // Cloud is newer (or same age) — accept it
       DATA = normalizeData(cloud);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+      localStorage.setItem(LOCAL_SAVED_AT_KEY, cloudTime);
+    } else if(_isValidCloudData(cloud) && localTime > cloudTime){
+      // Local is newer — push it to cloud so other devices get our changes
+      DATA._savedAt = localTime;
+      DATA = normalizeData(DATA);
+      await sb.from('app_state').update({ data: DATA, updated_at: new Date(localTime).toISOString() }).eq('id', 1);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+      localStorage.setItem(LOCAL_SAVED_AT_KEY, localTime);
     } else {
-      // First device to go live seeds the shared cloud copy with local data.
+      // Cloud empty/invalid — seed it from local
+      DATA._savedAt = Date.now();
+      localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
       await sb.from('app_state').update({ data: DATA, updated_at: new Date().toISOString() }).eq('id', 1);
     }
     CLOUD_READY = true;
@@ -885,7 +908,12 @@ async function initCloudSync(){
     sb.channel('app_state_changes')
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'app_state', filter:'id=eq.1' }, payload=>{
         if(SUPPRESS_NEXT_REALTIME){ SUPPRESS_NEXT_REALTIME = false; return; }
-        DATA = normalizeData(payload.new.data);
+        const incoming = payload.new && payload.new.data;
+        // Supabase realtime drops payloads > 1MB — guard against null/truncated data
+        if(!_isValidCloudData(incoming)){ SUPPRESS_NEXT_REALTIME = false; return; }
+        // Only accept if incoming is newer than what we have
+        if((incoming._savedAt || 0) <= (DATA._savedAt || 0)) return;
+        DATA = normalizeData(incoming);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
         rerenderCurrentView();
       })
@@ -1404,12 +1432,41 @@ function computeStaffStats(name){
 
 /* ---------- PAY STUBS (manager uploads, private per employee) ---------- */
 let PAYSTUB_PENDING_IMAGE = null;
+function _loadPayStubImage(file){
+  if(!file) return;
+  // Compress to JPEG ≤1200px wide/tall, quality 0.75 — keeps blob small for Supabase sync
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    const MAX = 1200;
+    let w = img.width, h = img.height;
+    if(w > MAX || h > MAX){
+      if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    PAYSTUB_PENDING_IMAGE = canvas.toDataURL('image/jpeg', 0.75);
+    const preview = document.getElementById('paystub-preview');
+    const label = document.getElementById('paystub-drop-label');
+    if(preview){ preview.src = PAYSTUB_PENDING_IMAGE; preview.style.display='block'; }
+    if(label){ label.innerHTML = '✓ Image ready — now click <b>Add Pay Stub</b>'; label.style.color='var(--green)'; }
+    const zone = document.getElementById('paystub-drop');
+    if(zone){ zone.style.borderColor='var(--green)'; zone.style.background='rgba(63,94,63,0.05)'; }
+  };
+  img.src = url;
+}
 function handlePayStubFile(input){
-  const file = input.files && input.files[0];
-  if(!file){ PAYSTUB_PENDING_IMAGE = null; return; }
-  const reader = new FileReader();
-  reader.onload = function(e){ PAYSTUB_PENDING_IMAGE = e.target.result; };
-  reader.readAsDataURL(file);
+  _loadPayStubImage(input.files && input.files[0]);
+}
+function handlePayStubDrop(e){
+  e.preventDefault();
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file) _loadPayStubImage(file);
+  const zone = document.getElementById('paystub-drop');
+  if(zone) zone.style.borderColor='var(--green)';
 }
 function _commitPayStub(staffName, date, imageData){
   if(!DATA.payStubs) DATA.payStubs = [];
@@ -1422,17 +1479,8 @@ function addPayStub(){
   const staffName = val('paystub-staff');
   const date = val('paystub-date') || todayStr();
   if(!staffName){ alert('Select a staff member.'); return; }
-  if(PAYSTUB_PENDING_IMAGE){
-    _commitPayStub(staffName, date, PAYSTUB_PENDING_IMAGE);
-    return;
-  }
-  // Drag-and-drop in Safari may skip onchange — read the file directly
-  const fileInput = document.getElementById('paystub-file');
-  const file = fileInput && fileInput.files && fileInput.files[0];
-  if(!file){ alert('Choose or drag an image to upload.'); return; }
-  const reader = new FileReader();
-  reader.onload = e => _commitPayStub(staffName, date, e.target.result);
-  reader.readAsDataURL(file);
+  if(!PAYSTUB_PENDING_IMAGE){ alert('Please select or drop an image first.'); return; }
+  _commitPayStub(staffName, date, PAYSTUB_PENDING_IMAGE);
 }
 function deletePayStub(id){
   if(!confirm('Delete this pay stub?')) return;
@@ -1449,13 +1497,22 @@ function renderPayStubs(){
       <div class="card">
         <h2>Pay Stubs</h2>
         <div class="sub">Upload a screenshot of each pay stub from the accountant. Each employee can only see their own, most recent first.</div>
-        <div class="add-row">
+        <div class="add-row" style="flex-wrap:wrap;gap:10px;">
           <select id="paystub-staff">
             <option value="">Select staff member…</option>
             ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
           </select>
           <input type="date" id="paystub-date">
-          <input type="file" id="paystub-file" accept="image/*" onchange="handlePayStubFile(this)">
+          <div id="paystub-drop"
+            style="border:2px dashed var(--border);border-radius:10px;padding:12px 20px;text-align:center;cursor:pointer;min-width:200px;transition:border-color .2s,background .2s;"
+            ondragover="event.preventDefault();this.style.borderColor='var(--green)'"
+            ondragleave="this.style.borderColor=PAYSTUB_PENDING_IMAGE?'var(--green)':'var(--border)'"
+            ondrop="handlePayStubDrop(event)"
+            onclick="document.getElementById('paystub-file').click()">
+            <div id="paystub-drop-label" style="font-size:13px;color:var(--text-light)">📎 Click or drop image here</div>
+            <img id="paystub-preview" style="display:none;max-height:70px;margin-top:6px;border-radius:6px;border:1px solid var(--border);">
+            <input type="file" id="paystub-file" accept="image/*" style="display:none" onchange="handlePayStubFile(this)">
+          </div>
           <button class="btn-small" onclick="addPayStub()">Add Pay Stub</button>
         </div>
       </div>
