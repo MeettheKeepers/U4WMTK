@@ -869,8 +869,8 @@ async function pushCloudData(){
   SUPPRESS_NEXT_REALTIME = true;
   try{
     const result = await sb.from('app_state').update({ data: DATA, updated_at: new Date().toISOString() }).eq('id', 1);
-    if(result.error) console.warn('Cloud save error:', result.error);
-  }catch(e){ console.warn('Cloud save failed, kept locally.', e); }
+    if(result.error){ SUPPRESS_NEXT_REALTIME = false; console.warn('Cloud save error:', result.error); }
+  }catch(e){ SUPPRESS_NEXT_REALTIME = false; console.warn('Cloud save failed, kept locally.', e); }
 }
 function rerenderCurrentView(){
   if(!CURRENT_LOGIN) return;
@@ -916,12 +916,13 @@ async function initCloudSync(){
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'app_state', filter:'id=eq.1' }, payload=>{
         if(SUPPRESS_NEXT_REALTIME){ SUPPRESS_NEXT_REALTIME = false; return; }
         const incoming = payload.new && payload.new.data;
-        // Supabase realtime drops payloads > 1MB — guard against null/truncated data
-        if(!_isValidCloudData(incoming)){ SUPPRESS_NEXT_REALTIME = false; return; }
-        // Only accept if incoming is newer than what we have
-        if((incoming._savedAt || 0) <= (DATA._savedAt || 0)) return;
+        // Guard against null/truncated payloads (Supabase drops realtime payloads > 1MB)
+        if(!_isValidCloudData(incoming)) return;
+        // Accept all valid updates from other devices — this is what keeps the UI live
         DATA = normalizeData(incoming);
+        DATA._savedAt = incoming._savedAt || Date.now();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+        localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
         rerenderCurrentView();
       })
       .subscribe();
