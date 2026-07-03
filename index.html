@@ -1174,6 +1174,7 @@ function saveAdminCustomSection(id){
   const flag = document.getElementById('admin-saved-custom-'+id);
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
+let GRANTS_EDITING_ID = null;
 function addGrantsNote(note){
   if(!note) return;
   if(!DATA.admin.grantsLog) DATA.admin.grantsLog = [];
@@ -1186,6 +1187,25 @@ function addGrantsNote(note){
   });
   saveData();
   ADMIN_TAB = 'grants';
+  showTab('admin');
+}
+function editGrantsNote(id){ GRANTS_EDITING_ID = id; showTab('admin'); }
+function cancelGrantsNoteEdit(){ GRANTS_EDITING_ID = null; showTab('admin'); }
+function saveGrantsNoteEdit(id){
+  const el = document.getElementById('grants-edit-'+id);
+  if(!el) return;
+  const updated = el.value.trim();
+  if(!updated) return;
+  const entry = (DATA.admin.grantsLog||[]).find(e=>e.id===id);
+  if(entry){ entry.note = updated; entry.editedAt = new Date().toISOString(); }
+  saveData();
+  GRANTS_EDITING_ID = null;
+  showTab('admin');
+}
+function deleteGrantsNote(id){
+  if(!confirm('Delete this note? This cannot be undone.')) return;
+  DATA.admin.grantsLog = (DATA.admin.grantsLog||[]).filter(e=>e.id!==id);
+  saveData();
   showTab('admin');
 }
 function saveManagerAdminHiring(){
@@ -1228,11 +1248,27 @@ function renderAdmin(){
         <textarea id="grants-note-input" placeholder="Write your update for today…" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>
         <button class="btn-small" style="margin-top:8px;" onclick="addGrantsNote(document.getElementById('grants-note-input').value.trim())">Save Note</button>
         <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
-          ${log.length ? log.slice().reverse().map(e=>`
-            <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
-              <div style="font-size:12px;color:var(--text-light);margin-bottom:4px;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}</div>
-              <div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>
-            </div>`).join('') : '<div class="empty">No entries yet.</div>'}
+          ${log.length ? log.slice().reverse().map(e=>{
+            const isAuthor = loggedIn === e.author;
+            const isMgr = isManagerLogin();
+            const isEditing = GRANTS_EDITING_ID === e.id;
+            return `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <span style="font-size:12px;color:var(--text-light);flex:1;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}${e.editedAt?' <em>(edited)</em>':''}</span>
+                ${isEditing ? '' : `
+                  ${(isAuthor||isMgr) ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="editGrantsNote(${e.id})">Edit</button>` : ''}
+                  ${isMgr ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--red);" onclick="deleteGrantsNote(${e.id})">Delete</button>` : ''}
+                `}
+              </div>
+              ${isEditing ? `
+                <textarea id="grants-edit-${e.id}" style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;">${esc(e.note)}</textarea>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                  <button class="btn-small" onclick="saveGrantsNoteEdit(${e.id})">Save</button>
+                  <button class="btn-ghost" onclick="cancelGrantsNoteEdit()">Cancel</button>
+                </div>
+              ` : `<div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>`}
+            </div>`;
+          }).join('') : '<div class="empty">No entries yet.</div>'}
         </div>
       </div>`;
   } else {
