@@ -3877,6 +3877,7 @@ function renderAnimalManagerCard(a){
 
 /* ---------- MANAGER ---------- */
 let MANAGER_TAB = 'overview';
+let EDITING_TASK_ID = null;
 
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
@@ -4528,17 +4529,88 @@ function renderManager(){
         <div class="sub">Archive a task to hide it from staff without losing its history. Delete only when you're sure you don't need it again.</div>
         <table>
           <tr><th>Name</th><th>Category</th><th>Frequency</th><th>Assigned To</th><th>Visibility</th><th>Critical</th><th>Photo Req'd</th><th></th></tr>
-          ${DATA.tasks.filter(t=>!t.archived).map(t=>`
+          ${DATA.tasks.filter(t=>!t.archived).map(t=>{
+            const editing = EDITING_TASK_ID === t.id;
+            const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const freqLabel = t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : (t.freq === 'Weekly' && t.weekDays && t.weekDays.length ? DOW.filter((_,i)=>t.weekDays.includes(i)).join('/') : t.freq);
+            if(editing){
+              return `
+              <tr style="background:var(--hover);">
+                <td colspan="8" style="padding:10px 8px;">
+                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+                    <div style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:130px;">
+                      <label style="font-size:11px;color:var(--text-light);">Name</label>
+                      <input id="etask-name" value="${esc(t.name)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;">
+                      <label style="font-size:11px;color:var(--text-light);">Category</label>
+                      <input id="etask-category" value="${esc(t.category)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Frequency</label>
+                      <select id="etask-freq" onchange="toggleEditTaskWeeklyFields()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                        ${['Daily','Weekly','Custom'].map(f=>`<option${t.freq===f?' selected':''}>${f}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div id="etask-weekly-block" style="${t.freq==='Weekly'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Days</label>
+                      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        ${DOW.map((d,i)=>`<div class="day-toggle${t.weekDays && t.weekDays.includes(i)?' active':''}" data-dow="${i}" onclick="this.classList.toggle('active')">${d}</div>`).join('')}
+                      </div>
+                    </div>
+                    <div id="etask-custom-block" style="${t.freq==='Custom'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Every N days</label>
+                      <input id="etask-interval" type="number" min="1" value="${t.intervalDays||1}" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Assigned To</label>
+                      <select id="etask-assigned" onchange="toggleEditTaskVisibility()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                        <option value="">Everyone</option>
+                        ${DATA.team.map(m=>`<option value="${esc(m.name)}"${t.assignedTo===m.name?' selected':''}>${esc(m.name)}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div id="etask-vis-block" style="${t.assignedTo?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Visibility</label>
+                      <select id="etask-visibility" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                        <option value="all"${(t.visibility||'all')==='all'?' selected':''}>Visible to all</option>
+                        <option value="private"${t.visibility==='private'?' selected':''}>Private</option>
+                      </select>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Critical</label>
+                      <select id="etask-critical" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                        <option value="0"${!t.critical?' selected':''}>No</option>
+                        <option value="1"${t.critical?' selected':''}>Yes</option>
+                      </select>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <label style="font-size:11px;color:var(--text-light);">Photo Req'd</label>
+                      <select id="etask-photo" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                        <option value="0"${!t.photoRequired?' selected':''}>No</option>
+                        <option value="1"${t.photoRequired?' selected':''}>Yes</option>
+                      </select>
+                    </div>
+                    <div style="display:flex;gap:6px;align-self:flex-end;">
+                      <button class="btn-small" onclick="saveTaskEdit(${t.id})">Save</button>
+                      <button class="btn-ghost" onclick="cancelTaskEdit()">Cancel</button>
+                    </div>
+                  </div>
+                </td>
+              </tr>`;
+            }
+            return `
             <tr>
-              <td>${t.name}</td><td>${t.category}</td><td>${t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : t.freq}</td>
+              <td>${esc(t.name)}</td><td>${esc(t.category)}</td><td>${freqLabel}</td>
               <td>${t.assignedTo ? esc(t.assignedTo) : '<span style="color:#aaa;">Everyone</span>'}</td>
               <td>${t.assignedTo ? (t.visibility==='private' ? '🔒 Private' : '👁 Visible to all') : '—'}</td>
               <td>${t.critical?'Yes':'No'}</td><td>${t.photoRequired?'Yes':'No'}</td>
               <td style="white-space:nowrap;">
+                <button class="btn-ghost" onclick="editTask(${t.id})">Edit</button>
                 <button class="btn-ghost" onclick="archiveTask(${t.id})">Archive</button>
                 <button class="btn-ghost" onclick="deleteRow('tasks',${t.id})">Delete</button>
               </td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </table>
         ${DATA.tasks.filter(t=>!t.archived).length ? '' : '<div class="empty">No active tasks.</div>'}
       </div>
@@ -5135,6 +5207,46 @@ function addTaskManager(){
     weekDays = selected.length ? selected : null;
   }
   DATA.tasks.push({id:nextId(DATA.tasks), name, freq, category, biz, critical, photoRequired, assignedTo, visibility, intervalDays, anchorDate, weekDays, lastResetDate:null, done:false, completedBy:"", photoName:"", notes:"", completedAt:null, missedDate:null, completedDate:null, archived:false});
+  saveData();
+  showTab('manager');
+}
+function editTask(id){ EDITING_TASK_ID = id; showTab('manager'); }
+function cancelTaskEdit(){ EDITING_TASK_ID = null; showTab('manager'); }
+function toggleEditTaskWeeklyFields(){
+  const freq = document.getElementById('etask-freq').value;
+  const wb = document.getElementById('etask-weekly-block');
+  const cb = document.getElementById('etask-custom-block');
+  if(wb) wb.style.display = freq === 'Weekly' ? 'flex' : 'none';
+  if(cb) cb.style.display = freq === 'Custom' ? 'flex' : 'none';
+}
+function toggleEditTaskVisibility(){
+  const assigned = document.getElementById('etask-assigned').value;
+  const vb = document.getElementById('etask-vis-block');
+  if(vb) vb.style.display = assigned ? 'flex' : 'none';
+}
+function saveTaskEdit(id){
+  const t = DATA.tasks.find(x=>x.id===id);
+  if(!t) return;
+  const freq = document.getElementById('etask-freq').value;
+  t.name = document.getElementById('etask-name').value.trim() || t.name;
+  t.category = document.getElementById('etask-category').value.trim() || t.category;
+  t.freq = freq;
+  t.assignedTo = document.getElementById('etask-assigned').value;
+  t.visibility = t.assignedTo ? (document.getElementById('etask-visibility').value || 'all') : 'all';
+  t.critical = document.getElementById('etask-critical').value === '1';
+  t.photoRequired = document.getElementById('etask-photo').value === '1';
+  if(freq === 'Custom'){
+    t.intervalDays = parseInt(document.getElementById('etask-interval').value, 10) || 1;
+    t.weekDays = null;
+  } else if(freq === 'Weekly'){
+    const selected = Array.from(document.querySelectorAll('#etask-weekly-block .day-toggle.active')).map(el=>parseInt(el.dataset.dow));
+    t.weekDays = selected.length ? selected : null;
+    t.intervalDays = null;
+  } else {
+    t.intervalDays = null;
+    t.weekDays = null;
+  }
+  EDITING_TASK_ID = null;
   saveData();
   showTab('manager');
 }
