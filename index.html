@@ -854,6 +854,7 @@ const sb = (typeof window!=='undefined' && window.supabase) ? window.supabase.cr
 let CLOUD_READY = false;
 let SUPPRESS_NEXT_REALTIME = false;
 let SAVE_DEBOUNCE_TIMER = null;
+let POLL_TIMER = null;
 
 const LOCAL_SAVED_AT_KEY = 'ufw_local_saved_at_v1';
 function saveData(){
@@ -880,6 +881,24 @@ function rerenderCurrentView(){
 function _isValidCloudData(d){
   // Guard against null/truncated realtime payloads (Supabase drops payloads > 1MB)
   return d && typeof d === 'object' && Array.isArray(d.team) && Array.isArray(d.logins) && d.team.length > 0;
+}
+async function pollCloudData(){
+  // Polling fallback: fetch fresh data from Supabase every 30 seconds.
+  // This guarantees updates propagate even if the WebSocket connection drops.
+  if(!sb) return;
+  try{
+    const { data, error } = await sb.from('app_state').select('data').eq('id',1).single();
+    if(error || !data || !data.data) return;
+    const incoming = data.data;
+    if(!_isValidCloudData(incoming)) return;
+    if((incoming._savedAt||0) > (DATA._savedAt||0)){
+      DATA = normalizeData(incoming);
+      DATA._savedAt = incoming._savedAt;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+      localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
+      rerenderCurrentView();
+    }
+  }catch(e){ /* silent — polling is a fallback, not a hard requirement */ }
 }
 async function initCloudSync(){
   if(!sb){ markLoginReady('no-client'); return; }
@@ -926,6 +945,11 @@ async function initCloudSync(){
         rerenderCurrentView();
       })
       .subscribe();
+    // Polling fallback — catches updates when WebSocket drops (mobile background, etc.)
+    if(POLL_TIMER) clearInterval(POLL_TIMER);
+    POLL_TIMER = setInterval(pollCloudData, 30000);
+    // Immediately re-fetch when user returns to the tab/app after being away
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollCloudData(); });
   }catch(e){
     console.warn('Cloud sync unavailable, running on this device only.', e);
     markLoginReady('error', e);
