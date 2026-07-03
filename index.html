@@ -2878,18 +2878,19 @@ function toggleShowStaffRow(key){
   showTab('shows');
 }
 function renderShows(){
-  const range = thisWeekRange();
-  const weekShows = DATA.shows.filter(s=> isShowUpcoming(s) && s.date>=range.start && s.date<=range.end);
+  const today = todayStr();
+  const sevenDaysOut = addDays(today, 6);
+  const weekShows = DATA.shows.filter(s=> isShowUpcoming(s) && s.date>=today && s.date<=sevenDaysOut);
   const groups = groupShowsByDate(weekShows);
   return `
     <div class="card">
       <h2>Shows</h2>
-      <div class="sub">Read-only staff hub for upcoming shows this week. Managers add and edit shows in the Manager tab.</div>
-      <div class="notice">Upcoming week: shows are grouped by date, then by staff member. Each staff member sees Show 1 of 2, Show 2 of 2, etc. Green means paid, red means it has not been paid.</div>
+      <div class="sub">Read-only staff hub for upcoming shows over the next 7 days. Managers add and edit shows in the Manager tab.</div>
+      <div class="notice">Next 7 days: shows are grouped by date, then by staff member. Each staff member sees Show 1 of 2, Show 2 of 2, etc. Green means paid, red means it has not been paid.</div>
     </div>
     <div class="card">
       <div class="animal-card-top">
-        <h2 style="margin:0;">This Week</h2>
+        <h2 style="margin:0;">Next 7 Days</h2>
         <span class="status-badge status-progress">${weekShows.length}</span>
       </div>
       ${groups.length ? groups.map(g=>{
@@ -2910,7 +2911,7 @@ function renderShows(){
             `;
           }).join('')}
         </div>
-      `;}).join('') : '<div class="empty">No shows scheduled this week.</div>'}
+      `;}).join('') : '<div class="empty">No shows scheduled in the next 7 days.</div>'}
     </div>
   `;
 }
