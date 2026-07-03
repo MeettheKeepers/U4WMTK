@@ -3780,6 +3780,8 @@ function addIncident(){
 
 /* ---------- MANAGER: CONSOLIDATED ANIMAL PROFILE (info + diet + medical) ---------- */
 function esc(s){ return (s||'').toString().replace(/"/g,'&quot;'); }
+let ANIMAL_PROFILES_COLLAPSED = false;
+function toggleAnimalProfiles(){ ANIMAL_PROFILES_COLLAPSED = !ANIMAL_PROFILES_COLLAPSED; showTab('manager'); }
 let SHOW_ADD_ANIMAL_FORM = false;
 function toggleAddAnimalForm(){
   SHOW_ADD_ANIMAL_FORM = !SHOW_ADD_ANIMAL_FORM;
@@ -3889,6 +3891,7 @@ function renderAnimalManagerCard(a){
           <button class="pill-btn" onclick="archiveAnimal(${a.id})">Archive animal</button>
         </div>
       </div>
+      ${ANIMAL_PROFILES_COLLAPSED ? '' : `
       <div style="background:#f9f6ef;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
         <div style="font-weight:700;font-size:13px;margin-bottom:6px;">Outreach count — last 7 days: <span style="color:${takes7.length>=3?'#c0392b':takes7.length>=2?'#b8860b':'#2a5a1a'}">${takes7.length} / 3</span>${currentOut?` · <em style="color:#c0392b;">Currently out with ${currentOut.staffName}</em>`:''}</div>
         ${takes7.length ? `
@@ -4027,6 +4030,7 @@ function renderAnimalManagerCard(a){
         <button class="btn-primary" onclick="saveAnimalCard(${a.id});this.textContent='✓ Saved!';setTimeout(()=>this.textContent='Save All Changes',1500);">Save All Changes</button>
         <span style="font-size:12px;color:var(--gray);">Changes also save automatically as you type.</span>
       </div>
+      `}
     </div>
   `;
 }
@@ -4950,7 +4954,10 @@ function renderManager(){
     const archivedAnimals = DATA.animals.filter(a=>a.archived);
     body = `
       <div class="card">
-        <h2>Animal Profiles</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">Animal Profiles</h2>
+          <button class="btn-ghost" onclick="toggleAnimalProfiles()">${ANIMAL_PROFILES_COLLAPSED ? '▸ Expand All' : '▾ Collapse All'}</button>
+        </div>
         <div class="sub">Manager-only editing. Everything about an animal lives here — overview, rescue story, scripts, fun facts, medical notes &amp; documents, diet, and habitat. Staff see the non-diet info on the Animals tab (read only) and the diet info on the Diets tab (read only).</div>
         <button class="collapsible-toggle" onclick="toggleAddAnimalForm()">${SHOW_ADD_ANIMAL_FORM ? '▾' : '▸'} Add an Animal</button>
         ${SHOW_ADD_ANIMAL_FORM ? `
