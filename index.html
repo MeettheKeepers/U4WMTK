@@ -392,6 +392,8 @@
   .badge.done{ background:#e1ecdd; color:#2f4a2f; }
   .tag.category{ background:#e1ecdd; color:#2f4a2f; }
   .tag.freq{ background:#e7ede4; color:#3f5e3f; }
+  .day-toggle{ cursor:pointer; padding:5px 11px; border:1px solid var(--border); border-radius:20px; font-size:13px; user-select:none; transition:background .15s,color .15s,border-color .15s; }
+  .day-toggle.active{ background:var(--green); color:#fff; border-color:var(--green); }
   .tag.photoreq{ background:#fbeed1; color:#7a5a18; }
   .tag.critical{ background:#fde6e3; color:#a8392c; }
   .task-tags{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 14px; }
@@ -1788,6 +1790,9 @@ function isCustomDueToday(t){
   return diff >= 0 && diff % t.intervalDays === 0;
 }
 function isTaskActiveToday(t){
+  if(t.freq === 'Weekly' && t.weekDays && t.weekDays.length > 0){
+    return t.weekDays.includes(new Date().getDay());
+  }
   return t.freq !== 'Custom' || isCustomDueToday(t);
 }
 /* Auto-reset and missed-task tracking.
@@ -1811,16 +1816,32 @@ function refreshRecurringTasks(){
         changed = true;
       }
     } else if(t.freq === 'Weekly'){
-      const anchor = t.lastResetDate || today;
-      const diff = daysBetween(anchor, today);
-      if(diff >= 7){
-        if(!t.done) t.missedDate = anchor;
-        else t.missedDate = null;
-        t.done = false; t.completedBy=""; t.photoName=""; t.photoData=null; t.notes=""; t.completedAt=null;
-        t.lastResetDate = today;
-        changed = true;
+      if(t.weekDays && t.weekDays.length > 0){
+        // Day-specific: resets on each selected day of week
+        const todayDow = new Date().getDay();
+        if(t.weekDays.includes(todayDow)){
+          if(!t.lastResetDate){ t.lastResetDate = today; changed = true; }
+          else if(t.lastResetDate !== today){
+            if(!t.done) t.missedDate = t.lastResetDate;
+            else t.missedDate = null;
+            t.done = false; t.completedBy=""; t.photoName=""; t.photoData=null; t.notes=""; t.completedAt=null;
+            t.lastResetDate = today;
+            changed = true;
+          }
+        }
+      } else {
+        // Original 7-day cycle
+        const anchor = t.lastResetDate || today;
+        const diff = daysBetween(anchor, today);
+        if(diff >= 7){
+          if(!t.done) t.missedDate = anchor;
+          else t.missedDate = null;
+          t.done = false; t.completedBy=""; t.photoName=""; t.photoData=null; t.notes=""; t.completedAt=null;
+          t.lastResetDate = today;
+          changed = true;
+        }
+        if(!t.lastResetDate){ t.lastResetDate = today; changed = true; }
       }
-      if(!t.lastResetDate){ t.lastResetDate = today; changed = true; }
     } else if(t.freq === 'Custom' && isCustomDueToday(t) && t.lastResetDate !== today){
       t.done = false; t.completedBy=""; t.photoName=""; t.photoData=null; t.notes=""; t.completedAt=null;
       t.lastResetDate = today;
@@ -1854,7 +1875,7 @@ function renderTaskCard(t){
       </div>
       <div class="task-tags">
         <span class="tag category">${t.category}</span>
-        <span class="tag freq">${t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : t.freq}</span>
+        <span class="tag freq">${t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : (t.freq === 'Weekly' && t.weekDays && t.weekDays.length ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_,i)=>t.weekDays.includes(i)).join('/') : t.freq)}</span>
         ${t.photoRequired ? '<span class="tag photoreq">Photo required</span>' : ''}
         ${t.critical ? '<span class="tag critical">Critical</span>' : ''}
         ${t.assignedTo ? `<span class="tag" style="background:#e0eaff;color:#1a3a7a;">👤 ${esc(t.assignedTo)}</span>` : ''}
@@ -4480,6 +4501,12 @@ function renderManager(){
             <input type="date" id="new-task-anchor" value="${todayStr()}">
           </label>
         </div>
+        <div id="new-task-weekly-fields" style="display:none;margin:4px 0 2px;">
+          <div style="font-size:13px;color:var(--text-light);margin-bottom:6px;">Show on which days? (leave all unchecked to show every day)</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class="day-toggle" data-dow="${i}" onclick="this.classList.toggle('active')">${d}</div>`).join('')}
+          </div>
+        </div>
         <div class="add-row">
           <label class="checkbox-line"><input type="checkbox" id="new-task-critical"> Critical task</label>
           <label class="checkbox-line"><input type="checkbox" id="new-task-photo"> Photo required</label>
@@ -5083,8 +5110,10 @@ function renderManager(){
 }
 function toggleCustomTaskFields(){
   const sel = document.getElementById('new-task-freq');
-  const block = document.getElementById('new-task-custom-fields');
-  if(sel && block) block.style.display = sel.value === 'Custom' ? 'flex' : 'none';
+  const customBlock = document.getElementById('new-task-custom-fields');
+  const weeklyBlock = document.getElementById('new-task-weekly-fields');
+  if(customBlock) customBlock.style.display = sel && sel.value === 'Custom' ? 'flex' : 'none';
+  if(weeklyBlock) weeklyBlock.style.display = sel && sel.value === 'Weekly' ? 'block' : 'none';
 }
 function addTaskManager(){
   const name = val('new-task-name');
@@ -5096,12 +5125,16 @@ function addTaskManager(){
   const photoRequired = document.getElementById('new-task-photo').checked;
   const assignedTo = val('new-task-assignedto') || '';
   const visibility = assignedTo ? (val('new-task-visibility') || 'all') : 'all';
-  let intervalDays = null, anchorDate = null;
+  let intervalDays = null, anchorDate = null, weekDays = null;
   if(freq === 'Custom'){
     intervalDays = parseInt(val('new-task-interval'), 10) || 1;
     anchorDate = val('new-task-anchor') || todayStr();
   }
-  DATA.tasks.push({id:nextId(DATA.tasks), name, freq, category, biz, critical, photoRequired, assignedTo, visibility, intervalDays, anchorDate, lastResetDate:null, done:false, completedBy:"", photoName:"", notes:"", completedAt:null, missedDate:null, completedDate:null, archived:false});
+  if(freq === 'Weekly'){
+    const selected = Array.from(document.querySelectorAll('#new-task-weekly-fields .day-toggle.active')).map(el=>parseInt(el.dataset.dow));
+    weekDays = selected.length ? selected : null;
+  }
+  DATA.tasks.push({id:nextId(DATA.tasks), name, freq, category, biz, critical, photoRequired, assignedTo, visibility, intervalDays, anchorDate, weekDays, lastResetDate:null, done:false, completedBy:"", photoName:"", notes:"", completedAt:null, missedDate:null, completedDate:null, archived:false});
   saveData();
   showTab('manager');
 }
