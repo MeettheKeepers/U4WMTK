@@ -4936,8 +4936,7 @@ function renderManager(){
           return `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span style="font-size:12px;color:var(--text-light);min-width:36px;font-family:monospace;">${esc(h.cardId)}</span>
-            <input id="${safeId}" value="${esc(h.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-            <button class="btn-ghost" onclick="renameCardTitle('${h.cardId}', document.getElementById('${safeId}').value.trim())">Rename</button>
+            <input value="${esc(h.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);" onchange="renameCardTitle('${h.cardId}', this.value.trim())">
             ${isEmpty
               ? `<span style="font-size:12px;color:var(--red);font-style:italic;">Empty habitat</span><button class="btn-ghost" style="color:var(--red);" onclick="deleteHabitat('${h.cardId}')">Delete</button>`
               : `<span style="font-size:12px;color:var(--text-light);">${occupants.join(', ')}</span>`
