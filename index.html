@@ -1715,7 +1715,10 @@ function renderDashboard(){
   const myShiftHtml = shiftClockCardHtml(myName);
   const openRepairsCount = DATA.repairs.filter(r=>!r.archived && r.status!=='Done').length;
   const openSupplyCount = (DATA.supplyRequests||[]).filter(r=>!r.archived && r.status!=='Fulfilled').length;
+  const _hr = new Date().getHours();
+  const _greet = _hr < 12 ? 'Good morning' : _hr < 17 ? 'Good afternoon' : 'Good evening';
   return `
+    <div style="padding:10px 0 4px 2px;font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</div>
     ${renderBirthdayBanner(myName)}
     ${isManagerLogin() ? renderLiveStatusBoard() : ''}
     ${myShiftHtml}
