@@ -725,6 +725,7 @@ function defaultData(){
       ]
     },
     habitats: [],
+    habitatNotes: '',
     hoursOverrides: [],
     admin: { accessList: [], customTabs: [], hiring: { interviews: [] } },
     team: [
@@ -838,6 +839,7 @@ function normalizeData(d){
   (d.roadTasks||[]).forEach(t=>{ if(t.acknowledged===undefined) t.acknowledged=false; if(t.acknowledgedAt===undefined) t.acknowledgedAt=null; });
   (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; });
   (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
+  if(d.habitatNotes===undefined) d.habitatNotes='';
   // Build habitats list from animals if not yet present
   if(!d.habitats || !d.habitats.length){
     const seen = {};
@@ -2346,10 +2348,15 @@ function approvedAnimalsHtml(m, editable){
 let SHOW_ANIMAL_ARCHIVE = false;
 let VIEWING_ANIMAL_ID = null;
 let ANIMAL_DETAIL_TAB = 'overview';
+let ANIMAL_HABITAT_VIEW = 'active'; // 'active' | 'open'
+let HABITAT_NOTES_OPEN = false;
 function toggleAnimalArchiveView(){
   SHOW_ANIMAL_ARCHIVE = !SHOW_ANIMAL_ARCHIVE;
   showTab('animals');
 }
+function setAnimalHabitatView(v){ ANIMAL_HABITAT_VIEW = v; showTab('animals'); }
+function toggleHabitatNotes(){ HABITAT_NOTES_OPEN = !HABITAT_NOTES_OPEN; showTab('animals'); }
+function saveHabitatNotes(val){ DATA.habitatNotes = val; saveData(); }
 function viewAnimal(id){
   VIEWING_ANIMAL_ID = id;
   ANIMAL_DETAIL_TAB = 'overview';
@@ -2529,23 +2536,76 @@ function renderAnimals(){
     if(a) return renderAnimalDetail(a);
     VIEWING_ANIMAL_ID = null;
   }
-  const activeAnimals = DATA.animals.filter(a=>!a.archived);
-  const archivedAnimals = DATA.animals.filter(a=>a.archived);
-  const list = SHOW_ANIMAL_ARCHIVE ? archivedAnimals : activeAnimals;
-  const cards = groupAnimalCards(list);
+  if(SHOW_ANIMAL_ARCHIVE){
+    const archivedAnimals = DATA.animals.filter(a=>a.archived);
+    const cards = groupAnimalCards(archivedAnimals);
+    return `
+      <div class="card">
+        <div class="animals-header-row">
+          <div><h2>Animal Archive</h2><div class="sub">Archived animals. Restore or permanently delete from the Manager tab.</div></div>
+          <button class="pill-btn" onclick="toggleAnimalArchiveView()">← Back to Animals</button>
+        </div>
+        <div class="animal-grid">
+          ${cards.length ? cards.map(renderAnimalCard).join('') : '<div class="empty">No archived animals.</div>'}
+        </div>
+      </div>`;
+  }
+
+  const isMgr = isManagerLogin();
+  const allActive = DATA.animals.filter(a=>!a.archived);
+  const habitats = DATA.habitats || [];
+
+  // Split habitats into active (has animals) and open (empty)
+  const activeHabitats = habitats.filter(h=> allActive.some(a=>a.cardId===h.cardId));
+  const openHabitats   = habitats.filter(h=>!allActive.some(a=>a.cardId===h.cardId));
+
+  const viewAnimals = ANIMAL_HABITAT_VIEW === 'active'
+    ? allActive.filter(a=> activeHabitats.some(h=>h.cardId===a.cardId))
+    : [];
+  const viewCards = ANIMAL_HABITAT_VIEW === 'active'
+    ? groupAnimalCards(viewAnimals)
+    : [];
+
+  const habitatNotesBlock = `
+    <div class="card" style="margin-top:0;">
+      <button class="collapsible-toggle" onclick="toggleHabitatNotes()">${HABITAT_NOTES_OPEN ? '▾' : '▸'} Habitat Codes</button>
+      ${HABITAT_NOTES_OPEN ? `
+        <div style="margin-top:10px;">
+          ${isMgr
+            ? `<textarea style="width:100%;min-height:120px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;" placeholder="Add notes about what each habitat code means, e.g. T1 = Tortoise room left wall..." onchange="saveHabitatNotes(this.value)">${esc(DATA.habitatNotes||'')}</textarea>`
+            : `<div style="white-space:pre-wrap;font-size:14px;color:var(--text);">${esc(DATA.habitatNotes||'No habitat code notes added yet.')}</div>`
+          }
+        </div>` : ''}
+    </div>`;
+
   return `
     <div class="card">
       <div class="animals-header-row">
         <div>
           <h2>Animals</h2>
-          <div class="sub">${SHOW_ANIMAL_ARCHIVE ? 'Archived animals. Restore or permanently delete from the Manager tab.' : 'Read-only staff view. Tap an individual animal to see overview, scripts, fun facts, medical records, and training links.'}</div>
+          <div class="sub">Read-only staff view. Tap an individual animal to see overview, scripts, fun facts, medical records, and training links.</div>
         </div>
-        <button class="pill-btn" onclick="toggleAnimalArchiveView()">${SHOW_ANIMAL_ARCHIVE ? 'Back to Animals' : 'Animal Archive'}</button>
+        <button class="pill-btn" onclick="toggleAnimalArchiveView()">Animal Archive</button>
       </div>
-      <div class="animal-grid">
-        ${cards.length ? cards.map(renderAnimalCard).join('') : '<div class="empty">'+(SHOW_ANIMAL_ARCHIVE ? 'No archived animals.' : 'No animals yet.')+'</div>'}
+      <div class="detail-tabs">
+        <button class="detail-tab-btn ${ANIMAL_HABITAT_VIEW==='active'?'active':''}" onclick="setAnimalHabitatView('active')">Active Habitats (${activeHabitats.length})</button>
+        <button class="detail-tab-btn ${ANIMAL_HABITAT_VIEW==='open'?'active':''}" onclick="setAnimalHabitatView('open')">Open Habitats (${openHabitats.length})</button>
       </div>
+      ${ANIMAL_HABITAT_VIEW === 'active' ? `
+        <div class="animal-grid">
+          ${viewCards.length ? viewCards.map(renderAnimalCard).join('') : '<div class="empty">No active habitats yet.</div>'}
+        </div>` : `
+        <div style="margin-top:4px;">
+          ${openHabitats.length ? openHabitats.map(h=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+              <span style="font-family:monospace;font-size:13px;color:var(--text-light);min-width:36px;">${esc(h.cardId)}</span>
+              <span style="font-size:15px;font-weight:600;">${esc(h.cardTitle)}</span>
+              <span style="font-size:12px;color:var(--text-light);font-style:italic;">Empty — no animals assigned</span>
+            </div>`).join('')
+          : '<div class="empty">No open habitats — all habitats have animals assigned.</div>'}
+        </div>`}
     </div>
+    ${habitatNotesBlock}
   `;
 }
 function addAnimalManager(){
