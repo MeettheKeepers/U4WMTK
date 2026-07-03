@@ -777,7 +777,11 @@ function normalizeData(d){
     if(m.birthday===undefined) m.birthday='';
   });
   if(!d.animalTakeLog) d.animalTakeLog=[];
-  (d.incidents||[]).forEach(i=>{ if(i.staffName===undefined) i.staffName = ""; });
+  (d.incidents||[]).forEach(i=>{
+    if(i.staffName===undefined) i.staffName = "";
+    if(!i.staffNames) i.staffNames = i.staffName ? [i.staffName] : [];
+    if(!i.visibility) i.visibility = 'all';
+  });
   (d.repairs||[]).forEach(r=>{ if(r.closedBy===undefined) r.closedBy = ""; });
   if(!d.payStubs) d.payStubs = [];
   if(!d.roadTasks) d.roadTasks = [];
@@ -1301,7 +1305,7 @@ function openStaffFilePreview(id){ VIEWING_STAFF_FILE_ID = id; showTab('team'); 
 function closeStaffFilePreview(){ VIEWING_STAFF_FILE_ID = null; showTab('team'); }
 function renderStaffFileReadOnly(m){
   const stats = computeStaffStats(m.name);
-  const incidents = DATA.incidents.filter(i=>i.staffName===m.name);
+  const incidents = DATA.incidents.filter(i=>(i.staffNames&&i.staffNames.includes(m.name))||(i.staffName===m.name));
   return `
     <div class="card">
       <button class="btn-ghost" onclick="closeStaffFilePreview()">← Back to Team Directory</button>
@@ -1360,7 +1364,7 @@ function renderTeam(){
   }
   const myName = getWelcomeStaffName();
   const me = myName ? DATA.team.find(m=>m.name===myName) : null;
-  const myIncidents = me ? DATA.incidents.filter(i=>i.staffName===me.name) : [];
+  const myIncidents = me ? DATA.incidents.filter(i=>i.visibility!=='manager' && ((i.staffNames&&i.staffNames.includes(me.name))||(i.staffName===me.name))) : [];
 
   const myStats = me ? computeStaffStats(me.name) : null;
 
@@ -3646,17 +3650,22 @@ function updateStatus(key,id,value){
 
 /* ---------- INCIDENTS ---------- */
 function renderIncidents(){
-  const active = DATA.incidents.filter(i=>!i.archived);
+  const isMgr = isManagerLogin();
+  const active = DATA.incidents.filter(i=>!i.archived && (isMgr || i.visibility !== 'manager'));
+  const sevBadge = sev => `<span class="status-badge ${sev==='Low'?'status-done':sev==='Medium'?'status-progress':'status-open'}">${sev}</span>`;
+  const statusBadge = st => st==='Open' ? 'status-open' : st==='Seen' ? 'status-progress' : 'status-done';
   return `
     <div class="card">
       <h2>Incidents</h2>
-      <div class="sub">Anyone can log an incident and close it once it's resolved. Only a manager can archive or permanently remove an incident from the list.</div>
+      <div class="sub">Anyone can log an incident. Only a manager can archive or permanently remove one. Set "Manager only" to keep an incident private from other staff.</div>
       <table>
-        <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Status</th></tr>
+        <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Visibility</th><th>Status</th></tr>
         ${active.map(i=>`
           <tr>
-            <td>${i.date}</td><td>${i.desc}</td><td>${i.staffName||'—'}</td>
-            <td><span class="status-badge ${i.severity==='Low'?'status-done':i.severity==='Medium'?'status-progress':'status-open'}">${i.severity}</span></td>
+            <td>${i.date}</td><td>${esc(i.desc)}</td>
+            <td>${(i.staffNames&&i.staffNames.length)?i.staffNames.map(n=>esc(n)).join(', '):'—'}</td>
+            <td>${sevBadge(i.severity)}</td>
+            <td>${i.visibility==='manager'?'🔒 Manager only':'👁 All staff'}</td>
             <td>
               <select onchange="updateStatus('incidents',${i.id},this.value)">
                 ${['Open','Closed'].map(s=>`<option ${s===i.status?'selected':''}>${s}</option>`).join('')}
@@ -3665,23 +3674,38 @@ function renderIncidents(){
           </tr>`).join('')}
       </table>
       ${active.length ? '' : '<div class="empty">No incidents logged.</div>'}
-      <div class="add-row">
-        <input type="date" id="inc-date">
-        <input type="text" id="inc-desc" placeholder="Description">
-        <select id="inc-staff">
-          <option value="">No staff involved</option>
-          ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
-        </select>
-        <select id="inc-severity"><option>Low</option><option>Medium</option><option>High</option></select>
-        <button class="btn-small" onclick="addIncident()">Log Incident</button>
+      <div class="card" style="background:var(--hover);margin-top:12px;padding:14px 16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:10px;">Log New Incident</div>
+        <div class="add-row" style="flex-wrap:wrap;gap:8px;">
+          <input type="date" id="inc-date" value="${todayStr()}">
+          <input type="text" id="inc-desc" placeholder="Description" style="flex:2;min-width:200px;">
+          <select id="inc-severity"><option>Low</option><option>Medium</option><option>High</option></select>
+          <select id="inc-visibility">
+            <option value="all">👁 Visible to all</option>
+            <option value="manager">🔒 Manager only</option>
+          </select>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="font-size:13px;color:var(--text-light);margin-bottom:6px;">Staff involved (tap to select — leave all unselected if none):</div>
+          <div id="inc-staff-picks" style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${DATA.team.map(m=>`<div class="day-toggle" data-name="${esc(m.name)}" onclick="this.classList.toggle('active')">${esc(m.name)}</div>`).join('')}
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn-small" onclick="addIncident()">Log Incident</button>
+        </div>
       </div>
     </div>
   `;
 }
 function addIncident(){
-  const date=val('inc-date')||new Date().toISOString().slice(0,10), desc=val('inc-desc'), severity=val('inc-severity'), staffName=val('inc-staff')||'';
+  const date = val('inc-date') || todayStr();
+  const desc = val('inc-desc');
+  const severity = val('inc-severity') || 'Low';
+  const visibility = val('inc-visibility') || 'all';
   if(!desc) return;
-  DATA.incidents.push({id:nextId(DATA.incidents), date, desc, severity, status:'Open', archived:false, staffName});
+  const staffNames = Array.from(document.querySelectorAll('#inc-staff-picks .day-toggle.active')).map(el=>el.dataset.name);
+  DATA.incidents.push({id:nextId(DATA.incidents), date, desc, severity, status:'Open', archived:false, staffName:staffNames[0]||'', staffNames, visibility});
   saveData(); showTab('incidents');
 }
 
@@ -4328,7 +4352,7 @@ function renderEmployeeFile(m){
     if(t.id.startsWith('custom_')) return (ack.custom||{})[t.id.slice(7)];
     return ack[t.id];
   }).length;
-  const incidents = DATA.incidents.filter(i=>i.staffName===m.name);
+  const incidents = DATA.incidents.filter(i=>(i.staffNames&&i.staffNames.includes(m.name))||(i.staffName===m.name));
   const writeUps = m.writeUps || [];
   const stats = computeStaffStats(m.name);
   return `
@@ -5034,16 +5058,18 @@ function renderManager(){
     body = `
       <div class="card">
         <h2>Incidents</h2>
-        <div class="sub">Staff can log new incidents and close them. Archive to hide an incident from staff without losing it, or remove it permanently.</div>
+        <div class="sub">Staff can log new incidents. Archive to hide from staff without losing it, or remove permanently. You have the additional "Seen" status to acknowledge you've reviewed an incident.</div>
         <table>
-          <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Visibility</th><th>Status</th><th></th></tr>
           ${activeI.map(i=>`
             <tr>
-              <td>${i.date}</td><td>${i.desc}</td><td>${i.staffName||'—'}</td>
+              <td>${i.date}</td><td>${esc(i.desc)}</td>
+              <td>${(i.staffNames&&i.staffNames.length)?i.staffNames.map(n=>esc(n)).join(', '):'—'}</td>
               <td><span class="status-badge ${i.severity==='Low'?'status-done':i.severity==='Medium'?'status-progress':'status-open'}">${i.severity}</span></td>
+              <td>${i.visibility==='manager'?'🔒 Manager only':'👁 All staff'}</td>
               <td>
                 <select onchange="updateStatus('incidents',${i.id},this.value)">
-                  ${['Open','Closed'].map(s=>`<option ${s===i.status?'selected':''}>${s}</option>`).join('')}
+                  ${['Open','Seen','Closed'].map(s=>`<option ${s===i.status?'selected':''}>${s}</option>`).join('')}
                 </select>
               </td>
               <td style="white-space:nowrap;">
@@ -5059,11 +5085,13 @@ function renderManager(){
         <div class="sub">Hidden from staff but kept here for reference.</div>
         ${archivedI.length ? `
         <table>
-          <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th>Description</th><th>Involved Staff</th><th>Severity</th><th>Visibility</th><th>Status</th><th></th></tr>
           ${archivedI.map(i=>`
             <tr>
-              <td>${i.date}</td><td>${i.desc}</td><td>${i.staffName||'—'}</td>
+              <td>${i.date}</td><td>${esc(i.desc)}</td>
+              <td>${(i.staffNames&&i.staffNames.length)?i.staffNames.map(n=>esc(n)).join(', '):'—'}</td>
               <td><span class="status-badge ${i.severity==='Low'?'status-done':i.severity==='Medium'?'status-progress':'status-open'}">${i.severity}</span></td>
+              <td>${i.visibility==='manager'?'🔒 Manager only':'👁 All staff'}</td>
               <td>${i.status}</td>
               <td style="white-space:nowrap;">
                 <button class="btn-ghost" onclick="restoreRow('incidents',${i.id})">Restore</button>
