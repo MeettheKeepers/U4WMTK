@@ -3744,6 +3744,21 @@ function saveAnimalCard(id){
   a.trainingVideos = val(`m-training-${id}`);
   saveData();
 }
+function renameCardTitle(cardId, newTitle){
+  if(!newTitle) return;
+  DATA.animals.forEach(a=>{ if(a.cardId===cardId) a.cardTitle = newTitle; });
+  saveData();
+  showTab('manager');
+}
+function reassignAnimalCard(animalId, newCardId){
+  const a = DATA.animals.find(x=>x.id===animalId);
+  if(!a || a.cardId===newCardId) return;
+  const target = DATA.animals.find(x=>x.cardId===newCardId);
+  a.cardId = newCardId;
+  a.cardTitle = target ? target.cardTitle : newCardId;
+  saveData();
+  showTab('manager');
+}
 function addMedicalRecord(id){
   const a = DATA.animals.find(x=>x.id===id);
   if(!a) return;
@@ -3805,6 +3820,12 @@ function renderAnimalManagerCard(a){
       <div class="field-block" style="margin-top:16px;">
         <label>Animal Name</label>
         <input type="text" id="m-name-${a.id}" value="${esc(a.name)}" placeholder="Animal name" oninput="saveAnimalCard(${a.id})">
+      </div>
+      <div class="field-block">
+        <label>Habitat Card</label>
+        <select onchange="reassignAnimalCard(${a.id}, this.value)">
+          ${(()=>{ const seen={}; return DATA.animals.filter(x=>!x.archived).map(x=>{ if(seen[x.cardId]) return ''; seen[x.cardId]=true; return `<option value="${esc(x.cardId)}"${x.cardId===a.cardId?' selected':''}>${esc(x.cardTitle)} (${esc(x.cardId)})</option>`; }).join(''); })()}
+        </select>
       </div>
       <div class="field-block">
         <label>Approved Crate Code</label>
@@ -4358,8 +4379,11 @@ function renderEmployeeFile(m){
   return `
     <div class="card">
       <button class="btn-ghost" onclick="closeEmployeeFile()">← Back to Staff List</button>
-      <h2>${m.name} — Employee File</h2>
-      <div class="sub">${m.role} · ${m.biz}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;">
+        <input id="ef-name-${m.id}" value="${esc(m.name)}" style="font-size:20px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;color:var(--text);padding:2px 4px;flex:1;min-width:180px;" onchange="renameStaffMember(${m.id}, this.value.trim())">
+        <span style="font-size:12px;color:var(--text-light);">← click to rename</span>
+      </div>
+      <div class="sub" style="margin-top:2px;">${esc(m.role)} · ${esc(m.biz)}</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">
         <div class="field-block" style="flex:1;min-width:140px;">
           <label>Start Date</label>
@@ -4855,6 +4879,21 @@ function renderManager(){
         </div>
         ` : ''}
       </div>
+      <div class="card">
+        <h2>Habitat Cards</h2>
+        <div class="sub">Each card on the Animals tab groups animals that share a habitat. Rename a card here — the new name shows everywhere. To move an animal to a different habitat, open that animal's profile and change its Habitat Card dropdown.</div>
+        ${(()=>{
+          const cards = {};
+          DATA.animals.filter(a=>!a.archived).forEach(a=>{ if(!cards[a.cardId]) cards[a.cardId]={cardId:a.cardId, cardTitle:a.cardTitle, animals:[]}; cards[a.cardId].animals.push(a.name); });
+          return Object.values(cards).map(c=>`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+              <span style="font-size:12px;color:var(--text-light);min-width:36px;">${c.cardId}</span>
+              <input id="hcard-title-${c.cardId.replace(/[^a-z0-9]/gi,'_')}" value="${esc(c.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+              <button class="btn-ghost" onclick="renameCardTitle('${c.cardId}', document.getElementById('hcard-title-${c.cardId.replace(/[^a-z0-9]/gi,'_')}').value.trim())">Rename</button>
+              <span style="font-size:12px;color:var(--text-light);">${c.animals.join(', ')}</span>
+            </div>`).join('');
+        })()}
+      </div>
       <div class="animal-grid">
         ${activeAnimals.length ? activeAnimals.map(renderAnimalManagerCard).join('') : '<div class="empty">No animals yet.</div>'}
       </div>
@@ -5315,6 +5354,33 @@ function updateTeamField(id, field, value){
   if(!m) return;
   m[field] = value;
   saveData();
+}
+function renameStaffMember(id, newName){
+  if(!newName) return;
+  const m = DATA.team.find(x=>x.id===id);
+  if(!m) return;
+  const oldName = m.name;
+  if(oldName === newName) return;
+  // Update name everywhere it's referenced
+  m.name = newName;
+  DATA.shows.forEach(s=>{
+    const i = s.staffNames.indexOf(oldName);
+    if(i>=0) s.staffNames[i] = newName;
+    if(s.arrivals) s.arrivals.forEach(a=>{ if(a.name===oldName) a.name=newName; });
+    if(s.departures) s.departures.forEach(a=>{ if(a.name===oldName) a.name=newName; });
+  });
+  DATA.tasks.forEach(t=>{ if(t.assignedTo===oldName) t.assignedTo=newName; if(t.completedBy===oldName) t.completedBy=newName; });
+  DATA.roadTasks.forEach(t=>{ if(t.assignedTo===oldName) t.assignedTo=newName; });
+  DATA.repairs.forEach(r=>{ if(r.closedBy===oldName) r.closedBy=newName; });
+  DATA.incidents.forEach(i=>{
+    if(i.staffName===oldName) i.staffName=newName;
+    if(i.staffNames) i.staffNames = i.staffNames.map(n=>n===oldName?newName:n);
+  });
+  DATA.scheduleOverrides.forEach(o=>{ if(o.staffName===oldName) o.staffName=newName; });
+  (DATA.clockRecords||[]).forEach(r=>{ if(r.staffName===oldName) r.staffName=newName; });
+  if(DATA.logins) DATA.logins.forEach(l=>{ if(l.name===oldName) l.name=newName; });
+  saveData();
+  showTab('manager');
 }
 function removeTeamMember(id){
   const m = DATA.team.find(x=>x.id===id);
