@@ -806,6 +806,8 @@ function normalizeData(d){
   if(!d.admin.hiring) d.admin.hiring = { interviews: [], notes: '' };
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
+  if(d.admin.grantsEnabled === undefined) d.admin.grantsEnabled = true;
+  if(!d.admin.grantsLog) d.admin.grantsLog = [];
   // Migrate old global accessList → per-tab tabAccess
   if(!d.admin.tabAccess){
     const oldList = d.admin.accessList || [];
@@ -1172,6 +1174,20 @@ function saveAdminCustomSection(id){
   const flag = document.getElementById('admin-saved-custom-'+id);
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
+function addGrantsNote(note){
+  if(!note) return;
+  if(!DATA.admin.grantsLog) DATA.admin.grantsLog = [];
+  DATA.admin.grantsLog.push({
+    id: Date.now(),
+    date: todayStr(),
+    author: CURRENT_LOGIN ? CURRENT_LOGIN.name : 'Unknown',
+    note,
+    loggedAt: new Date().toISOString()
+  });
+  saveData();
+  ADMIN_TAB = 'grants';
+  showTab('admin');
+}
 function saveManagerAdminHiring(){
   const el = document.getElementById('admin-hiring-editor');
   if(!el) return;
@@ -1184,8 +1200,10 @@ function saveManagerAdminHiring(){
 function renderAdmin(){
   const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
   const hiringEnabled = DATA.admin.hiringEnabled !== false;
+  const grantsEnabled = DATA.admin.grantsEnabled !== false;
   const allSubTabs = [
     ...(hiringEnabled ? [{id:'hiring', label:'Hiring'}] : []),
+    ...(grantsEnabled ? [{id:'grants', label:'Grants/Fundraising'}] : []),
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
   // Only show tabs this user has access to
@@ -1200,6 +1218,22 @@ function renderAdmin(){
     body = `<div class="card">
         <h2>Hiring</h2>
         ${notes ? `<div class="welcome-content">${notes}</div>` : '<div class="empty">No hiring information on file yet.</div>'}
+      </div>`;
+  } else if(ADMIN_TAB === 'grants'){
+    const log = (DATA.admin && DATA.admin.grantsLog) || [];
+    const loggedIn = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+    body = `<div class="card">
+        <h2>Grants / Fundraising</h2>
+        <div class="sub">Log a daily update. Your name and today's date are recorded automatically.</div>
+        <textarea id="grants-note-input" placeholder="Write your update for today…" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>
+        <button class="btn-small" style="margin-top:8px;" onclick="addGrantsNote(document.getElementById('grants-note-input').value.trim())">Save Note</button>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+          ${log.length ? log.slice().reverse().map(e=>`
+            <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+              <div style="font-size:12px;color:var(--text-light);margin-bottom:4px;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}</div>
+              <div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>
+            </div>`).join('') : '<div class="empty">No entries yet.</div>'}
+        </div>
       </div>`;
   } else {
     const cidStr = ADMIN_TAB.startsWith('custom_') ? ADMIN_TAB.slice(7) : null;
@@ -3782,6 +3816,8 @@ function addIncident(){
 function esc(s){ return (s||'').toString().replace(/"/g,'&quot;'); }
 let ANIMAL_PROFILES_COLLAPSED = false;
 function toggleAnimalProfiles(){ ANIMAL_PROFILES_COLLAPSED = !ANIMAL_PROFILES_COLLAPSED; showTab('manager'); }
+let HABITAT_MGR_OPEN = false;
+function toggleHabitatMgr(){ HABITAT_MGR_OPEN = !HABITAT_MGR_OPEN; showTab('manager'); }
 let SHOW_ADD_ANIMAL_FORM = false;
 function toggleAddAnimalForm(){
   SHOW_ADD_ANIMAL_FORM = !SHOW_ADD_ANIMAL_FORM;
@@ -4994,12 +5030,12 @@ function renderManager(){
         </table>` : '<div class="empty">No archived animals.</div>') : ''}
       </div>
       <div class="card">
-        <h2>Habitat / Pen Management</h2>
-        <div class="sub">Add and rename habitat pens here. Rename a pen and it updates everywhere. To move an animal, open its profile and change the Habitat Card dropdown. Empty pens are flagged below.</div>
+        <button class="collapsible-toggle" onclick="toggleHabitatMgr()">${HABITAT_MGR_OPEN ? '▾' : '▸'} Habitat / Pen Management</button>
+        ${HABITAT_MGR_OPEN ? `
+        <div class="sub" style="margin-top:8px;">Add and rename habitat pens here. Rename a pen and it updates everywhere. To move an animal, open its profile and change the Habitat Card dropdown. Empty pens are flagged below.</div>
         ${(DATA.habitats||[]).map(h=>{
           const occupants = DATA.animals.filter(a=>!a.archived && a.cardId===h.cardId).map(a=>a.name);
           const isEmpty = occupants.length === 0;
-          const safeId = 'hcard_'+h.cardId.replace(/[^a-z0-9]/gi,'_');
           return `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span style="font-size:12px;color:var(--text-light);min-width:36px;font-family:monospace;">${esc(h.cardId)}</span>
@@ -5014,6 +5050,7 @@ function renderManager(){
           <input id="new-habitat-name" type="text" placeholder="New habitat name (e.g. T1 — Tortoises)" style="flex:1;min-width:200px;">
           <button class="btn-small" onclick="addHabitat(document.getElementById('new-habitat-name').value.trim()); document.getElementById('new-habitat-name').value='';">Add Habitat</button>
         </div>
+        ` : ''}
       </div>
     `;
   } else if(MANAGER_TAB === 'staff'){
@@ -5287,8 +5324,10 @@ function renderManager(){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
     const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
     const hiringOn = DATA.admin.hiringEnabled !== false;
+    const grantsOn = DATA.admin.grantsEnabled !== false;
     const allSubTabs = [
       ...(hiringOn ? [{id:'hiring', label:'Hiring'}] : []),
+      ...(grantsOn ? [{id:'grants', label:'Grants/Fundraising'}] : []),
       ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title, ctId:ct.id}))
     ];
     body = `
@@ -5309,6 +5348,27 @@ function renderManager(){
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminHiring()">Save Hiring</button>
         <span class="sub" id="admin-hiring-saved" style="margin-left:10px;display:none;">Saved.</span>
         ` : `<div class="sub" style="color:var(--red);">Hiring tab is currently hidden from Admin. Click Restore to bring it back.</div>`}
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <h2 style="margin:0;">Grants / Fundraising</h2>
+          ${grantsOn
+            ? `<button class="btn-ghost" style="color:var(--red);margin-left:auto;" onclick="if(confirm('Hide the Grants/Fundraising tab from Admin?')){DATA.admin.grantsEnabled=false;saveData();MANAGER_TAB='admin';showTab('manager');}">Hide Tab</button>`
+            : `<button class="btn-small" style="margin-left:auto;" onclick="DATA.admin.grantsEnabled=true;saveData();MANAGER_TAB='admin';showTab('manager');">Restore Tab</button>`
+          }
+        </div>
+        ${grantsOn ? `
+        <div class="sub">Staff with access can log daily notes. You see all entries in reverse chronological order. Entries cannot be deleted.</div>
+        <div style="margin-top:10px;">
+          ${((DATA.admin.grantsLog)||[]).length
+            ? (DATA.admin.grantsLog).slice().reverse().map(e=>`
+              <div style="margin-bottom:12px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+                <div style="font-size:12px;color:var(--text-light);margin-bottom:4px;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}</div>
+                <div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>
+              </div>`).join('')
+            : '<div class="empty">No entries yet.</div>'}
+        </div>
+        ` : `<div class="sub" style="color:var(--red);">Grants/Fundraising tab is currently hidden. Click Restore to bring it back.</div>`}
       </div>
       ${customTabs.map(ct=>`
       <div class="card">
