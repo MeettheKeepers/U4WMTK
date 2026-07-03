@@ -724,6 +724,7 @@ function defaultData(){
         {id:5, name:'Archeology Show', notes:''}
       ]
     },
+    habitats: [],
     hoursOverrides: [],
     admin: { accessList: [], customTabs: [], hiring: { interviews: [] } },
     team: [
@@ -837,6 +838,14 @@ function normalizeData(d){
   (d.roadTasks||[]).forEach(t=>{ if(t.acknowledged===undefined) t.acknowledged=false; if(t.acknowledgedAt===undefined) t.acknowledgedAt=null; });
   (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; });
   (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
+  // Build habitats list from animals if not yet present
+  if(!d.habitats || !d.habitats.length){
+    const seen = {};
+    d.habitats = [];
+    (d.animals||[]).filter(a=>!a.archived).forEach(a=>{
+      if(!seen[a.cardId]){ seen[a.cardId]=true; d.habitats.push({cardId:a.cardId, cardTitle:a.cardTitle}); }
+    });
+  }
   return d;
 }
 function loadData(){
@@ -3746,6 +3755,8 @@ function saveAnimalCard(id){
 }
 function renameCardTitle(cardId, newTitle){
   if(!newTitle) return;
+  const h = (DATA.habitats||[]).find(x=>x.cardId===cardId);
+  if(h) h.cardTitle = newTitle;
   DATA.animals.forEach(a=>{ if(a.cardId===cardId) a.cardTitle = newTitle; });
   saveData();
   showTab('manager');
@@ -3753,9 +3764,27 @@ function renameCardTitle(cardId, newTitle){
 function reassignAnimalCard(animalId, newCardId){
   const a = DATA.animals.find(x=>x.id===animalId);
   if(!a || a.cardId===newCardId) return;
-  const target = DATA.animals.find(x=>x.cardId===newCardId);
+  const h = (DATA.habitats||[]).find(x=>x.cardId===newCardId);
   a.cardId = newCardId;
-  a.cardTitle = target ? target.cardTitle : newCardId;
+  a.cardTitle = h ? h.cardTitle : newCardId;
+  saveData();
+  showTab('manager');
+}
+function addHabitat(name){
+  if(!name) return;
+  if(!DATA.habitats) DATA.habitats=[];
+  // Find next available cXX id
+  let n=1;
+  const used = DATA.habitats.map(h=>h.cardId).concat(DATA.animals.map(a=>a.cardId));
+  while(used.includes('c'+n)) n++;
+  DATA.habitats.push({cardId:'c'+n, cardTitle:name});
+  saveData();
+  showTab('manager');
+}
+function deleteHabitat(cardId){
+  const occupied = DATA.animals.some(a=>!a.archived && a.cardId===cardId);
+  if(occupied){ alert('This habitat still has animals assigned to it. Reassign them first.'); return; }
+  DATA.habitats = (DATA.habitats||[]).filter(h=>h.cardId!==cardId);
   saveData();
   showTab('manager');
 }
@@ -3824,7 +3853,7 @@ function renderAnimalManagerCard(a){
       <div class="field-block">
         <label>Habitat Card</label>
         <select onchange="reassignAnimalCard(${a.id}, this.value)">
-          ${(()=>{ const seen={}; return DATA.animals.filter(x=>!x.archived).map(x=>{ if(seen[x.cardId]) return ''; seen[x.cardId]=true; return `<option value="${esc(x.cardId)}"${x.cardId===a.cardId?' selected':''}>${esc(x.cardTitle)} (${esc(x.cardId)})</option>`; }).join(''); })()}
+          ${(DATA.habitats||[]).map(h=>`<option value="${esc(h.cardId)}"${h.cardId===a.cardId?' selected':''}>${esc(h.cardTitle)} (${esc(h.cardId)})</option>`).join('')}
         </select>
       </div>
       <div class="field-block">
@@ -4879,21 +4908,6 @@ function renderManager(){
         </div>
         ` : ''}
       </div>
-      <div class="card">
-        <h2>Habitat Cards</h2>
-        <div class="sub">Each card on the Animals tab groups animals that share a habitat. Rename a card here — the new name shows everywhere. To move an animal to a different habitat, open that animal's profile and change its Habitat Card dropdown.</div>
-        ${(()=>{
-          const cards = {};
-          DATA.animals.filter(a=>!a.archived).forEach(a=>{ if(!cards[a.cardId]) cards[a.cardId]={cardId:a.cardId, cardTitle:a.cardTitle, animals:[]}; cards[a.cardId].animals.push(a.name); });
-          return Object.values(cards).map(c=>`
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-              <span style="font-size:12px;color:var(--text-light);min-width:36px;">${c.cardId}</span>
-              <input id="hcard-title-${c.cardId.replace(/[^a-z0-9]/gi,'_')}" value="${esc(c.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-              <button class="btn-ghost" onclick="renameCardTitle('${c.cardId}', document.getElementById('hcard-title-${c.cardId.replace(/[^a-z0-9]/gi,'_')}').value.trim())">Rename</button>
-              <span style="font-size:12px;color:var(--text-light);">${c.animals.join(', ')}</span>
-            </div>`).join('');
-        })()}
-      </div>
       <div class="animal-grid">
         ${activeAnimals.length ? activeAnimals.map(renderAnimalManagerCard).join('') : '<div class="empty">No animals yet.</div>'}
       </div>
@@ -4911,6 +4925,29 @@ function renderManager(){
               </td>
             </tr>`).join('')}
         </table>` : '<div class="empty">No archived animals.</div>') : ''}
+      </div>
+      <div class="card">
+        <h2>Habitat / Pen Management</h2>
+        <div class="sub">Add and rename habitat pens here. Rename a pen and it updates everywhere. To move an animal, open its profile and change the Habitat Card dropdown. Empty pens are flagged below.</div>
+        ${(DATA.habitats||[]).map(h=>{
+          const occupants = DATA.animals.filter(a=>!a.archived && a.cardId===h.cardId).map(a=>a.name);
+          const isEmpty = occupants.length === 0;
+          const safeId = 'hcard_'+h.cardId.replace(/[^a-z0-9]/gi,'_');
+          return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--text-light);min-width:36px;font-family:monospace;">${esc(h.cardId)}</span>
+            <input id="${safeId}" value="${esc(h.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+            <button class="btn-ghost" onclick="renameCardTitle('${h.cardId}', document.getElementById('${safeId}').value.trim())">Rename</button>
+            ${isEmpty
+              ? `<span style="font-size:12px;color:var(--red);font-style:italic;">Empty habitat</span><button class="btn-ghost" style="color:var(--red);" onclick="deleteHabitat('${h.cardId}')">Delete</button>`
+              : `<span style="font-size:12px;color:var(--text-light);">${occupants.join(', ')}</span>`
+            }
+          </div>`;
+        }).join('')}
+        <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px;">
+          <input id="new-habitat-name" type="text" placeholder="New habitat name (e.g. T1 — Tortoises)" style="flex:1;min-width:200px;">
+          <button class="btn-small" onclick="addHabitat(document.getElementById('new-habitat-name').value.trim()); document.getElementById('new-habitat-name').value='';">Add Habitat</button>
+        </div>
       </div>
     `;
   } else if(MANAGER_TAB === 'staff'){
