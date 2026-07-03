@@ -831,7 +831,7 @@ function normalizeData(d){
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
   (d.roadTasks||[]).forEach(t=>{ if(t.acknowledged===undefined) t.acknowledged=false; if(t.acknowledgedAt===undefined) t.acknowledgedAt=null; });
-  (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; });
+  (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; });
   (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
   return d;
 }
@@ -2751,7 +2751,7 @@ function markArrived(showId){
   const name = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
   if(!s || !name) return;
   if(!s.arrivals) s.arrivals = [];
-  if(s.arrivals.some(a=>a.name===name)) return;
+  if(s.arrivals.length > 0) return; // first person wins
   s.arrivals.push({name, time:new Date().toISOString()});
   saveData();
   const active = document.querySelector('nav.tabs button.active');
@@ -2759,9 +2759,27 @@ function markArrived(showId){
 }
 function unmarkArrived(showId){
   const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  s.arrivals = [];
+  saveData();
+  const active = document.querySelector('nav.tabs button.active');
+  showTab(active ? active.id.replace('tabbtn-','') : 'shows');
+}
+function markDeparted(showId){
+  const s = DATA.shows.find(x=>x.id===showId);
   const name = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
-  if(!s || !name || !s.arrivals) return;
-  s.arrivals = s.arrivals.filter(a=>a.name!==name);
+  if(!s || !name) return;
+  if(!s.departures) s.departures = [];
+  if(s.departures.length > 0) return; // first person wins
+  s.departures.push({name, time:new Date().toISOString()});
+  saveData();
+  const active = document.querySelector('nav.tabs button.active');
+  showTab(active ? active.id.replace('tabbtn-','') : 'shows');
+}
+function unmarkDeparted(showId){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  s.departures = [];
   saveData();
   const active = document.querySelector('nav.tabs button.active');
   showTab(active ? active.id.replace('tabbtn-','') : 'shows');
@@ -2816,19 +2834,22 @@ function showCardHtml(s, staffName, idx, total, dayShows){
           <div>Unload finished: ${fmtHM(plan.unloadFinished)}</div>
         `;
   const arrivals = s.arrivals || [];
+  const departures = s.departures || [];
+  const firstArrival = arrivals[0] || null;
+  const firstDeparture = departures[0] || null;
   const myName = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
-  const iHaveArrived = arrivals.some(a=>a.name===myName);
+  const onStaff = myName && s.staffNames.includes(myName);
   const arrivalHtml = `
       <div class="field-block">
-        <label>Arrival check-in</label>
-        ${s.staffNames.map(n=>{
-          const a = arrivals.find(x=>x.name===n);
-          if(a && n===myName){
-            return `<div>✅ ${n} arrived at ${fmtTimeShort(a.time)} — <a href="#" onclick="event.preventDefault(); unmarkArrived(${s.id});" style="color:var(--red);">undo, clicked by mistake</a></div>`;
-          }
-          return a ? `<div>✅ ${n} arrived at ${fmtTimeShort(a.time)}</div>` : `<div>⬜ ${n} hasn't checked in yet</div>`;
-        }).join('')}
-        ${(myName && s.staffNames.includes(myName) && !iHaveArrived) ? `<button class="btn-small" style="margin-top:8px;" onclick="markArrived(${s.id})">I've Arrived</button>` : ''}
+        <label>Show check-in</label>
+        ${firstArrival
+          ? `<div>✅ ${esc(firstArrival.name)} arrived at ${fmtTimeShort(firstArrival.time)} — <a href="#" onclick="event.preventDefault(); unmarkArrived(${s.id});" style="color:var(--red);font-size:12px;">undo</a></div>`
+          : (onStaff ? `<button class="btn-small" style="margin-top:4px;" onclick="markArrived(${s.id})">We've Arrived</button>` : '<div style="color:var(--text-light);font-size:13px;">No arrival recorded yet.</div>')
+        }
+        ${firstDeparture
+          ? `<div style="margin-top:4px;">❌ ${esc(firstDeparture.name)} left at ${fmtTimeShort(firstDeparture.time)} — <a href="#" onclick="event.preventDefault(); unmarkDeparted(${s.id});" style="color:var(--red);font-size:12px;">undo</a></div>`
+          : (firstArrival && onStaff ? `<button class="btn-small" style="margin-top:8px;background:var(--red);border-color:var(--red);" onclick="markDeparted(${s.id})">We've Left</button>` : '')
+        }
       </div>
   `;
   const missingInfo = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
@@ -4182,11 +4203,9 @@ function renderShowManagerCard(s){
       </div>
       ${s.staffNames.length ? `
       <div class="field-block">
-        <label>Arrival check-in (real time)</label>
-        ${s.staffNames.map(n=>{
-          const a = (s.arrivals||[]).find(x=>x.name===n);
-          return a ? `<div>✅ ${n} arrived at ${fmtTimeShort(a.time)}</div>` : `<div>⬜ ${n} hasn't checked in yet</div>`;
-        }).join('')}
+        <label>Show check-in (real time)</label>
+        ${(s.arrivals||[])[0] ? `<div>✅ ${esc((s.arrivals[0]).name)} arrived at ${fmtTimeShort(s.arrivals[0].time)}</div>` : '<div style="color:var(--text-light);font-size:13px;">⬜ No arrival recorded yet</div>'}
+        ${(s.departures||[])[0] ? `<div>❌ ${esc((s.departures[0]).name)} left at ${fmtTimeShort(s.departures[0].time)}</div>` : ''}
       </div>` : ''}
       <div class="add-row" style="margin-top:0;">
         <div class="field-block" style="flex:1; min-width:160px;">
