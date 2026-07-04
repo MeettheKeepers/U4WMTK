@@ -5009,15 +5009,30 @@ function renderManager(){
     const upcomingShows = DATA.shows.filter(isShowUpcoming);
     const pastShows = DATA.shows.filter(s=>!isShowUpcoming(s));
     const list = SHOW_MGR_VIEW === 'upcoming' ? upcomingShows : pastShows;
-    const showGroups = groupShowsByDate(list, SHOW_MGR_VIEW === 'archive');
+    // Expand multi-day shows into per-day instances for manager view
+    const mgrInstances = [];
+    list.forEach(s=>{
+      const days = getShowDays(s);
+      days.forEach((d,i)=> mgrInstances.push({s, date:d, dayNum:i+1, totalDays:days.length}));
+    });
+    mgrInstances.sort((a,b)=>{
+      const cmp = SHOW_MGR_VIEW==='archive' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
+      return cmp || (a.s.startTime||'').localeCompare(b.s.startTime||'');
+    });
+    const mgrByDate={}, mgrDateOrder=[];
+    mgrInstances.forEach(inst=>{
+      if(!mgrByDate[inst.date]){ mgrByDate[inst.date]=[]; mgrDateOrder.push(inst.date); }
+      mgrByDate[inst.date].push(inst);
+    });
+    const showGroups = mgrDateOrder.map(d=>({date:d, instances:mgrByDate[d]}));
     const groupDates = showGroups.map(g=>g.date);
     body = `
       <div class="card">
         <h2>Show Management</h2>
         <div class="sub">Add and edit every show here. Staff only see the read-only Shows tab. A show automatically moves from Upcoming to Archive / Past the day after it happens — there's no manual archive step.</div>
         <div class="detail-tabs">
-          <button class="detail-tab-btn ${SHOW_MGR_VIEW==='upcoming'?'active':''}" onclick="setShowMgrView('upcoming')">Upcoming (${upcomingShows.length})</button>
-          <button class="detail-tab-btn ${SHOW_MGR_VIEW==='archive'?'active':''}" onclick="setShowMgrView('archive')">Archive / Past (${pastShows.length})</button>
+          <button class="detail-tab-btn ${SHOW_MGR_VIEW==='upcoming'?'active':''}" onclick="setShowMgrView('upcoming')">Upcoming (${upcomingShows.length} show${upcomingShows.length===1?'':'s'})</button>
+          <button class="detail-tab-btn ${SHOW_MGR_VIEW==='archive'?'active':''}" onclick="setShowMgrView('archive')">Archive / Past (${pastShows.length} show${pastShows.length===1?'':'s'})</button>
         </div>
         <button class="collapsible-toggle" onclick="toggleShowAddForm()">${SHOW_MGR_ADD_FORM ? '▾' : '▸'} Add show</button>
         ${SHOW_MGR_ADD_FORM ? renderShowForm() : ''}
@@ -5055,9 +5070,46 @@ function renderManager(){
         <div class="card">
           <div class="detail-section-title" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleShowDateGroup('${g.date}')">
             <span>${collapsed ? '▸' : '▾'} ${fmtFullDate(g.date)}</span>
-            <span class="count-pill">${g.shows.length} show${g.shows.length===1?'':'s'}</span>
+            <span class="count-pill">${g.instances.length} show${g.instances.length===1?'':'s'}</span>
           </div>
-          ${collapsed ? '' : g.shows.map(renderShowManagerCard).join('')}
+          ${collapsed ? '' : g.instances.map(inst=>{
+            if(inst.dayNum === 1) return renderShowManagerCard(inst.s);
+            // Continuation day — compact card with per-day overrides
+            const ov = (inst.s.dayOverrides && inst.s.dayOverrides[inst.date]) || {};
+            const hasOv = Object.keys(ov).length > 0;
+            return `<div class="animal-card" style="margin-bottom:14px;border-left:5px solid var(--green-dark);background:${hasOv?'#f0fff4':'var(--surface)'};">
+              <div class="animal-card-top">
+                <div>
+                  <span class="tag" style="background:#e8f4ff;color:#1a5fa8;font-weight:700;margin-right:6px;">Day ${inst.dayNum} of ${inst.totalDays}</span>
+                  <strong>${esc(inst.s.title)}</strong>
+                  <span style="font-size:13px;color:var(--text-light);margin-left:8px;">(continuing — edit details on Day 1)</span>
+                </div>
+                ${hasOv ? `<span class="tag" style="background:#c6f0d6;color:#1a5c30;">Overridden</span>` : ''}
+              </div>
+              <div style="font-size:13px;color:var(--text-light);margin:6px 0 10px;">
+                ${ov.startTime||inst.s.startTime} – ${ov.endTime||inst.s.endTime} &nbsp;|&nbsp; ${esc(inst.s.staffNames.join(', ')||'—')}
+              </div>
+              <div class="add-row" style="margin:0;gap:8px;flex-wrap:wrap;">
+                <div class="field-block" style="flex:1;min-width:120px;margin:0;">
+                  <label style="font-size:12px;">Start time override</label>
+                  <input type="time" value="${ov.startTime||''}" placeholder="${inst.s.startTime}" onchange="saveDayOverride(${inst.s.id},'${inst.date}','startTime',this.value)">
+                </div>
+                <div class="field-block" style="flex:1;min-width:120px;margin:0;">
+                  <label style="font-size:12px;">End time override</label>
+                  <input type="time" value="${ov.endTime||''}" placeholder="${inst.s.endTime}" onchange="saveDayOverride(${inst.s.id},'${inst.date}','endTime',this.value)">
+                </div>
+                <div class="field-block" style="flex:1;min-width:140px;margin:0;">
+                  <label style="font-size:12px;">Travel time override (min)</label>
+                  <input type="number" min="0" value="${ov.travelMinutes!=null?ov.travelMinutes:''}" placeholder="${inst.s.travelMinutes}" onchange="saveDayOverride(${inst.s.id},'${inst.date}','travelMinutes',this.value===''?'':Number(this.value))">
+                </div>
+                <div class="field-block" style="flex:1;min-width:200px;margin:0;">
+                  <label style="font-size:12px;">Day-specific note</label>
+                  <input type="text" value="${esc(ov.notes||'')}" placeholder="Optional note for this day" onchange="saveDayOverride(${inst.s.id},'${inst.date}','notes',this.value)">
+                </div>
+              </div>
+              ${hasOv ? `<button class="btn-ghost" style="color:var(--red);margin-top:8px;font-size:12px;" onclick="clearDayOverride(${inst.s.id},'${inst.date}')">Clear overrides for this day</button>` : ''}
+            </div>`;
+          }).join('')}
         </div>
       `;
       }).join('') : '<div class="card"><div class="empty">No shows in this view.</div></div>'}
