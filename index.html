@@ -839,7 +839,7 @@ function normalizeData(d){
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
   (d.roadTasks||[]).forEach(t=>{ if(t.acknowledged===undefined) t.acknowledged=false; if(t.acknowledgedAt===undefined) t.acknowledgedAt=null; });
-  (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; });
+  (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; if(!s.dayOverrides) s.dayOverrides={}; });
   (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
   if(d.habitatNotes===undefined) d.habitatNotes='';
   // Build habitats list from animals if not yet present
@@ -2889,40 +2889,54 @@ function rescheduleShow(id){
    it to a show with no issues. Recorded per-person since shows can have
    multiple staff, so a manager can see exactly who's there. Tapping it again
    (e.g. it was hit by mistake) un-marks it, since it's just a toggle. */
-function markArrived(showId){
+function markArrived(showId, date){
   const s = DATA.shows.find(x=>x.id===showId);
   const name = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
   if(!s || !name) return;
   if(!s.arrivals) s.arrivals = [];
-  if(s.arrivals.length > 0) return; // first person wins
-  s.arrivals.push({name, time:new Date().toISOString()});
+  const dayArrivals = getDayArrivals(s, date);
+  if(dayArrivals.length > 0) return; // first person wins per day
+  const rec = {name, time:new Date().toISOString()};
+  if(date && s.endDate && s.endDate > s.date) rec.date = date;
+  s.arrivals.push(rec);
   saveData();
   const active = document.querySelector('nav.tabs button.active');
   showTab(active ? active.id.replace('tabbtn-','') : 'shows');
 }
-function unmarkArrived(showId){
+function unmarkArrived(showId, date){
   const s = DATA.shows.find(x=>x.id===showId);
   if(!s) return;
-  s.arrivals = [];
+  if(date && s.endDate && s.endDate > s.date){
+    s.arrivals = (s.arrivals||[]).filter(a=> a.date !== date);
+  } else {
+    s.arrivals = [];
+  }
   saveData();
   const active = document.querySelector('nav.tabs button.active');
   showTab(active ? active.id.replace('tabbtn-','') : 'shows');
 }
-function markDeparted(showId){
+function markDeparted(showId, date){
   const s = DATA.shows.find(x=>x.id===showId);
   const name = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
   if(!s || !name) return;
   if(!s.departures) s.departures = [];
-  if(s.departures.length > 0) return; // first person wins
-  s.departures.push({name, time:new Date().toISOString()});
+  const dayDepartures = getDayDepartures(s, date);
+  if(dayDepartures.length > 0) return; // first person wins per day
+  const rec = {name, time:new Date().toISOString()};
+  if(date && s.endDate && s.endDate > s.date) rec.date = date;
+  s.departures.push(rec);
   saveData();
   const active = document.querySelector('nav.tabs button.active');
   showTab(active ? active.id.replace('tabbtn-','') : 'shows');
 }
-function unmarkDeparted(showId){
+function unmarkDeparted(showId, date){
   const s = DATA.shows.find(x=>x.id===showId);
   if(!s) return;
-  s.departures = [];
+  if(date && s.endDate && s.endDate > s.date){
+    s.departures = (s.departures||[]).filter(a=> a.date !== date);
+  } else {
+    s.departures = [];
+  }
   saveData();
   const active = document.querySelector('nav.tabs button.active');
   showTab(active ? active.id.replace('tabbtn-','') : 'shows');
@@ -2935,6 +2949,44 @@ function thisWeekRange(){
   const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
   const toISO = d=> d.toISOString().slice(0,10);
   return {start: toISO(monday), end: toISO(sunday)};
+}
+function getShowDays(s){
+  if(!s.endDate || s.endDate <= s.date) return [s.date];
+  const days = [];
+  let d = s.date;
+  while(d <= s.endDate){ days.push(d); d = addDays(d,1); }
+  return days;
+}
+function getEffectiveShow(s, date){
+  if(!date || !s.dayOverrides || !s.dayOverrides[date]) return s;
+  return Object.assign({}, s, s.dayOverrides[date]);
+}
+function getDayArrivals(s, date){
+  if(!s.endDate || s.endDate <= s.date) return s.arrivals||[];
+  return (s.arrivals||[]).filter(a=> a.date===date);
+}
+function getDayDepartures(s, date){
+  if(!s.endDate || s.endDate <= s.date) return s.departures||[];
+  return (s.departures||[]).filter(a=> a.date===date);
+}
+function saveDayOverride(showId, date, field, value){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  if(!s.dayOverrides) s.dayOverrides = {};
+  if(!s.dayOverrides[date]) s.dayOverrides[date] = {};
+  if(value==='' || value===null || value===undefined){
+    delete s.dayOverrides[date][field];
+    if(!Object.keys(s.dayOverrides[date]).length) delete s.dayOverrides[date];
+  } else {
+    s.dayOverrides[date][field] = value;
+  }
+  saveData(); showTab('manager');
+}
+function clearDayOverride(showId, date){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s || !s.dayOverrides) return;
+  delete s.dayOverrides[date];
+  saveData(); showTab('manager');
 }
 function groupShowsByDate(list, mostRecentFirst){
   const order=[], byDate={};
@@ -2950,15 +3002,17 @@ function groupShowsByDate(list, mostRecentFirst){
    they don't need the full from-centre arrival buffer, just enough time to
    travel and still arrive a little early. */
 const CHAINED_SHOW_MIN_BUFFER_MIN = 20;
-function showCardHtml(s, staffName, idx, total, dayShows){
-  const plan = showShiftPlan(s);
+function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, totalDays){
+  // For multi-day shows, apply any per-day overrides
+  const es = viewDate ? getEffectiveShow(s, viewDate) : s;
+  const plan = showShiftPlan(es);
   const overtime = plan.totalMinutes > 480;
   const bufferLabel = plan.buffer % 60 === 0 ? `${plan.buffer/60} hour${plan.buffer===60?'':'s'}` : `${plan.buffer} min`;
   const conflictInfo = showConflictInfo(s);
   const prevShow = (dayShows && idx>1) ? dayShows[idx-2] : null;
   const nextShow = (dayShows && idx<total) ? dayShows[idx] : null;
-  const chainArriveBy = timeToMin(s.startTime) - CHAINED_SHOW_MIN_BUFFER_MIN;
-  const chainLeaveBy = chainArriveBy - (Number(s.travelMinutes)||0);
+  const chainArriveBy = timeToMin(es.startTime) - CHAINED_SHOW_MIN_BUFFER_MIN;
+  const chainLeaveBy = chainArriveBy - (Number(es.travelMinutes)||0);
   const chainTooTight = prevShow && chainLeaveBy < timeToMin(prevShow.endTime);
   const travelHtml = prevShow ? `
           <div>Leave "${prevShow.title}" by: <strong>${fmtHM(chainLeaveBy)}</strong></div>
@@ -2976,25 +3030,28 @@ function showCardHtml(s, staffName, idx, total, dayShows){
           <div>Back at centre: ${fmtHM(plan.backAtCentre)}</div>
           <div>Unload finished: ${fmtHM(plan.unloadFinished)}</div>
         `;
-  const arrivals = s.arrivals || [];
-  const departures = s.departures || [];
+  const arrivals = viewDate ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
+  const departures = viewDate ? getDayDepartures(s, viewDate) : (s.departures||[]);
   const firstArrival = arrivals[0] || null;
   const firstDeparture = departures[0] || null;
   const myName = (CURRENT_LOGIN && CURRENT_LOGIN.name) ? CURRENT_LOGIN.name : '';
   const onStaff = myName && s.staffNames.includes(myName);
+  const dateArg = viewDate ? `'${viewDate}'` : 'null';
   const arrivalHtml = `
       <div class="field-block">
         <label>Show check-in</label>
         ${firstArrival
-          ? `<div>✅ ${esc(firstArrival.name)} arrived at ${fmtTimeShort(firstArrival.time)} — <a href="#" onclick="event.preventDefault(); unmarkArrived(${s.id});" style="color:var(--red);font-size:12px;">undo</a></div>`
-          : (onStaff ? `<button class="btn-small" style="margin-top:4px;" onclick="markArrived(${s.id})">We've Arrived</button>` : '<div style="color:var(--text-light);font-size:13px;">No arrival recorded yet.</div>')
+          ? `<div>✅ ${esc(firstArrival.name)} arrived at ${fmtTimeShort(firstArrival.time)} — <a href="#" onclick="event.preventDefault(); unmarkArrived(${s.id},${dateArg});" style="color:var(--red);font-size:12px;">undo</a></div>`
+          : (onStaff ? `<button class="btn-small" style="margin-top:4px;" onclick="markArrived(${s.id},${dateArg})">We've Arrived</button>` : '<div style="color:var(--text-light);font-size:13px;">No arrival recorded yet.</div>')
         }
         ${firstDeparture
-          ? `<div style="margin-top:4px;">❌ ${esc(firstDeparture.name)} left at ${fmtTimeShort(firstDeparture.time)} — <a href="#" onclick="event.preventDefault(); unmarkDeparted(${s.id});" style="color:var(--red);font-size:12px;">undo</a></div>`
-          : (firstArrival && onStaff ? `<button class="btn-small" style="margin-top:8px;background:var(--red);border-color:var(--red);" onclick="markDeparted(${s.id})">We've Left</button>` : '')
+          ? `<div style="margin-top:4px;">❌ ${esc(firstDeparture.name)} left at ${fmtTimeShort(firstDeparture.time)} — <a href="#" onclick="event.preventDefault(); unmarkDeparted(${s.id},${dateArg});" style="color:var(--red);font-size:12px;">undo</a></div>`
+          : (firstArrival && onStaff ? `<button class="btn-small" style="margin-top:8px;background:var(--red);border-color:var(--red);" onclick="markDeparted(${s.id},${dateArg})">We've Left</button>` : '')
         }
       </div>
   `;
+  const isMultiDay = s.endDate && s.endDate > s.date;
+  const dayOverrideActive = viewDate && s.dayOverrides && s.dayOverrides[viewDate] && Object.keys(s.dayOverrides[viewDate]).length > 0;
   const missingInfo = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
   return `
     <div class="animal-card" style="margin-bottom:14px; border-left:5px solid ${conflictInfo.hasConflict ? 'var(--red)' : missingInfo ? '#7c3fad' : (s.paid ? 'var(--paid-green)' : 'var(--red)')}; ${conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingInfo ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : ''}">
@@ -3008,8 +3065,9 @@ function showCardHtml(s, staffName, idx, total, dayShows){
       ${s.overnight ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;font-weight:700;">🌙 This is an OVERNIGHT event — staff will be staying overnight.${s.overnightNote ? ' ' + s.overnightNote : ''}</div>` : ''}
       <div class="task-tags" style="margin-bottom:10px;">
         ${staffName ? `<span class="tag freq">${staffName}: Show ${idx} of ${total}</span>` : ''}
-        <span class="tag category">${s.endDate && s.endDate>s.date ? fmtShortDate(s.date)+' – '+fmtShortDate(s.endDate) : fmtShortDate(s.date)}</span>
-        <span class="tag category">${s.startTime} - ${s.endTime}</span>
+        ${isMultiDay && dayNum ? `<span class="tag" style="background:#e8f4ff;color:#1a5fa8;font-weight:700;">Day ${dayNum} of ${totalDays}</span>` : ''}
+        <span class="tag category">${isMultiDay ? fmtShortDate(s.date)+' – '+fmtShortDate(s.endDate) : fmtShortDate(s.date)}</span>
+        <span class="tag category">${es.startTime} – ${es.endTime}${dayOverrideActive?' ✎':''}</span>
         <span class="tag freq">${s.language}</span>
         <span class="tag ${s.paid?'paid':'unpaid'}">${s.paid?'Paid':'Unpaid'}</span>
       </div>
@@ -3021,7 +3079,7 @@ function showCardHtml(s, staffName, idx, total, dayShows){
         ${s.childApplicable ? `<strong>Child name:</strong> ${s.childName||'—'}<br>` : ''}
         <strong>Address:</strong> ${s.address||'—'}<br>
         <strong>Show type(s):</strong> ${s.showTypes.join(', ')||'—'}
-        ${s.notes ? `<br><strong>Notes:</strong> ${s.notes}` : ''}
+        ${es.notes ? `<br><strong>Notes:</strong> ${es.notes}` : ''}
       </div>
       ${arrivalHtml}
       <div class="medrecord-box">
@@ -3030,7 +3088,7 @@ function showCardHtml(s, staffName, idx, total, dayShows){
           ${travelHtml}
           ${packUpHtml}
         </div>
-        <div style="font-size:13px; color:var(--gray);">${s.travelMinutes||0} min travel${prevShow ? ' (from previous show)' : ` from ${SHOW_CENTRE_ADDRESS}`} • ${s.showTypes.join(' / ')||'Show'}${prevShow ? '' : `: arrive ${bufferLabel} before show`}</div>
+        <div style="font-size:13px; color:var(--gray);">${es.travelMinutes||0} min travel${prevShow ? ' (from previous show)' : ` from ${SHOW_CENTRE_ADDRESS}`} • ${s.showTypes.join(' / ')||'Show'}${prevShow ? '' : `: arrive ${bufferLabel} before show`}</div>
       </div>
       ${overtime ? s.staffNames.map(n=>`<div class="notice">⚠ ${n}'s estimated day is ${fmtDuration(plan.totalMinutes)} (over 8 hours).</div>`).join('') : ''}
     </div>
@@ -3044,8 +3102,24 @@ function toggleShowStaffRow(key){
 function renderShows(){
   const today = todayStr();
   const sevenDaysOut = addDays(today, 6);
-  const weekShows = DATA.shows.filter(s=> isShowUpcoming(s) && s.date>=today && s.date<=sevenDaysOut);
-  const groups = groupShowsByDate(weekShows);
+  // Expand multi-day shows into per-day instances within the 7-day window
+  const weekInstances = [];
+  DATA.shows.filter(s=> showStatus(s)!=='cancelled').forEach(s=>{
+    const days = getShowDays(s);
+    days.forEach((d,i)=>{
+      if(d >= today && d <= sevenDaysOut){
+        weekInstances.push({s, date:d, dayNum:i+1, totalDays:days.length});
+      }
+    });
+  });
+  weekInstances.sort((a,b)=> a.date.localeCompare(b.date) || (a.s.startTime||'').localeCompare(b.s.startTime||''));
+  // Group by date
+  const byDate={}, dateOrder=[];
+  weekInstances.forEach(inst=>{
+    if(!byDate[inst.date]){ byDate[inst.date]=[]; dateOrder.push(inst.date); }
+    byDate[inst.date].push(inst);
+  });
+  const groups = dateOrder.map(d=>({date:d, instances:byDate[d]}));
   return `
     <div class="card">
       <h2>Shows</h2>
@@ -3055,23 +3129,23 @@ function renderShows(){
     <div class="card">
       <div class="animal-card-top">
         <h2 style="margin:0;">Next 7 Days</h2>
-        <span class="status-badge status-progress">${weekShows.length}</span>
+        <span class="status-badge status-progress">${weekInstances.length}</span>
       </div>
       ${groups.length ? groups.map(g=>{
         const staffInDay = [];
-        g.shows.forEach(s=> s.staffNames.forEach(n=>{ if(!staffInDay.includes(n)) staffInDay.push(n); }));
+        g.instances.forEach(inst=> inst.s.staffNames.forEach(n=>{ if(!staffInDay.includes(n)) staffInDay.push(n); }));
         const roster = getShowStaffRoster();
         staffInDay.sort((a,b)=> roster.indexOf(a) - roster.indexOf(b));
         return `
         <div class="field-block" style="margin-top:18px;">
-          <div class="detail-section-title" style="margin-top:0;">${fmtFullDate(g.date)} <span class="status-badge status-progress" style="margin-left:8px;">${g.shows.length} total shows</span></div>
+          <div class="detail-section-title" style="margin-top:0;">${fmtFullDate(g.date)} <span class="status-badge status-progress" style="margin-left:8px;">${g.instances.length} show${g.instances.length===1?'':'s'}</span></div>
           ${staffInDay.map(name=>{
-            const mine = g.shows.filter(s=>s.staffNames.includes(name));
+            const mine = g.instances.filter(inst=> inst.s.staffNames.includes(name));
             const key = `${g.date}__${name}`;
             const open = !!EXPANDED_SHOW_STAFF[key];
             return `
             <button class="collapsible-toggle" onclick="toggleShowStaffRow('${key}')">${open?'▾':'▸'} ${name} <span style="font-weight:400;">(${mine.length} show${mine.length===1?'':'s'})</span></button>
-            ${open ? mine.map((s,i)=> showCardHtml(s, name, i+1, mine.length, mine)).join('') : ''}
+            ${open ? mine.map((inst,i)=> showCardHtml(inst.s, name, i+1, mine.length, mine.map(x=>x.s), inst.date, inst.dayNum, inst.totalDays)).join('') : ''}
             `;
           }).join('')}
         </div>
@@ -4489,6 +4563,40 @@ function renderShowManagerCard(s){
         <label>Notes</label>
         <textarea onchange="saveShowField(${s.id},'notes',this.value)">${s.notes||''}</textarea>
       </div>
+      ${s.endDate && s.endDate > s.date ? `
+      <div class="field-block" style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px;">
+        <label style="font-size:15px;font-weight:700;color:var(--green-dark);">Per-Day Overrides</label>
+        <div class="sub" style="margin-bottom:12px;">Leave a field blank to use the show's default. Changes apply to that day only for staff.</div>
+        ${getShowDays(s).map((d,i)=>{
+          const ov = (s.dayOverrides && s.dayOverrides[d]) || {};
+          const hasOv = Object.keys(ov).length > 0;
+          return `
+          <div style="border:1px solid ${hasOv?'var(--green-dark)':'var(--border)'};border-radius:8px;padding:12px;margin-bottom:10px;${hasOv?'background:#f0fff4;':''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+              <strong style="font-size:14px;">Day ${i+1} — ${fmtFullDate(d)}</strong>
+              ${hasOv ? `<span class="tag" style="background:#c6f0d6;color:#1a5c30;">Overridden</span><button class="btn-ghost" style="color:var(--red);padding:2px 8px;font-size:12px;" onclick="clearDayOverride(${s.id},'${d}')">Clear overrides</button>` : ''}
+            </div>
+            <div class="add-row" style="margin:0;gap:8px;flex-wrap:wrap;">
+              <div class="field-block" style="flex:1;min-width:120px;margin:0;">
+                <label style="font-size:12px;">Start time</label>
+                <input type="time" value="${ov.startTime||''}" placeholder="${s.startTime}" onchange="saveDayOverride(${s.id},'${d}','startTime',this.value)">
+              </div>
+              <div class="field-block" style="flex:1;min-width:120px;margin:0;">
+                <label style="font-size:12px;">End time</label>
+                <input type="time" value="${ov.endTime||''}" placeholder="${s.endTime}" onchange="saveDayOverride(${s.id},'${d}','endTime',this.value)">
+              </div>
+              <div class="field-block" style="flex:1;min-width:140px;margin:0;">
+                <label style="font-size:12px;">Travel time (min)</label>
+                <input type="number" min="0" value="${ov.travelMinutes!=null?ov.travelMinutes:''}" placeholder="${s.travelMinutes}" onchange="saveDayOverride(${s.id},'${d}','travelMinutes',this.value===''?'':Number(this.value))">
+              </div>
+              <div class="field-block" style="flex:1;min-width:200px;margin:0;">
+                <label style="font-size:12px;">Day-specific notes</label>
+                <input type="text" value="${esc(ov.notes||'')}" placeholder="Optional note for this day only" onchange="saveDayOverride(${s.id},'${d}','notes',this.value)">
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     </div>
   `;
 }
