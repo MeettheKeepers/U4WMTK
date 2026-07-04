@@ -1833,14 +1833,12 @@ function renderDashboard(){
       <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
     </div>
     <div class="card">
-      <h2>Outstanding Tasks</h2>
-      <div class="sub">${outstanding.length} remaining across Rescue, Kids Entertainment, and Nonprofit</div>
-      ${outstanding.length ? outstanding.map(t=>`
-        <div class="task-row">
-          <div class="dot red"></div>
-          <label><span class="task-name">${t.name}</span><span class="task-meta">${t.freq} • ${t.category}</span></label>
-          ${bizTag(t.biz)}
-        </div>`).join('') : '<div class="empty">All tasks complete. Nice work.</div>'}
+      <h2>Tasks Today</h2>
+      <div class="stat-row">
+        <div class="stat-box"><div class="num" style="color:var(--red);">${outstanding.filter(t=>t.missedDate||t.critical).length}</div><div class="lbl">Critical</div></div>
+        <div class="stat-box"><div class="num">${outstanding.length}</div><div class="lbl">Outstanding</div></div>
+        <div class="stat-box"><div class="num" style="color:#2a9d5c;">${done}</div><div class="lbl">Completed today</div></div>
+      </div>
     </div>
     <div class="stat-row">
       <div class="stat-box"><div class="num">${DATA.animals.filter(a=>!a.archived).length}</div><div class="lbl">Animals in care</div></div>
@@ -2058,7 +2056,8 @@ function renderHabitatGroup(g){
         ${doneTasks.map(t=>`
           <div class="completed-row">
             <span class="check-icon">✓</span>
-            <div style="flex:1;"><strong>${esc(t.name)}</strong><div class="task-meta">By ${esc(t.completedBy)}${t.completedAt?' at '+fmtClockTime(t.completedAt):''}.${t.notes?' • "'+esc(t.notes)+'"':''}</div></div>
+            <div style="flex:1;"><strong>${esc(t.name)}</strong><div class="task-meta">By ${esc(t.completedBy)}${t.completedAt?' at '+fmtClockTime(t.completedAt):''}${t.notes?' • "'+esc(t.notes)+'"':''}</div></div>
+            ${isManagerLogin()?`<button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="undoTask(${t.id})">Undo</button>`:''}
           </div>`).join('')}
         ${!all.length ? '<div class="empty">No tasks in this group today.</div>' : ''}
       ` : ''}
@@ -2098,8 +2097,6 @@ function renderMyRoadTasksCard(){
 }
 function renderTasks(){
   const groups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
-  const completedToday = DATA.tasks.filter(t=>t.done && isToday(t.completedAt));
-  const isOpen_completed = TASK_GROUPS_OPEN['_completed'] !== false;
   return `
     <div class="card">
       <h2>Tasks</h2>
@@ -2110,20 +2107,6 @@ function renderTasks(){
     </div>
     ${renderMyRoadTasksCard()}
     ${groups.map(g=>renderHabitatGroup(g)).join('')}
-    <div class="card">
-      <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('_completed')">
-        <h2>${isOpen_completed?'▾':'▸'} ✅ Completed Today</h2>
-        <span class="count-pill">${completedToday.length}</span>
-      </div>
-      ${isOpen_completed ? (completedToday.length ? completedToday.map(t=>`
-        <div class="completed-row">
-          <span class="check-icon">✓</span>
-          <div style="flex:1;">
-            <strong>${esc(t.name)}</strong>
-            <div class="task-meta">${t.completedBy?'By '+esc(t.completedBy):''}${t.completedAt?' at '+fmtClockTime(t.completedAt):''}${t.notes?' • "'+esc(t.notes)+'"':''}</div>
-          </div>
-        </div>`).join('') : '<div class="empty">No tasks completed yet today.</div>') : ''}
-    </div>
   `;
 }
 
@@ -2145,6 +2128,17 @@ function submitTask(id){
   showTab('tasks');
 }
 
+function undoTask(id){
+  const t = DATA.tasks.find(x=>x.id===id);
+  if(!t) return;
+  t.done = false;
+  t.completedBy = '';
+  t.notes = '';
+  t.completedAt = null;
+  t.completedDate = null;
+  saveData();
+  showTab(document.querySelector('nav.tabs button.active')?.id.replace('tabbtn-','') || 'tasks');
+}
 function deleteRow(key, id){
   if(!confirm('Delete this permanently? This cannot be undone.')) return;
   DATA[key] = DATA[key].filter(x=>x.id!==id);
