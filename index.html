@@ -788,7 +788,7 @@ function normalizeData(d){
     if(!i.visibility) i.visibility = 'all';
   });
   (d.repairs||[]).forEach(r=>{ if(r.closedBy===undefined) r.closedBy = ""; });
-  if(!d.payStubs) d.payStubs = [];
+  if(!Array.isArray(d.payStubs)) d.payStubs = [];
   if(!d.roadTasks) d.roadTasks = [];
   if(!d.supplyRequests) d.supplyRequests = [];
   if(!d.timeClock) d.timeClock = [];
@@ -1751,9 +1751,10 @@ function renderLiveStatusBoard(){
     const entry = (DATA.timeClock||[]).find(t=>t.staffName===m.name && t.date===today);
     const hasShift = !!todaysScheduleFor(m.name);
     const isWFH = !!m.workFromHome;
-    // Regular staff: show only if they have a shift OR clocked in. WFH: only show if clocked in.
-    if(!hasShift && !isWFH) return;
-    if(isWFH && (!entry || !entry.clockIn)) return;
+    const isClockedIn = !!(entry && entry.clockIn);
+    // Show if: has a shift, is WFH and clocked in, or has actually clocked in today
+    if(!hasShift && !isWFH && !isClockedIn) return;
+    if(isWFH && !isClockedIn) return;
     rows.push({member:m, entry, hasShift, isWFH});
   });
   if(!rows.length) return '';
