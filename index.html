@@ -5898,11 +5898,10 @@ function renderManager(){
           </div>`).join('')}
       </div>
 
-      ${staffWithQuiz.length ? `
       <div class="card">
         <h2>Staff Quiz Status</h2>
         <table>
-          <tr><th>Name</th><th>Attempts</th><th>Last Score</th><th>Pass Valid Until</th><th>Override Date</th></tr>
+          <tr><th>Name</th><th>Attempts</th><th>Last Score</th><th>Pass Valid Until</th><th>Override Date</th><th>Actions</th></tr>
           ${DATA.team.map(m=>{
             const attempts = m.quizAttempts||[];
             const last = attempts.length ? attempts[attempts.length-1] : null;
@@ -5912,16 +5911,14 @@ function renderManager(){
               <td>${esc(m.name)}</td>
               <td>${attempts.length}</td>
               <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
-              <td>${passedUntil ? fmtShortDate(passedUntil) : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
+              <td>${passedUntil ? `<span style="color:${passedUntil>=todayStr()?'#2a9d5c':'var(--red)'};">${fmtShortDate(passedUntil)}</span>` : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
               <td><input type="date" value="${passedUntil||''}" style="font-size:12px;" onchange="setStaffQuizPassedUntil(${m.id},this.value)"></td>
+              <td><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="resetStaffQuiz(${m.id})">Reset Quiz</button></td>
             </tr>`;
           }).join('')}
         </table>
-      </div>` : `
-      <div class="card">
-        <h2>Staff Quiz Status</h2>
-        <div class="empty">No quiz attempts yet — status will appear here once staff start taking the quiz.</div>
-      </div>`}
+        <div class="sub" style="margin-top:8px;">Reset Quiz clears their pass status and removes any fail cooldown so they can retake immediately. Attempt history is preserved.</div>
+      </div>
     `;
   } else if(MANAGER_TAB === 'admin'){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
@@ -6389,6 +6386,23 @@ function setStaffQuizPassedUntil(memberId, dateStr){
   if(!m) return;
   m.quizPassedUntil = dateStr || null;
   saveData();
+}
+function resetStaffQuiz(memberId){
+  const m = DATA.team.find(t=>t.id===memberId);
+  if(!m) return;
+  if(!confirm(`Reset ${m.name}'s quiz? This will clear their pass status so they need to retake it. Attempt history is preserved but any fail cooldown will be removed so they can take it right away.`)) return;
+  m.quizPassedUntil = null;
+  // If last attempt was a fail, backdate it so cooldown no longer applies
+  if(m.quizAttempts && m.quizAttempts.length){
+    const last = m.quizAttempts[m.quizAttempts.length-1];
+    if(!last.passed){
+      const d = new Date();
+      d.setDate(d.getDate() - 100);
+      last.date = d.toISOString();
+    }
+  }
+  saveData();
+  showTab('manager');
 }
 </script>
 </body>
