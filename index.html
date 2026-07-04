@@ -1951,43 +1951,28 @@ function taskGroup(freq){
   });
 }
 
-function renderTaskCard(t){
-  const person = DATA.team.find(m=>m.name===t.completedBy);
-  const photoExempt = person ? person.photoOptional : false;
-  const photoStillRequired = t.photoRequired && !photoExempt;
+function renderTaskCard(t, num){
+  const isCritical = !t.done && (t.missedDate || t.critical);
   const missedLabel = t.missedDate ? (t.freq==='Weekly' ? '⚠ NOT COMPLETED LAST WEEK' : '⚠ NOT COMPLETED YESTERDAY') : null;
   return `
-    <div class="task-card" ${missedLabel ? 'style="border-left:4px solid var(--red);"' : ''}>
-      ${missedLabel ? `<div style="background:#fde2e2;color:#a33;font-size:12px;font-weight:700;padding:4px 8px;border-radius:6px;margin-bottom:8px;letter-spacing:0.04em;">${missedLabel}</div>` : ''}
-      <div class="task-card-top">
-        <h3>${t.name}</h3>
-        <span class="badge not-done">Not Done</span>
+    <div class="task-card" style="${isCritical?'border-left:4px solid var(--red);':''}">
+      ${missedLabel ? `<div style="color:var(--red);font-size:12px;font-weight:700;margin-bottom:6px;">${missedLabel}</div>` : ''}
+      <div class="task-row">
+        <span style="font-weight:700;color:var(--text-light);min-width:22px;">${num||''}.</span>
+        <div style="flex:1;">
+          <strong>${esc(t.name)}</strong>
+          ${t.assignedTo ? `<span class="tag" style="margin-left:6px;">For ${esc(t.assignedTo)}</span>` : ''}
+          ${isCritical ? '<span class="tag" style="margin-left:6px;background:var(--red);color:#fff;">Critical</span>' : ''}
+        </div>
       </div>
-      <div class="task-tags">
-        <span class="tag category">${t.category}</span>
-        <span class="tag freq">${t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : (t.freq === 'Weekly' && t.weekDays && t.weekDays.length ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_,i)=>t.weekDays.includes(i)).join('/') : t.freq)}</span>
-        ${t.photoRequired ? '<span class="tag photoreq">Photo required</span>' : ''}
-        ${t.critical ? '<span class="tag critical">Critical</span>' : ''}
-        ${t.assignedTo ? `<span class="tag" style="background:#e0eaff;color:#1a3a7a;">👤 ${esc(t.assignedTo)}</span>` : ''}
-      </div>
-      <div class="field-block">
-        <label>Completed by</label>
-        <select id="task-person-${t.id}" onchange="refreshTaskCard(${t.id})">
-          <option value="">Select person</option>
-          ${DATA.team.map(m=>`<option value="${m.name}" ${m.name===t.completedBy?'selected':''}>${m.name}</option>`).join('')}
+      <div class="task-row" style="margin-top:8px;gap:8px;flex-wrap:wrap;">
+        <select id="task-person-${t.id}" style="flex:1;min-width:140px;">
+          <option value="">Who completed this?</option>
+          ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
         </select>
+        <input type="text" id="task-notes-${t.id}" placeholder="Notes (optional)" style="flex:2;min-width:120px;">
+        <button class="btn-small" onclick="submitTask(${t.id})">Submit Task</button>
       </div>
-      ${t.photoRequired ? `
-      <div class="field-block" id="task-photo-block-${t.id}">
-        <label>Photo</label>
-        <input type="file" id="task-photo-${t.id}" accept="image/*">
-        ${photoStillRequired ? '<div class="photo-required-note">A photo is required for this task before it can be submitted.</div>' : ''}
-      </div>` : `<div id="task-photo-block-${t.id}" style="display:none;"></div>`}
-      <div class="field-block">
-        <label>Notes</label>
-        <textarea id="task-notes-${t.id}" placeholder="Optional notes"></textarea>
-      </div>
-      <button class="btn-small" onclick="submitTask(${t.id})">Submit Task</button>
     </div>
   `;
 }
@@ -2015,27 +2000,68 @@ function refreshTaskCard(id){
   }
 }
 
-let TASK_GROUPS_OPEN = { Daily:true, Weekly:true, Extra:true, Custom:true };
-function toggleTaskGroup(freq){
-  TASK_GROUPS_OPEN[freq] = !TASK_GROUPS_OPEN[freq];
+let TASK_GROUPS_OPEN = {};
+function toggleTaskGroup(gid){
+  TASK_GROUPS_OPEN[gid] = !TASK_GROUPS_OPEN[gid];
   showTab('tasks');
 }
 function setAllTaskGroups(open){
-  Object.keys(TASK_GROUPS_OPEN).forEach(k=>{ TASK_GROUPS_OPEN[k] = open; });
+  (DATA.taskGroups||[]).forEach(g=>{ TASK_GROUPS_OPEN[g.id] = open; });
+  TASK_GROUPS_OPEN['_completed'] = open;
   showTab('tasks');
 }
-function renderTaskGroup(freq, emoji, label){
-  const all = taskGroup(freq);
-  const open = all.filter(t=>!t.done);
-  const doneCount = all.length - open.length;
-  const isOpen = TASK_GROUPS_OPEN[freq] !== false;
+function getGroupTasks(gid){
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const isMgr = isManagerLogin();
+  return DATA.tasks.filter(t=>{
+    if(t.group !== gid || t.archived || !isTaskActiveToday(t)) return false;
+    if(!isMgr && t.assignedTo && t.visibility==='private' && t.assignedTo !== myName) return false;
+    return true;
+  }).sort((a,b)=>(a.groupOrder||999)-(b.groupOrder||999));
+}
+function getGroupStatus(gid){
+  const tasks = getGroupTasks(gid);
+  if(!tasks.length) return 'empty';
+  const hasCritical = tasks.some(t=>!t.done && (t.missedDate || t.critical));
+  const allDone = tasks.every(t=>t.done);
+  if(hasCritical) return 'red';
+  if(allDone) return 'green';
+  return 'grey';
+}
+function renderHabitatGroup(g){
+  const all = getGroupTasks(g.id);
+  if(!all.length) return '';
+  const status = getGroupStatus(g.id);
+  const hasCritical = status === 'red';
+  const allDone = status === 'green';
+  // Critical groups auto-expand unless user explicitly closed them
+  let isOpen;
+  if(TASK_GROUPS_OPEN[g.id] === undefined){
+    isOpen = hasCritical; // critical = open by default; others = closed by default
+  } else {
+    isOpen = TASK_GROUPS_OPEN[g.id];
+  }
+  const activeTasks = all.filter(t=>!t.done);
+  const doneTasks = all.filter(t=>t.done);
+  let cardStyle = 'margin-bottom:12px;';
+  let statusIcon = '';
+  if(hasCritical){ cardStyle += 'border:2px solid var(--red);background:rgba(200,40,40,0.06);'; statusIcon='🔴 '; }
+  else if(allDone && all.length){ cardStyle += 'border:2px solid #2a9d5c;background:rgba(42,157,92,0.06);'; statusIcon='🟢 '; }
   return `
-    <div class="card">
-      <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('${freq}')">
-        <h2>${isOpen?'▾':'▸'} ${emoji} ${label}</h2>
-        <span class="count-pill">${doneCount}/${all.length}</span>
+    <div class="card" style="${cardStyle}">
+      <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('${g.id}')">
+        <h2>${isOpen?'▾':'▸'} ${statusIcon}${esc(g.name)}</h2>
+        <span class="count-pill">${doneTasks.length}/${all.length}</span>
       </div>
-      ${isOpen ? (open.length ? open.map(renderTaskCard).join('') : '<div class="empty">Nothing left in this section today.</div>') : ''}
+      ${isOpen ? `
+        ${activeTasks.map((t,i)=>renderTaskCard(t,i+1)).join('')}
+        ${doneTasks.map(t=>`
+          <div class="completed-row">
+            <span class="check-icon">✓</span>
+            <div style="flex:1;"><strong>${esc(t.name)}</strong><div class="task-meta">By ${esc(t.completedBy)}${t.completedAt?' at '+fmtClockTime(t.completedAt):''}.${t.notes?' • "'+esc(t.notes)+'"':''}</div></div>
+          </div>`).join('')}
+        ${!all.length ? '<div class="empty">No tasks in this group today.</div>' : ''}
+      ` : ''}
     </div>
   `;
 }
@@ -2071,43 +2097,30 @@ function renderMyRoadTasksCard(){
   `;
 }
 function renderTasks(){
-  const daily = taskGroup('Daily');
-  const weekly = taskGroup('Weekly');
-  const extra = taskGroup('Extra');
-  const custom = taskGroup('Custom');
+  const groups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
   const completedToday = DATA.tasks.filter(t=>t.done && isToday(t.completedAt));
+  const isOpen_completed = TASK_GROUPS_OPEN['_completed'] !== false;
   return `
     <div class="card">
       <h2>Tasks</h2>
-      <div class="sub">Staff only see what still needs doing. Completed tasks move into a Completed Today archive so weekly and extra tasks do not get buried. Custom recurring tasks (every N days) only show up on the days they're actually due.</div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-        <span class="pill">Daily Tasks: ${daily.filter(t=>!t.done).length} left</span>
-        <span class="pill">Weekly / Recurring Tasks: ${weekly.filter(t=>!t.done).length} left</span>
-        <span class="pill">Extra Tasks: ${extra.filter(t=>!t.done).length} left</span>
-        <span class="pill">Custom Recurring Due Today: ${custom.filter(t=>!t.done).length} left</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <button class="btn-ghost" onclick="setAllTaskGroups(true)">Expand All</button>
         <button class="btn-ghost" onclick="setAllTaskGroups(false)">Collapse All</button>
       </div>
-      <div class="notice"><strong>Photo rule:</strong> Managers choose which tasks need photos. Staff who are photo-optional in Manager settings are still exempt.</div>
     </div>
     ${renderMyRoadTasksCard()}
-    ${renderTaskGroup('Daily', '☀️', 'Daily Tasks')}
-    ${renderTaskGroup('Weekly', '📅', 'Weekly / Recurring Tasks')}
-    ${renderTaskGroup('Extra', '⭐', 'Extra Tasks')}
-    ${custom.length ? renderTaskGroup('Custom', '🔁', 'Custom Recurring Tasks (due today)') : ''}
+    ${groups.map(g=>renderHabitatGroup(g)).join('')}
     <div class="card">
       <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('_completed')">
-        <h2>${TASK_GROUPS_OPEN['_completed']!==false?'▾':'▸'} ✅ Completed Today</h2>
+        <h2>${isOpen_completed?'▾':'▸'} ✅ Completed Today</h2>
         <span class="count-pill">${completedToday.length}</span>
       </div>
-      ${TASK_GROUPS_OPEN['_completed']!==false ? (completedToday.length ? completedToday.map(t=>`
+      ${isOpen_completed ? (completedToday.length ? completedToday.map(t=>`
         <div class="completed-row">
           <span class="check-icon">✓</span>
           <div style="flex:1;">
-            <strong>${t.name}</strong>
-            <div class="task-meta">${t.completedBy ? 'By ' + t.completedBy : ''}${t.completedAt ? ' at ' + fmtClockTime(t.completedAt) : ''}${t.photoData ? ` • <a href="#" onclick="viewPhoto('${t.photoData}','${esc(t.name)}');return false;" style="color:var(--green-dark);">📷 View Photo</a>` : t.photoName ? ' • 📷 Photo attached' : ''}${t.notes ? ' • "' + t.notes + '"' : ''}</div>
+            <strong>${esc(t.name)}</strong>
+            <div class="task-meta">${t.completedBy?'By '+esc(t.completedBy):''}${t.completedAt?' at '+fmtClockTime(t.completedAt):''}${t.notes?' • "'+esc(t.notes)+'"':''}</div>
           </div>
         </div>`).join('') : '<div class="empty">No tasks completed yet today.</div>') : ''}
     </div>
@@ -2116,42 +2129,20 @@ function renderTasks(){
 
 function submitTask(id){
   const t = DATA.tasks.find(x=>x.id===id);
+  if(!t) return;
   const personSel = document.getElementById('task-person-'+id);
-  const fileInput = document.getElementById('task-photo-'+id);
   const notesInput = document.getElementById('task-notes-'+id);
-  const person = personSel.value;
-  if(!person){
-    alert('Please select who completed this task.');
-    return;
-  }
-  const personRecord = DATA.team.find(m=>m.name===person);
-  const photoExempt = personRecord ? personRecord.photoOptional : false;
-  const photoStillRequired = t.photoRequired && !photoExempt;
-  const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
-  if(photoStillRequired && !hasFile){
-    alert('A photo is required to submit this task.');
-    return;
-  }
+  const person = personSel ? personSel.value : '';
+  if(!person){ alert('Please select who completed this task.'); return; }
   t.done = true;
   t.completedBy = person;
-  t.photoName = hasFile ? fileInput.files[0].name : '';
-  t.photoData = null;
   t.notes = notesInput ? notesInput.value.trim() : '';
   t.completedAt = new Date().toISOString();
   t.completedDate = todayStr();
   t.missedDate = null;
-  if(hasFile){
-    const reader = new FileReader();
-    reader.onload = function(e){
-      t.photoData = e.target.result;
-      saveData();
-      showTab('tasks');
-    };
-    reader.readAsDataURL(fileInput.files[0]);
-  } else {
-    saveData();
-    showTab('tasks');
-  }
+  t.critical = false;
+  saveData();
+  showTab('tasks');
 }
 
 function deleteRow(key, id){
@@ -2171,6 +2162,60 @@ function restoreTask(id){
   t.archived = false;
   saveData();
   showTab('manager');
+}
+// ── Task group management ────────────────────────────────────────────────────
+function addGroup(){
+  const name = (document.getElementById('new-group-name')||{}).value?.trim();
+  if(!name) return;
+  if(!DATA.taskGroups) DATA.taskGroups = [];
+  const maxOrder = DATA.taskGroups.length ? Math.max(...DATA.taskGroups.map(g=>g.order||0)) : -1;
+  const id = 'grp_' + Date.now();
+  DATA.taskGroups.push({id, name, order: maxOrder + 1});
+  saveData(); showTab('manager');
+}
+function renameGroup(id, name){
+  const g = (DATA.taskGroups||[]).find(x=>x.id===id);
+  if(g && name.trim()) { g.name = name.trim(); saveData(); }
+}
+function deleteGroup(id){
+  const inUse = DATA.tasks.some(t=>t.group===id && !t.archived);
+  if(inUse){ alert('Move or archive all tasks in this group before deleting it.'); return; }
+  if(!confirm('Delete this group?')) return;
+  DATA.taskGroups = (DATA.taskGroups||[]).filter(g=>g.id!==id);
+  saveData(); showTab('manager');
+}
+function moveGroupUp(id){
+  const groups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
+  const idx = groups.findIndex(g=>g.id===id);
+  if(idx <= 0) return;
+  const tmp = groups[idx].order; groups[idx].order = groups[idx-1].order; groups[idx-1].order = tmp;
+  saveData(); showTab('manager');
+}
+function moveGroupDown(id){
+  const groups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
+  const idx = groups.findIndex(g=>g.id===id);
+  if(idx < 0 || idx >= groups.length-1) return;
+  const tmp = groups[idx].order; groups[idx].order = groups[idx+1].order; groups[idx+1].order = tmp;
+  saveData(); showTab('manager');
+}
+// ── Task ordering within a group ─────────────────────────────────────────────
+function moveTaskUp(id){
+  const t = DATA.tasks.find(x=>x.id===id);
+  if(!t) return;
+  const siblings = DATA.tasks.filter(x=>x.group===t.group&&!x.archived).sort((a,b)=>(a.groupOrder||999)-(b.groupOrder||999));
+  const idx = siblings.findIndex(x=>x.id===id);
+  if(idx <= 0) return;
+  const tmp = siblings[idx].groupOrder; siblings[idx].groupOrder = siblings[idx-1].groupOrder; siblings[idx-1].groupOrder = tmp;
+  saveData(); showTab('manager');
+}
+function moveTaskDown(id){
+  const t = DATA.tasks.find(x=>x.id===id);
+  if(!t) return;
+  const siblings = DATA.tasks.filter(x=>x.group===t.group&&!x.archived).sort((a,b)=>(a.groupOrder||999)-(b.groupOrder||999));
+  const idx = siblings.findIndex(x=>x.id===id);
+  if(idx < 0 || idx >= siblings.length-1) return;
+  const tmp = siblings[idx].groupOrder; siblings[idx].groupOrder = siblings[idx+1].groupOrder; siblings[idx+1].groupOrder = tmp;
+  saveData(); showTab('manager');
 }
 
 /* ---------- ROAD TASKS (one-off tasks assigned directly to a staff member,
@@ -4885,22 +4930,38 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'tasks'){
+    const sortedGroups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
     body = `
+      <div class="card">
+        <h2>Task Groups</h2>
+        <div class="sub">Groups appear as collapsible sections in the Tasks tab. Rename them to match your habitat codes and animals. Tasks are ordered within each group using the arrows in the task list below.</div>
+        ${sortedGroups.map((g,gi)=>`
+          <div class="task-row" style="align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupUp('${g.id}')" ${gi===0?'disabled':''}>▲</button>
+              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupDown('${g.id}')" ${gi===sortedGroups.length-1?'disabled':''}>▼</button>
+            </div>
+            <input type="text" value="${esc(g.name)}" id="grp-name-${g.id}" style="flex:1;" onchange="renameGroup('${g.id}',this.value)">
+            <button class="btn-ghost" onclick="deleteGroup('${g.id}')">Delete</button>
+          </div>`).join('')}
+        <div class="add-row" style="margin-top:10px;">
+          <input type="text" id="new-group-name" placeholder="New group name (e.g. H-1 Coatimundi)">
+          <button class="btn-small" onclick="addGroup()">Add Group</button>
+        </div>
+      </div>
       <div class="card">
         <h2>Add a Task</h2>
         <div class="sub">New tasks only get created here. Staff just view and submit them from the Tasks tab.</div>
         <div class="add-row">
           <input type="text" id="new-task-name" placeholder="Task name">
-          <input type="text" id="new-task-category" placeholder="Category e.g. Animal Care">
+          <select id="new-task-group">
+            ${sortedGroups.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}
+          </select>
           <select id="new-task-freq" onchange="toggleCustomTaskFields()">
             <option value="Daily">Daily</option>
             <option value="Weekly">Weekly / Recurring</option>
             <option value="Extra">Extra</option>
             <option value="Custom">Custom Recurring (every N days)</option>
-          </select>
-          <select id="new-task-biz">
-            <option value="animal_care" selected>Animal Care</option>
-            <option value="other">Other</option>
           </select>
         </div>
         <div class="add-row" id="new-task-custom-fields" style="display:none;">
@@ -4919,7 +4980,6 @@ function renderManager(){
         </div>
         <div class="add-row">
           <label class="checkbox-line"><input type="checkbox" id="new-task-critical"> Critical task</label>
-          <label class="checkbox-line"><input type="checkbox" id="new-task-photo"> Photo required</label>
         </div>
         <div class="add-row">
           <select id="new-task-assignedto">
@@ -4935,92 +4995,93 @@ function renderManager(){
       </div>
       <div class="card">
         <h2>All Tasks</h2>
-        <div class="sub">Archive a task to hide it from staff without losing its history. Delete only when you're sure you don't need it again.</div>
-        <table>
-          <tr><th>Name</th><th>Category</th><th>Frequency</th><th>Assigned To</th><th>Visibility</th><th>Critical</th><th>Photo Req'd</th><th></th></tr>
-          ${DATA.tasks.filter(t=>!t.archived).map(t=>{
-            const editing = EDITING_TASK_ID === t.id;
-            const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            const freqLabel = t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : (t.freq === 'Weekly' && t.weekDays && t.weekDays.length ? DOW.filter((_,i)=>t.weekDays.includes(i)).join('/') : t.freq);
-            if(editing){
-              return `
-              <tr style="background:var(--hover);">
-                <td colspan="8" style="padding:10px 8px;">
-                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
-                    <div style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:130px;">
-                      <label style="font-size:11px;color:var(--text-light);">Name</label>
-                      <input id="etask-name" value="${esc(t.name)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;">
-                      <label style="font-size:11px;color:var(--text-light);">Category</label>
-                      <input id="etask-category" value="${esc(t.category)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Frequency</label>
-                      <select id="etask-freq" onchange="toggleEditTaskWeeklyFields()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                        ${['Daily','Weekly','Custom'].map(f=>`<option${t.freq===f?' selected':''}>${f}</option>`).join('')}
-                      </select>
-                    </div>
-                    <div id="etask-weekly-block" style="${t.freq==='Weekly'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Days</label>
-                      <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                        ${DOW.map((d,i)=>`<div class="day-toggle${t.weekDays && t.weekDays.includes(i)?' active':''}" data-dow="${i}" onclick="this.classList.toggle('active')">${d}</div>`).join('')}
+        <div class="sub">Tasks are shown grouped. Use the arrows to reorder tasks within their group. Archive to hide from staff without losing history.</div>
+        ${sortedGroups.map(g=>{
+          const gTasks = DATA.tasks.filter(t=>t.group===g.id && !t.archived).sort((a,b)=>(a.groupOrder||999)-(b.groupOrder||999));
+          if(!gTasks.length) return '';
+          return `<div style="margin-bottom:16px;">
+            <div style="font-weight:700;color:var(--text-light);font-size:13px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">${esc(g.name)}</div>
+            <table>
+              <tr><th></th><th>Name</th><th>Frequency</th><th>Assigned</th><th>Critical</th><th></th></tr>
+              ${gTasks.map((t,ti)=>{
+                const editing = EDITING_TASK_ID === t.id;
+                const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const freqLabel = t.freq==='Custom'&&t.intervalDays?'Every '+t.intervalDays+' days':(t.freq==='Weekly'&&t.weekDays&&t.weekDays.length?DOW.filter((_,i)=>t.weekDays.includes(i)).join('/'):t.freq);
+                if(editing){
+                  return `<tr style="background:var(--hover);"><td colspan="6" style="padding:10px 8px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+                      <div style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:130px;">
+                        <label style="font-size:11px;">Name</label>
+                        <input id="etask-name" value="${esc(t.name)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px;">
+                        <label style="font-size:11px;">Group</label>
+                        <select id="etask-group" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                          ${sortedGroups.map(sg=>`<option value="${esc(sg.id)}"${(t.group||'general')===sg.id?' selected':''}>${esc(sg.name)}</option>`).join('')}
+                        </select>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Frequency</label>
+                        <select id="etask-freq" onchange="toggleEditTaskWeeklyFields()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                          ${['Daily','Weekly','Custom'].map(f=>`<option${t.freq===f?' selected':''}>${f}</option>`).join('')}
+                        </select>
+                      </div>
+                      <div id="etask-weekly-block" style="${t.freq==='Weekly'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Days</label>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                          ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class="day-toggle${t.weekDays&&t.weekDays.includes(i)?' active':''}" data-dow="${i}" onclick="this.classList.toggle('active')">${d}</div>`).join('')}
+                        </div>
+                      </div>
+                      <div id="etask-custom-block" style="${t.freq==='Custom'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Every N days</label>
+                        <input id="etask-interval" type="number" min="1" value="${t.intervalDays||1}" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Assigned To</label>
+                        <select id="etask-assigned" onchange="toggleEditTaskVisibility()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                          <option value="">Everyone</option>
+                          ${DATA.team.map(m=>`<option value="${esc(m.name)}"${t.assignedTo===m.name?' selected':''}>${esc(m.name)}</option>`).join('')}
+                        </select>
+                      </div>
+                      <div id="etask-vis-block" style="${t.assignedTo?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Visibility</label>
+                        <select id="etask-visibility" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                          <option value="all"${(t.visibility||'all')==='all'?' selected':''}>Visible to all</option>
+                          <option value="private"${t.visibility==='private'?' selected':''}>Private</option>
+                        </select>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:3px;">
+                        <label style="font-size:11px;">Critical</label>
+                        <select id="etask-critical" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
+                          <option value="0"${!t.critical?' selected':''}>No</option>
+                          <option value="1"${t.critical?' selected':''}>Yes</option>
+                        </select>
+                      </div>
+                      <div style="display:flex;gap:6px;align-self:flex-end;">
+                        <button class="btn-small" onclick="saveTaskEdit(${t.id})">Save</button>
+                        <button class="btn-ghost" onclick="cancelTaskEdit()">Cancel</button>
                       </div>
                     </div>
-                    <div id="etask-custom-block" style="${t.freq==='Custom'?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Every N days</label>
-                      <input id="etask-interval" type="number" min="1" value="${t.intervalDays||1}" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Assigned To</label>
-                      <select id="etask-assigned" onchange="toggleEditTaskVisibility()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                        <option value="">Everyone</option>
-                        ${DATA.team.map(m=>`<option value="${esc(m.name)}"${t.assignedTo===m.name?' selected':''}>${esc(m.name)}</option>`).join('')}
-                      </select>
-                    </div>
-                    <div id="etask-vis-block" style="${t.assignedTo?'':'display:none;'}display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Visibility</label>
-                      <select id="etask-visibility" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                        <option value="all"${(t.visibility||'all')==='all'?' selected':''}>Visible to all</option>
-                        <option value="private"${t.visibility==='private'?' selected':''}>Private</option>
-                      </select>
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Critical</label>
-                      <select id="etask-critical" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                        <option value="0"${!t.critical?' selected':''}>No</option>
-                        <option value="1"${t.critical?' selected':''}>Yes</option>
-                      </select>
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:3px;">
-                      <label style="font-size:11px;color:var(--text-light);">Photo Req'd</label>
-                      <select id="etask-photo" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);">
-                        <option value="0"${!t.photoRequired?' selected':''}>No</option>
-                        <option value="1"${t.photoRequired?' selected':''}>Yes</option>
-                      </select>
-                    </div>
-                    <div style="display:flex;gap:6px;align-self:flex-end;">
-                      <button class="btn-small" onclick="saveTaskEdit(${t.id})">Save</button>
-                      <button class="btn-ghost" onclick="cancelTaskEdit()">Cancel</button>
-                    </div>
-                  </div>
-                </td>
-              </tr>`;
-            }
-            return `
-            <tr>
-              <td>${esc(t.name)}</td><td>${esc(t.category)}</td><td>${freqLabel}</td>
-              <td>${t.assignedTo ? esc(t.assignedTo) : '<span style="color:#aaa;">Everyone</span>'}</td>
-              <td>${t.assignedTo ? (t.visibility==='private' ? '🔒 Private' : '👁 Visible to all') : '—'}</td>
-              <td>${t.critical?'Yes':'No'}</td><td>${t.photoRequired?'Yes':'No'}</td>
-              <td style="white-space:nowrap;">
-                <button class="btn-ghost" onclick="editTask(${t.id})">Edit</button>
-                <button class="btn-ghost" onclick="archiveTask(${t.id})">Archive</button>
-                <button class="btn-ghost" onclick="deleteRow('tasks',${t.id})">Delete</button>
-              </td>
-            </tr>`;
-          }).join('')}
-        </table>
+                  </td></tr>`;
+                }
+                return `<tr>
+                  <td style="white-space:nowrap;">
+                    <button class="btn-ghost" style="padding:1px 5px;font-size:11px;" onclick="moveTaskUp(${t.id})" ${ti===0?'disabled':''}>▲</button>
+                    <button class="btn-ghost" style="padding:1px 5px;font-size:11px;" onclick="moveTaskDown(${t.id})" ${ti===gTasks.length-1?'disabled':''}>▼</button>
+                  </td>
+                  <td>${esc(t.name)}</td><td>${freqLabel}</td>
+                  <td>${t.assignedTo?esc(t.assignedTo):'<span style="color:#aaa;">Everyone</span>'}</td>
+                  <td>${t.critical?'Yes':'No'}</td>
+                  <td style="white-space:nowrap;">
+                    <button class="btn-ghost" onclick="editTask(${t.id})">Edit</button>
+                    <button class="btn-ghost" onclick="archiveTask(${t.id})">Archive</button>
+                    <button class="btn-ghost" onclick="deleteRow('tasks',${t.id})">Delete</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </table>
+          </div>`;
+        }).join('')}
         ${DATA.tasks.filter(t=>!t.archived).length ? '' : '<div class="empty">No active tasks.</div>'}
       </div>
       <div class="card">
@@ -5028,49 +5089,18 @@ function renderManager(){
         <div class="sub">Archived tasks are hidden from the Tasks tab but kept here for reference.</div>
         ${DATA.tasks.filter(t=>t.archived).length ? `
         <table>
-          <tr><th>Name</th><th>Category</th><th>Frequency</th><th></th></tr>
+          <tr><th>Name</th><th>Group</th><th>Frequency</th><th></th></tr>
           ${DATA.tasks.filter(t=>t.archived).map(t=>`
             <tr>
-              <td>${t.name}</td><td>${t.category}</td><td>${t.freq === 'Custom' && t.intervalDays ? 'Every ' + t.intervalDays + ' days' : t.freq}</td>
+              <td>${esc(t.name)}</td>
+              <td>${esc((DATA.taskGroups||[]).find(g=>g.id===t.group)?.name||t.group||'')}</td>
+              <td>${t.freq==='Custom'&&t.intervalDays?'Every '+t.intervalDays+' days':t.freq}</td>
               <td style="white-space:nowrap;">
                 <button class="btn-ghost" onclick="restoreTask(${t.id})">Restore</button>
                 <button class="btn-ghost" onclick="deleteRow('tasks',${t.id})">Delete Permanently</button>
               </td>
             </tr>`).join('')}
         </table>` : '<div class="empty">No archived tasks.</div>'}
-      </div>
-      <div class="card">
-        <h2>🚐 Assign a Road Task</h2>
-        <div class="sub">Send a one-off task straight to a specific staff member for a specific day — e.g. "pick up zip ties from the hardware store" while they're already out at a show. It shows up on their Tasks tab and Dashboard until they mark it done.</div>
-        <div class="add-row">
-          <select id="new-roadtask-staff">
-            <option value="">Select staff</option>
-            ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
-          </select>
-          <input type="text" id="new-roadtask-title" placeholder="What do they need to do?">
-          <input type="date" id="new-roadtask-date" value="${todayStr()}">
-        </div>
-        <div class="add-row">
-          <input type="text" id="new-roadtask-notes" placeholder="Optional notes (where to go, what to grab, etc.)" style="flex:1;">
-          <button class="btn-small" onclick="addRoadTaskManager()">Assign Task</button>
-        </div>
-        <table>
-          <tr><th>Staff</th><th>Task</th><th>Date</th><th>Notes</th><th>Seen?</th><th>Status</th><th></th></tr>
-          ${DATA.roadTasks.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'')).map(t=>`
-            <tr>
-              <td>${t.assignedTo}</td>
-              <td>${t.title}</td>
-              <td>${fmtShortDate(t.date)}</td>
-              <td>${t.notes||'—'}</td>
-              <td>${t.acknowledged ? `<span class="status-badge status-done">✓ ${fmtTimeShort(t.acknowledgedAt)}</span>` : '<span class="status-badge status-open">Not yet</span>'}</td>
-              <td>${t.done ? '<span class="status-badge status-done">Done</span>' : '<span class="status-badge status-progress">Open</span>'}</td>
-              <td style="white-space:nowrap;">
-                <button class="btn-ghost" onclick="toggleRoadTaskDone(${t.id})">${t.done?'Reopen':'Mark Done'}</button>
-                <button class="btn-ghost" onclick="deleteRow('roadTasks',${t.id})">Delete</button>
-              </td>
-            </tr>`).join('')}
-        </table>
-        ${DATA.roadTasks.length ? '' : '<div class="empty">No road tasks assigned yet.</div>'}
       </div>
     `;
   } else if(MANAGER_TAB === 'shows'){
@@ -5667,11 +5697,9 @@ function toggleCustomTaskFields(){
 function addTaskManager(){
   const name = val('new-task-name');
   if(!name) return;
-  const category = val('new-task-category') || 'General';
+  const group = val('new-task-group') || 'general';
   const freq = val('new-task-freq');
-  const biz = val('new-task-biz');
   const critical = document.getElementById('new-task-critical').checked;
-  const photoRequired = document.getElementById('new-task-photo').checked;
   const assignedTo = val('new-task-assignedto') || '';
   const visibility = assignedTo ? (val('new-task-visibility') || 'all') : 'all';
   let intervalDays = null, anchorDate = null, weekDays = null;
@@ -5683,7 +5711,10 @@ function addTaskManager(){
     const selected = Array.from(document.querySelectorAll('#new-task-weekly-fields .day-toggle.active')).map(el=>parseInt(el.dataset.dow));
     weekDays = selected.length ? selected : null;
   }
-  DATA.tasks.push({id:nextId(DATA.tasks), name, freq, category, biz, critical, photoRequired, assignedTo, visibility, intervalDays, anchorDate, weekDays, lastResetDate:null, done:false, completedBy:"", photoName:"", notes:"", completedAt:null, missedDate:null, completedDate:null, archived:false});
+  // Set groupOrder to max + 1 within that group
+  const groupTasks = DATA.tasks.filter(t=>t.group===group&&!t.archived);
+  const maxOrder = groupTasks.length ? Math.max(...groupTasks.map(t=>t.groupOrder||0)) : 0;
+  DATA.tasks.push({id:nextId(DATA.tasks), name, freq, group, groupOrder:maxOrder+1, critical, assignedTo, visibility, intervalDays, anchorDate, weekDays, lastResetDate:null, done:false, completedBy:"", notes:"", completedAt:null, missedDate:null, completedDate:null, archived:false});
   saveData();
   showTab('manager');
 }
@@ -5706,12 +5737,11 @@ function saveTaskEdit(id){
   if(!t) return;
   const freq = document.getElementById('etask-freq').value;
   t.name = document.getElementById('etask-name').value.trim() || t.name;
-  t.category = document.getElementById('etask-category').value.trim() || t.category;
+  t.group = document.getElementById('etask-group') ? document.getElementById('etask-group').value : (t.group||'general');
   t.freq = freq;
   t.assignedTo = document.getElementById('etask-assigned').value;
   t.visibility = t.assignedTo ? (document.getElementById('etask-visibility').value || 'all') : 'all';
   t.critical = document.getElementById('etask-critical').value === '1';
-  t.photoRequired = document.getElementById('etask-photo').value === '1';
   if(freq === 'Custom'){
     t.intervalDays = parseInt(document.getElementById('etask-interval').value, 10) || 1;
     t.weekDays = null;
