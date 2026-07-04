@@ -853,6 +853,17 @@ function normalizeData(d){
       if(!seen[a.cardId]){ seen[a.cardId]=true; d.habitats.push({cardId:a.cardId, cardTitle:a.cardTitle}); }
     });
   }
+  // Quiz system
+  if(!d.quiz) d.quiz = {enabled:false, questions:[], passingPct:80, cooldownDays:7, validMonths:12};
+  if(!Array.isArray(d.quiz.questions)) d.quiz.questions = [];
+  if(d.quiz.passingPct===undefined || d.quiz.passingPct===null) d.quiz.passingPct = 80;
+  if(d.quiz.cooldownDays===undefined || d.quiz.cooldownDays===null) d.quiz.cooldownDays = 7;
+  if(d.quiz.validMonths===undefined || d.quiz.validMonths===null) d.quiz.validMonths = 12;
+  if(d.quiz.enabled===undefined) d.quiz.enabled = false;
+  (d.team||[]).forEach(m=>{
+    if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
+    if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
+  });
   return d;
 }
 function loadData(){
@@ -1309,7 +1320,20 @@ const WELCOME_TABS = [
 let WELCOME_TAB = 'about';
 function getAllWelcomeTabs(){
   const custom = (DATA.welcome && DATA.welcome.customTabs) || [];
-  return [...WELCOME_TABS, ...custom.map(ct=>({id:'custom_'+ct.id, label:ct.title, customId:ct.id}))];
+  const tabs = [...WELCOME_TABS, ...custom.map(ct=>({id:'custom_'+ct.id, label:ct.title, customId:ct.id}))];
+  // Add Quiz tab for staff who need it or are currently taking it
+  if(!isManagerLogin()){
+    const staffName = getWelcomeStaffName();
+    if(staffName && DATA.quiz && DATA.quiz.enabled && (DATA.quiz.questions||[]).length >= 20){
+      const needsQuiz = quizNeedsQuiz(staffName);
+      const canTake = needsQuiz && quizCanTakeQuiz(staffName);
+      // Show tab if: can take quiz, or quiz is currently active (in-progress or just-submitted)
+      if(canTake || QUIZ_ACTIVE){
+        tabs.push({id:'quiz', label:'📋 Quiz'});
+      }
+    }
+  }
+  return tabs;
 }
 function setWelcomeTab(tab){
   WELCOME_TAB = tab;
@@ -1335,7 +1359,22 @@ function ackWelcomeSection(sectionKey){
 }
 function renderWelcome(){
   const allTabs = getAllWelcomeTabs();
-  const tabsHtml = allTabs.map(t=>`<button class="detail-tab-btn ${WELCOME_TAB===t.id?'active':''}" onclick="setWelcomeTab('${t.id}')">${t.label}</button>`).join('');
+  // If WELCOME_TAB is 'quiz' but quiz tab is no longer visible (e.g. after result cleared), fallback to 'about'
+  if(WELCOME_TAB === 'quiz' && !allTabs.find(t=>t.id==='quiz')) WELCOME_TAB = 'about';
+  const tabsHtml = allTabs.map(t=>`<button class="detail-tab-btn ${WELCOME_TAB===t.id?'active':''}" onclick="setWelcomeTab('${t.id}')">${esc(t.label)}</button>`).join('');
+  const staffName = getWelcomeStaffName();
+
+  // Quiz tab
+  if(WELCOME_TAB === 'quiz'){
+    return `
+      <div class="card">
+        <h2>Welcome</h2>
+        ${staffName ? `<div class="sub">Signed in as <strong>${esc(staffName)}</strong>.</div>` : ''}
+        <div class="detail-tabs">${tabsHtml}</div>
+      </div>
+      ${renderQuizWelcomeTab()}`;
+  }
+
   const isCustomTab = WELCOME_TAB.startsWith('custom_');
   let content = '';
   if(isCustomTab){
@@ -1345,7 +1384,6 @@ function renderWelcome(){
   } else {
     content = (DATA.welcome && DATA.welcome[WELCOME_TAB]) ? DATA.welcome[WELCOME_TAB] : '';
   }
-  const staffName = getWelcomeStaffName();
   const member = DATA.team.find(m=>m.name===staffName);
   let ackDate = null;
   if(member && member.welcomeAck){
@@ -1362,12 +1400,12 @@ function renderWelcome(){
   if(!staffName){
     ackHtml = `<div class="notice">Your login isn't linked to a staff profile yet, so acknowledgments can't be recorded. Ask a manager to link your login to your name.</div>`;
   } else if(ackDate){
-    ackHtml = `<div class="notice" style="background:var(--green-light);color:var(--green-dark);">✓ Acknowledged by ${staffName} on ${fmtShortDate(ackDate.slice(0,10))}.</div>`;
+    ackHtml = `<div class="notice" style="background:var(--green-light);color:var(--green-dark);">✓ Acknowledged by ${esc(staffName)} on ${fmtShortDate(ackDate.slice(0,10))}.</div>`;
   } else {
     ackHtml = `
       <label class="checkbox-line">
         <input type="checkbox" onchange="if(this.checked) ackWelcomeSection('${WELCOME_TAB}');">
-        I, ${staffName}, have read and understood "${sectionLabel}."
+        I, ${esc(staffName)}, have read and understood "${esc(sectionLabel)}."
       </label>
       <div class="sub" style="margin-top:6px;">This is a one-time acknowledgment and will be recorded in your employee file.</div>
     `;
@@ -1377,7 +1415,7 @@ function renderWelcome(){
     <div class="card">
       <h2>Welcome</h2>
       <div class="sub">A quick reference for new hires and existing staff — who we are, our policies, and how we operate. This content is kept up to date from the Manager tab.</div>
-      ${staffName ? `<div class="sub">Signed in as <strong>${staffName}</strong>.</div>` : ''}
+      ${staffName ? `<div class="sub">Signed in as <strong>${esc(staffName)}</strong>.</div>` : ''}
       <div class="detail-tabs">${tabsHtml}</div>
     </div>
     <div class="card">
@@ -1385,6 +1423,190 @@ function renderWelcome(){
       <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:16px;">${ackHtml}</div>
     </div>
   `;
+}
+
+/* ---------- QUIZ SYSTEM ---------- */
+let QUIZ_ACTIVE = null;
+// QUIZ_ACTIVE shape when set:
+// { questions: [{question, answers:[{text,correct},...x4]}, ...x20], selected: {qi:ai}, submitted: false, result: null }
+
+function quizNeedsQuiz(name){
+  if(!DATA.quiz || !DATA.quiz.enabled) return false;
+  if((DATA.quiz.questions||[]).length < 20) return false;
+  const m = DATA.team.find(t=>t.name===name);
+  if(!m) return false;
+  const passedUntil = m.quizPassedUntil;
+  if(passedUntil && passedUntil >= todayStr()) return false;
+  return true;
+}
+function quizCanTakeQuiz(name){
+  const m = DATA.team.find(t=>t.name===name);
+  if(!m) return false;
+  const attempts = m.quizAttempts||[];
+  if(!attempts.length) return true;
+  const last = attempts[attempts.length-1];
+  if(last.passed) return true;
+  const daysSince = Math.floor((Date.now() - new Date(last.date).getTime()) / (1000*60*60*24));
+  return daysSince >= (DATA.quiz.cooldownDays || 7);
+}
+function quizCooldownDaysLeft(name){
+  const m = DATA.team.find(t=>t.name===name);
+  if(!m) return 0;
+  const attempts = m.quizAttempts||[];
+  if(!attempts.length) return 0;
+  const last = attempts[attempts.length-1];
+  if(last.passed) return 0;
+  const daysSince = Math.floor((Date.now() - new Date(last.date).getTime()) / (1000*60*60*24));
+  return Math.max(0, (DATA.quiz.cooldownDays||7) - daysSince);
+}
+function startQuiz(){
+  const qs = DATA.quiz.questions;
+  // Shuffle all questions, pick 20
+  const pool = [...qs].sort(()=>Math.random()-0.5).slice(0,20);
+  // For each question, shuffle the 4 answers but remember which is correct (index 0 in stored data)
+  const processed = pool.map(q=>{
+    const answers = q.answers.map((text,i)=>({text, correct: i===0}));
+    for(let i=answers.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [answers[i],answers[j]]=[answers[j],answers[i]];
+    }
+    return {question: q.question, answers};
+  });
+  QUIZ_ACTIVE = {questions: processed, selected: {}, submitted: false, result: null};
+  WELCOME_TAB = 'quiz';
+  showTab('welcome');
+}
+function selectQuizAnswer(qi, ai){
+  if(!QUIZ_ACTIVE || QUIZ_ACTIVE.submitted) return;
+  QUIZ_ACTIVE.selected[qi] = ai;
+  // Update answered count display
+  const count = Object.keys(QUIZ_ACTIVE.selected).length;
+  const countEl = document.getElementById('quiz-answered-count');
+  const btnEl = document.getElementById('quiz-submit-btn');
+  if(countEl) countEl.textContent = count + '/20 answered';
+  if(btnEl) btnEl.textContent = 'Submit Quiz (' + count + '/20 answered)';
+  // Toggle visual state of this question's answers
+  const qCard = document.getElementById('quiz-q-' + qi);
+  if(qCard){
+    qCard.querySelectorAll('.quiz-ans-label').forEach((lbl,i)=>{
+      const selected = (i === ai);
+      lbl.style.borderColor = selected ? 'var(--green-dark,#2a9d5c)' : 'var(--border,#ddd)';
+      lbl.style.background = selected ? 'rgba(42,157,92,0.10)' : 'var(--surface,#fff)';
+    });
+  }
+}
+function submitQuiz(){
+  if(!QUIZ_ACTIVE || QUIZ_ACTIVE.submitted) return;
+  const answered = Object.keys(QUIZ_ACTIVE.selected).length;
+  if(answered < QUIZ_ACTIVE.questions.length){
+    alert('Please answer all ' + QUIZ_ACTIVE.questions.length + ' questions before submitting. You\'ve answered ' + answered + ' so far.');
+    return;
+  }
+  let score = 0;
+  QUIZ_ACTIVE.questions.forEach((q,qi)=>{
+    const si = QUIZ_ACTIVE.selected[qi];
+    if(si !== undefined && q.answers[si] && q.answers[si].correct) score++;
+  });
+  const total = QUIZ_ACTIVE.questions.length;
+  const pct = Math.round(score/total*100);
+  const passed = pct >= (DATA.quiz.passingPct||80);
+  const date = new Date().toISOString();
+  const name = getWelcomeStaffName();
+  const m = DATA.team.find(t=>t.name===name);
+  if(m){
+    if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
+    const attempt = {id: Date.now(), date, score, total, pct, passed};
+    m.quizAttempts.push(attempt);
+    if(passed){
+      const validMonths = DATA.quiz.validMonths || 12;
+      const d = new Date();
+      d.setMonth(d.getMonth() + validMonths);
+      m.quizPassedUntil = d.toISOString().slice(0,10);
+    }
+    saveData();
+  }
+  QUIZ_ACTIVE.submitted = true;
+  QUIZ_ACTIVE.result = {score, total, pct, passed, date};
+  showTab('welcome');
+}
+function renderQuizWelcomeTab(){
+  const staffName = getWelcomeStaffName();
+  const m = DATA.team.find(t=>t.name===staffName);
+
+  // --- RESULT SCREEN (just submitted) ---
+  if(QUIZ_ACTIVE && QUIZ_ACTIVE.submitted && QUIZ_ACTIVE.result){
+    const r = QUIZ_ACTIVE.result;
+    const passedUntil = m ? m.quizPassedUntil : null;
+    return `
+      <div class="card" style="border-left:5px solid ${r.passed?'#2a9d5c':'var(--red)'};background:${r.passed?'rgba(42,157,92,0.05)':'rgba(220,50,50,0.04)'};">
+        <h2>${r.passed ? '🎉 Quiz Passed!' : '✗ Quiz Not Passed'}</h2>
+        <div style="font-size:30px;font-weight:800;color:${r.passed?'#2a9d5c':'var(--red)'};margin:8px 0;">${r.score}/${r.total} &mdash; ${r.pct}%</div>
+        ${r.passed
+          ? `<div class="sub">Great work, ${esc(staffName)}! Your result has been recorded in your employee file. You won't need to retake this quiz until ${passedUntil ? fmtShortDate(passedUntil) : 'next year'}.</div>`
+          : `<div class="sub">You needed ${DATA.quiz.passingPct||80}% to pass. Your result has been recorded. You can retake the quiz in ${DATA.quiz.cooldownDays||7} day${(DATA.quiz.cooldownDays||7)===1?'':'s'}.</div>`
+        }
+      </div>`;
+  }
+
+  // --- ACTIVE QUIZ SCREEN ---
+  if(QUIZ_ACTIVE && !QUIZ_ACTIVE.submitted){
+    const count = Object.keys(QUIZ_ACTIVE.selected).length;
+    return `
+      <div class="card">
+        <h2>📋 Knowledge Quiz</h2>
+        <div class="sub">Answer all ${QUIZ_ACTIVE.questions.length} questions below, then click Submit. You cannot go back once submitted.</div>
+        <div id="quiz-answered-count" style="margin-top:6px;font-size:13px;color:var(--text-light);">${count}/${QUIZ_ACTIVE.questions.length} answered</div>
+      </div>
+      ${QUIZ_ACTIVE.questions.map((q,qi)=>`
+        <div class="card" id="quiz-q-${qi}" style="margin-bottom:8px;">
+          <div style="font-weight:600;font-size:15px;margin-bottom:10px;">${qi+1}. ${esc(q.question)}</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${q.answers.map((a,ai)=>`
+              <label class="quiz-ans-label" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:2px solid ${QUIZ_ACTIVE.selected[qi]===ai?'var(--green-dark,#2a9d5c)':'var(--border,#ddd)'};background:${QUIZ_ACTIVE.selected[qi]===ai?'rgba(42,157,92,0.10)':'var(--surface,#fff)'};cursor:pointer;transition:border-color .12s,background .12s;" onclick="selectQuizAnswer(${qi},${ai})">
+                <input type="radio" name="quiz-q-${qi}" value="${ai}" ${QUIZ_ACTIVE.selected[qi]===ai?'checked':''} style="margin-top:2px;flex-shrink:0;pointer-events:none;">
+                <span style="font-size:14px;">${esc(a.text)}</span>
+              </label>`).join('')}
+          </div>
+        </div>`).join('')}
+      <div class="card">
+        <button id="quiz-submit-btn" class="btn-primary" onclick="submitQuiz()" style="width:100%;padding:14px;font-size:16px;">
+          Submit Quiz (${count}/${QUIZ_ACTIVE.questions.length} answered)
+        </button>
+      </div>`;
+  }
+
+  // --- INTRO / COOLDOWN SCREEN ---
+  const attempts = m ? (m.quizAttempts||[]) : [];
+  const lastAttempt = attempts.length ? attempts[attempts.length-1] : null;
+  const cooldownLeft = quizCooldownDaysLeft(staffName);
+  return `
+    <div class="card">
+      <h2>📋 Knowledge Quiz</h2>
+      <div class="sub">You'll receive ${Math.min(20,(DATA.quiz.questions||[]).length)} random questions from our question bank. You need ${DATA.quiz.passingPct||80}% or higher to pass.</div>
+      ${lastAttempt ? `
+        <div style="margin:12px 0 0;padding:10px 14px;border-radius:8px;background:${lastAttempt.passed?'rgba(42,157,92,0.08)':'rgba(220,50,50,0.06)'};border:1px solid ${lastAttempt.passed?'#2a9d5c':'var(--red)'};">
+          <strong>Last attempt:</strong> ${lastAttempt.score}/${lastAttempt.total||20} (${lastAttempt.pct}%) — ${lastAttempt.passed?'✓ Passed':'✗ Not passed'} on ${fmtShortDate(lastAttempt.date.slice(0,10))}
+        </div>` : ''}
+      ${cooldownLeft > 0
+        ? `<div class="notice" style="margin-top:12px;background:#fff3cd;color:#856404;border-radius:8px;padding:10px 14px;">⏳ You must wait <strong>${cooldownLeft} more day${cooldownLeft===1?'':'s'}</strong> before retaking the quiz.</div>`
+        : `<div style="margin-top:14px;">
+             <p style="margin:0 0 12px;font-size:14px;">The quiz draws from ${(DATA.quiz.questions||[]).length} questions — no two attempts are identical.</p>
+             <button class="btn-primary" onclick="startQuiz()">Start Quiz</button>
+           </div>`}
+    </div>
+    ${attempts.length ? `
+      <div class="card">
+        <h2>Your Attempt History</h2>
+        <table><tr><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr>
+          ${[...attempts].reverse().map(a=>`
+            <tr>
+              <td>${fmtShortDate(a.date.slice(0,10))}</td>
+              <td>${a.score}/${a.total||20}</td>
+              <td>${a.pct}%</td>
+              <td><span class="tag" style="background:${a.passed?'#d7f0dc':'#fde2e2'};color:${a.passed?'#1e6b2e':'#c0392b'};">${a.passed?'✓ Passed':'✗ Failed'}</span></td>
+            </tr>`).join('')}
+        </table>
+      </div>` : ''}`;
 }
 
 /* ---------- TEAM (read-only directory + personal employee file for staff) ---------- */
@@ -1431,6 +1653,27 @@ function renderStaffFileReadOnly(m){
         <tr><th>Date</th><th>Description</th><th>Severity</th><th>Status</th></tr>
         ${incidents.map(i=>`<tr><td>${i.date}</td><td>${i.desc}</td><td>${i.severity}</td><td>${i.status}</td></tr>`).join('')}
       </table>` : '<div class="empty">No incidents on file.</div>'}
+    </div>
+    <div class="card">
+      <h2>Quiz</h2>
+      ${(()=>{
+        const qa = m.quizAttempts||[];
+        const pu = m.quizPassedUntil;
+        if(!qa.length && !pu) return '<div class="empty">No quiz attempts on file.</div>';
+        return `
+          ${pu ? `<div class="notice" style="background:${pu>=todayStr()?'rgba(42,157,92,0.08)':'rgba(220,50,50,0.06)'};color:${pu>=todayStr()?'#1e6b2e':'var(--red)'};margin-bottom:10px;">
+            Pass valid until: <strong>${fmtShortDate(pu)}</strong>${pu<todayStr()?' — <em>expired</em>':''}
+          </div>` : ''}
+          ${qa.length ? `<table>
+            <tr><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr>
+            ${[...qa].reverse().map(a=>`<tr>
+              <td>${fmtShortDate(a.date.slice(0,10))}</td>
+              <td>${a.score}/${a.total||20}</td>
+              <td>${a.pct}%</td>
+              <td><span class="tag" style="background:${a.passed?'#d7f0dc':'#fde2e2'};color:${a.passed?'#1e6b2e':'#c0392b'};">${a.passed?'✓ Passed':'✗ Failed'}</span></td>
+            </tr>`).join('')}
+          </table>` : ''}`;
+      })()}
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -1496,6 +1739,27 @@ function renderTeam(){
         ${myIncidents.map(i=>`
           <tr><td>${i.date}</td><td>${i.desc}</td><td>${i.severity}</td><td>${i.status}</td></tr>`).join('')}
       </table>` : '<div class="empty">No incidents on file.</div>'}
+    </div>
+    <div class="card">
+      <h2>My Quiz Results</h2>
+      ${(()=>{
+        const qa = me.quizAttempts||[];
+        const pu = me.quizPassedUntil;
+        if(!qa.length && !pu) return '<div class="empty">No quiz attempts on file yet.</div>';
+        return `
+          ${pu ? `<div class="notice" style="background:${pu>=todayStr()?'rgba(42,157,92,0.08)':'rgba(220,50,50,0.06)'};color:${pu>=todayStr()?'#1e6b2e':'var(--red)'};margin-bottom:10px;">
+            Pass valid until: <strong>${fmtShortDate(pu)}</strong>${pu<todayStr()?' — <em>expired, you will need to retake the quiz</em>':''}
+          </div>` : ''}
+          ${qa.length ? `<table>
+            <tr><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr>
+            ${[...qa].reverse().map(a=>`<tr>
+              <td>${fmtShortDate(a.date.slice(0,10))}</td>
+              <td>${a.score}/${a.total||20}</td>
+              <td>${a.pct}%</td>
+              <td><span class="tag" style="background:${a.passed?'#d7f0dc':'#fde2e2'};color:${a.passed?'#1e6b2e':'#c0392b'};">${a.passed?'✓ Passed':'✗ Failed'}</span></td>
+            </tr>`).join('')}
+          </table>` : ''}`;
+      })()}
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -4895,6 +5159,7 @@ const MANAGER_TABS = [
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
   {id:'welcome', label:'Welcome'},
+  {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
   {id:'data', label:'Data Tools'}
 ];
@@ -5573,6 +5838,91 @@ function renderManager(){
         </div>
       </div>
     `;
+  } else if(MANAGER_TAB === 'quiz'){
+    const quiz = DATA.quiz;
+    const questions = quiz.questions || [];
+    const staffWithQuiz = DATA.team.filter(m=>Array.isArray(m.quizAttempts) && (m.quizAttempts.length > 0 || m.quizPassedUntil));
+    body = `
+      <div class="card">
+        <h2>Quiz Settings</h2>
+        <div class="sub">Staff see a randomized 20-question quiz in their Welcome tab. Once submitted (pass or fail), the quiz tab disappears so they cannot review the answers.</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <label class="checkbox-line" style="font-size:15px;font-weight:600;">
+            <input type="checkbox" ${quiz.enabled?'checked':''} onchange="DATA.quiz.enabled=this.checked;saveData();showTab('manager');">
+            Quiz Enabled
+          </label>
+          ${!quiz.enabled ? '<span class="tag" style="background:#fde2e2;color:#c0392b;">Quiz is OFF — staff will not see the quiz tab</span>' : '<span class="tag" style="background:#d7f0dc;color:#1e6b2e;">Quiz is ON</span>'}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:16px;">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
+            Passing Score (%)
+            <input type="number" min="1" max="100" value="${quiz.passingPct||80}" style="font-size:15px;"
+              onchange="DATA.quiz.passingPct=Math.min(100,Math.max(1,parseInt(this.value)||80));saveData();">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
+            Fail Cooldown (days)
+            <input type="number" min="1" value="${quiz.cooldownDays||7}" style="font-size:15px;"
+              onchange="DATA.quiz.cooldownDays=Math.max(1,parseInt(this.value)||7);saveData();">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
+            Pass Valid (months)
+            <input type="number" min="1" value="${quiz.validMonths||12}" style="font-size:15px;"
+              onchange="DATA.quiz.validMonths=Math.max(1,parseInt(this.value)||12);saveData();">
+          </label>
+        </div>
+        <div class="sub" style="margin-top:8px;">Questions in bank: <strong>${questions.length}</strong> ${questions.length < 20 ? '<span style="color:var(--red);">(need at least 20 to enable quiz)</span>' : ''}</div>
+      </div>
+
+      <div class="card">
+        <h2>Question Bank</h2>
+        <div class="sub">Write your questions here. For each question, the first answer is the correct one — the quiz will randomize their order for staff. Add as many questions as you like; staff always get a random 20.</div>
+        <div style="margin-top:12px;">
+          <button class="btn-small" onclick="addQuizQuestion()">+ Add Question</button>
+        </div>
+        ${questions.length === 0 ? '<div class="empty" style="margin-top:12px;">No questions yet. Click "+ Add Question" to get started.</div>' : ''}
+        ${questions.map((q,qi)=>`
+          <div id="quiz-q-mgr-${q.id}" style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
+              <span style="font-weight:700;color:var(--text-light);min-width:26px;">${qi+1}.</span>
+              <textarea id="quiz-qtxt-${q.id}" rows="2" style="flex:1;font-size:14px;" onchange="saveQuizQuestion(${q.id})">${esc(q.question)}</textarea>
+              <button class="btn-ghost" style="color:var(--red);flex-shrink:0;" onclick="deleteQuizQuestion(${q.id})">Delete</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding-left:34px;">
+              <label style="font-size:11px;font-weight:700;color:#2a9d5c;text-transform:uppercase;letter-spacing:.5px;">✓ Correct Answer</label>
+              <input type="text" id="quiz-qa0-${q.id}" value="${esc(q.answers[0]||'')}" placeholder="Correct answer" style="border-color:#2a9d5c;" onchange="saveQuizQuestion(${q.id})">
+              <label style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">Wrong Answers</label>
+              <input type="text" id="quiz-qa1-${q.id}" value="${esc(q.answers[1]||'')}" placeholder="Wrong answer 1" onchange="saveQuizQuestion(${q.id})">
+              <input type="text" id="quiz-qa2-${q.id}" value="${esc(q.answers[2]||'')}" placeholder="Wrong answer 2" onchange="saveQuizQuestion(${q.id})">
+              <input type="text" id="quiz-qa3-${q.id}" value="${esc(q.answers[3]||'')}" placeholder="Wrong answer 3" onchange="saveQuizQuestion(${q.id})">
+            </div>
+          </div>`).join('')}
+      </div>
+
+      ${staffWithQuiz.length ? `
+      <div class="card">
+        <h2>Staff Quiz Status</h2>
+        <table>
+          <tr><th>Name</th><th>Attempts</th><th>Last Score</th><th>Pass Valid Until</th><th>Override Date</th></tr>
+          ${DATA.team.map(m=>{
+            const attempts = m.quizAttempts||[];
+            const last = attempts.length ? attempts[attempts.length-1] : null;
+            const passedUntil = m.quizPassedUntil;
+            const needsQuiz = quizNeedsQuiz(m.name);
+            return `<tr>
+              <td>${esc(m.name)}</td>
+              <td>${attempts.length}</td>
+              <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
+              <td>${passedUntil ? fmtShortDate(passedUntil) : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
+              <td><input type="date" value="${passedUntil||''}" style="font-size:12px;" onchange="setStaffQuizPassedUntil(${m.id},this.value)"></td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>` : `
+      <div class="card">
+        <h2>Staff Quiz Status</h2>
+        <div class="empty">No quiz attempts yet — status will appear here once staff start taking the quiz.</div>
+      </div>`}
+    `;
   } else if(MANAGER_TAB === 'admin'){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
     const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
@@ -6009,6 +6359,37 @@ function resetData(){
 }
 
 function val(id){ return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
+
+/* -------- Quiz manager functions -------- */
+function addQuizQuestion(){
+  if(!DATA.quiz.questions) DATA.quiz.questions = [];
+  DATA.quiz.questions.push({id: Date.now(), question:'', answers:['','','','']});
+  saveData();
+  showTab('manager');
+}
+function saveQuizQuestion(id){
+  const q = DATA.quiz.questions.find(x=>x.id===id);
+  if(!q) return;
+  const qtxt = document.getElementById('quiz-qtxt-'+id);
+  if(qtxt) q.question = qtxt.value.trim();
+  for(let i=0;i<4;i++){
+    const el = document.getElementById('quiz-qa'+i+'-'+id);
+    if(el) q.answers[i] = el.value.trim();
+  }
+  saveData();
+}
+function deleteQuizQuestion(id){
+  if(!confirm('Delete this question?')) return;
+  DATA.quiz.questions = DATA.quiz.questions.filter(x=>x.id!==id);
+  saveData();
+  showTab('manager');
+}
+function setStaffQuizPassedUntil(memberId, dateStr){
+  const m = DATA.team.find(t=>t.id===memberId);
+  if(!m) return;
+  m.quizPassedUntil = dateStr || null;
+  saveData();
+}
 </script>
 </body>
 </html>
