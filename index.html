@@ -896,6 +896,9 @@ async function pushCloudData(){
 }
 function rerenderCurrentView(){
   if(!CURRENT_LOGIN) return;
+  // Don't re-render while the user is actively typing — it would wipe their input
+  const focused = document.activeElement;
+  if(focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) return;
   buildTabs();
   showTab(CURRENT_TAB || 'dashboard');
 }
