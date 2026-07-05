@@ -3585,11 +3585,12 @@ function isPayDay(date){
   if(diff<0) diff += freqDays;
   return diff===0;
 }
-/* Auto-shift logic: start as close to 8am as the show schedule allows.
-   If all prep can fit between 8am and the show, start at 8am.
-   If prep requires starting before 8am, start then (before 8 is fine).
-   Shift is always 8 hours from start; warn if the actual day runs longer.
-   Multi-day shows (endDate set) appear on every day in their range.
+/* Auto-shift logic:
+   - Shift end = unload finished rounded up to next 30 min, minimum 4:00 PM.
+   - Shift start = shift end minus 8 hours, minimum 8:00 AM.
+   - Exception: if pack/load time is before 8am, start at pack time (rounded to nearest 30).
+   So: unload ≤ 4pm → 8am-4pm. Unload at 4:24 → 8:30am-4:30pm. Pack at 7:30am → 7:30am-4pm.
+   Multi-day shows appear on every day in their range.
    Overnight shows default to 8-4 each day (staff stay on site, no travel calc). */
 function getAutoShiftsForDate(date){
   const map = {};
@@ -3620,16 +3621,21 @@ function getAutoShiftsForDate(date){
       a.shiftEnd = 960;   // 16:00
       a.overrunMinutes = 0;
     } else {
-      // Round unpack time UP to nearest 30 min, then work backward 8 hours
-      // e.g. unpack at 5pm → shift 9am-5pm; unpack at 5:45pm → round to 6pm → shift 10am-6pm
+      // Shift end = unload finished rounded up to next 30 min, minimum 4:00 PM (960)
       const roundedEnd = Math.ceil(a.dayEnd / 30) * 30;
-      const startFromEnd = roundedEnd - 8*60;
-      // If prep requires starting before calculated start, honour that (can be before 8am)
-      const rawStart = Math.min(startFromEnd, a.requiredStart);
-      // Round start to nearest 30 minutes for clean display
-      a.shiftStart = Math.round(rawStart / 30) * 30;
-      a.shiftEnd = a.shiftStart + 8*60;
-      // Overrun: actual day extends past the 8-hour mark
+      const shiftEnd = Math.max(960, roundedEnd);
+      // Shift start = shift end minus 8 hours, minimum 8:00 AM (480)
+      const normalStart = Math.max(480, shiftEnd - 8*60);
+      if(a.requiredStart < 480){
+        // Pack time is before 8am — must start early; round to nearest 30 min
+        a.shiftStart = Math.round(a.requiredStart / 30) * 30;
+        a.shiftEnd = Math.max(shiftEnd, a.shiftStart + 8*60);
+      } else {
+        // Normal case: 8am minimum start, shift end at least 4pm
+        a.shiftStart = normalStart;
+        a.shiftEnd = shiftEnd;
+      }
+      // Overrun: actual day extends past the scheduled shift end
       a.overrunMinutes = Math.max(0, a.dayEnd - a.shiftEnd);
     }
   });
