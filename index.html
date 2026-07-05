@@ -2148,7 +2148,8 @@ function renderLiveStatusBoard(){
 }
 
 function renderDashboard(){
-  const todaysTasks = DATA.tasks.filter(t=>!t.archived && isTaskActiveToday(t));
+  const validGroupIds = new Set((DATA.taskGroups||[]).map(g=>g.id));
+  const todaysTasks = DATA.tasks.filter(t=>!t.archived && isTaskActiveToday(t) && validGroupIds.has(t.group));
   const total = todaysTasks.length;
   const done = todaysTasks.filter(t=>t.done).length;
   const pct = total ? Math.round(done/total*100) : 0;
@@ -5291,7 +5292,7 @@ function renderManager(){
           <div class="stat-box"><div class="num">${DATA.team.length}</div><div class="lbl">Team members</div></div>
           <div class="stat-box"><div class="num">${openRepairs}</div><div class="lbl">Open repairs</div></div>
           <div class="stat-box"><div class="num">${openIncidents}</div><div class="lbl">Open incidents</div></div>
-          <div class="stat-box"><div class="num">${DATA.tasks.filter(t=>!t.done).length}</div><div class="lbl">Tasks outstanding</div></div>
+          <div class="stat-box"><div class="num">${(()=>{const vg=new Set((DATA.taskGroups||[]).map(g=>g.id));return DATA.tasks.filter(t=>!t.done&&!t.archived&&vg.has(t.group)).length;})()}</div><div class="lbl">Tasks outstanding</div></div>
           <div class="stat-box"><div class="num">${DATA.roadTasks.filter(t=>!t.done).length}</div><div class="lbl">Road tasks open</div></div>
         </div>
       </div>
