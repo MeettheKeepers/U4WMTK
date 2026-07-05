@@ -3720,9 +3720,24 @@ function undoClockOut(name){
   saveData();
   showTab(CURRENT_TAB);
 }
+function roundedClockIn(isoString){
+  // Round clock-in to nearest hour: >=30 min → next hour, <30 min → current hour
+  const d = new Date(isoString);
+  const rounded = new Date(d);
+  rounded.setSeconds(0, 0);
+  if(d.getMinutes() >= 30){
+    rounded.setMinutes(0);
+    rounded.setHours(d.getHours() + 1);
+  } else {
+    rounded.setMinutes(0);
+  }
+  return rounded;
+}
 function hoursWorked(entry){
   if(!entry || !entry.clockIn || !entry.clockOut) return null;
-  const ms = new Date(entry.clockOut) - new Date(entry.clockIn);
+  const clockIn = roundedClockIn(entry.clockIn); // round clock-in to nearest hour
+  const clockOut = new Date(entry.clockOut);      // clock-out is exact
+  const ms = clockOut - clockIn;
   if(ms<=0) return null;
   let breakMs = 0;
   (entry.breaks||[]).forEach(b=>{
