@@ -1532,10 +1532,9 @@ function submitQuiz(){
     const attempt = {id: Date.now(), date, score, total, pct, passed, details};
     m.quizAttempts.push(attempt);
     if(passed){
-      const validMonths = DATA.quiz.validMonths || 12;
-      const d = new Date();
-      d.setMonth(d.getMonth() + validMonths);
-      m.quizPassedUntil = d.toISOString().slice(0,10);
+      // Valid until January 1st of the next calendar year
+      const nextJan1 = new Date(new Date().getFullYear() + 1, 0, 1);
+      m.quizPassedUntil = nextJan1.toISOString().slice(0,10);
     }
     saveData();
   }
@@ -1556,7 +1555,7 @@ function renderQuizWelcomeTab(){
         <h2>${r.passed ? '🎉 Quiz Passed!' : '✗ Quiz Not Passed'}</h2>
         <div style="font-size:30px;font-weight:800;color:${r.passed?'#2a9d5c':'var(--red)'};margin:8px 0;">${r.score}/${r.total} &mdash; ${r.pct}%</div>
         ${r.passed
-          ? `<div class="sub">Great work, ${esc(staffName)}! Your result has been recorded in your employee file. You won't need to retake this quiz until ${passedUntil ? fmtShortDate(passedUntil) : 'next year'}.</div>`
+          ? `<div class="sub">Great work, ${esc(staffName)}! Your result has been recorded in your employee file. You won't need to retake this quiz until January 1, ${new Date().getFullYear()+1}.</div>`
           : `<div class="sub">You needed ${DATA.quiz.passingPct||80}% to pass. Your result has been recorded. You can retake the quiz in ${DATA.quiz.cooldownDays||7} day${(DATA.quiz.cooldownDays||7)===1?'':'s'}.</div>`
         }
       </div>`;
@@ -5957,11 +5956,10 @@ function renderManager(){
             <input type="number" min="1" value="${quiz.cooldownDays||7}" style="font-size:15px;"
               onchange="DATA.quiz.cooldownDays=Math.max(1,parseInt(this.value)||7);saveData();">
           </label>
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
-            Pass Valid (months)
-            <input type="number" min="1" value="${quiz.validMonths||12}" style="font-size:15px;"
-              onchange="DATA.quiz.validMonths=Math.max(1,parseInt(this.value)||12);saveData();">
-          </label>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--text-light);">
+            Pass Validity
+            <span style="font-size:14px;font-weight:400;color:var(--text);">Until Jan 1 of next year</span>
+          </div>
         </div>
         <div class="sub" style="margin-top:8px;">Questions in bank: <strong>${questions.length}</strong> ${questions.length < 20 ? '<span style="color:var(--red);">(need at least 20 to enable quiz)</span>' : ''}</div>
       </div>
