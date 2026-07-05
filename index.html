@@ -1428,6 +1428,7 @@ function renderWelcome(){
 /* ---------- QUIZ SYSTEM ---------- */
 let QUIZ_ACTIVE = null;
 let QUIZ_STAFF_VIEW = null; // {memberId, attemptId} — manager reviewing a staff attempt
+let QUIZ_BANK_OPEN = false; // question bank collapsed by default
 // QUIZ_ACTIVE shape when set:
 // { questions: [{question, answers:[{text,correct},...x4]}, ...x20], selected: {qi:ai}, submitted: false, result: null }
 
@@ -5966,8 +5967,12 @@ function renderManager(){
       </div>
 
       <div class="card">
-        <h2>Question Bank</h2>
-        <div class="sub">Write your questions here. For each question, the first answer is the correct one — the quiz will randomize their order for staff. Add as many questions as you like; staff always get a random 20.</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2 style="margin:0;flex:1;">Question Bank <span style="font-size:13px;font-weight:400;color:var(--text-light);">(${questions.length} question${questions.length===1?'':'s'})</span></h2>
+          <button class="btn-ghost" onclick="QUIZ_BANK_OPEN=!QUIZ_BANK_OPEN;showTab('manager');">${QUIZ_BANK_OPEN?'▾ Collapse':'▸ Expand'}</button>
+        </div>
+        ${QUIZ_BANK_OPEN ? `
+        <div class="sub" style="margin-top:6px;">For each question, the first answer is the correct one — the quiz randomizes their order for staff. Add as many as you like; staff always get a random 20.</div>
         <div style="margin-top:12px;">
           <button class="btn-small" onclick="addQuizQuestion()">+ Add Question</button>
         </div>
@@ -5988,6 +5993,7 @@ function renderManager(){
               <input type="text" id="quiz-qa3-${q.id}" value="${esc(q.answers[3]||'')}" placeholder="Wrong answer 3" onchange="saveQuizQuestion(${q.id})">
             </div>
           </div>`).join('')}
+        ` : ''}
       </div>
 
       <div class="card">
@@ -6005,7 +6011,10 @@ function renderManager(){
               <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
               <td>${passedUntil ? `<span style="color:${passedUntil>=todayStr()?'#2a9d5c':'var(--red)'};">${fmtShortDate(passedUntil)}</span>` : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
               <td><input type="date" value="${passedUntil||''}" style="font-size:12px;" onchange="setStaffQuizPassedUntil(${m.id},this.value)"></td>
-              <td><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="resetStaffQuiz(${m.id})">Reset Quiz</button></td>
+              <td style="white-space:nowrap;">
+                <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="resetStaffQuiz(${m.id})">Reset Quiz</button>
+                <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;margin-left:4px;" onclick="fullResetStaffQuiz(${m.id})">Full Reset</button>
+              </td>
             </tr>`;
           }).join('')}
         </table>
@@ -6478,6 +6487,15 @@ function setStaffQuizPassedUntil(memberId, dateStr){
   if(!m) return;
   m.quizPassedUntil = dateStr || null;
   saveData();
+}
+function fullResetStaffQuiz(memberId){
+  const m = DATA.team.find(t=>t.id===memberId);
+  if(!m) return;
+  if(!confirm(`Fully reset ${m.name}'s quiz back to zero? This clears their pass status AND all attempt history. They will start fresh as if they never took it.`)) return;
+  m.quizPassedUntil = null;
+  m.quizAttempts = [];
+  saveData();
+  showTab('manager');
 }
 function resetStaffQuiz(memberId){
   const m = DATA.team.find(t=>t.id===memberId);
