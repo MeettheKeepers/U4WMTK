@@ -1427,6 +1427,7 @@ function renderWelcome(){
 
 /* ---------- QUIZ SYSTEM ---------- */
 let QUIZ_ACTIVE = null;
+let QUIZ_STAFF_VIEW = null; // {memberId, attemptId} — manager reviewing a staff attempt
 // QUIZ_ACTIVE shape when set:
 // { questions: [{question, answers:[{text,correct},...x4]}, ...x20], selected: {qi:ai}, submitted: false, result: null }
 
@@ -1515,7 +1516,19 @@ function submitQuiz(){
   const m = DATA.team.find(t=>t.name===name);
   if(m){
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
-    const attempt = {id: Date.now(), date, score, total, pct, passed};
+    // Store per-question detail so manager can review results
+    const details = QUIZ_ACTIVE.questions.map((q,qi)=>{
+      const si = QUIZ_ACTIVE.selected[qi];
+      const selected = si!==undefined ? q.answers[si] : null;
+      const correctAns = q.answers.find(a=>a.correct);
+      return {
+        question: q.question,
+        selectedAnswer: selected ? selected.text : null,
+        correctAnswer: correctAns ? correctAns.text : null,
+        correct: !!(selected && selected.correct)
+      };
+    });
+    const attempt = {id: Date.now(), date, score, total, pct, passed, details};
     m.quizAttempts.push(attempt);
     if(passed){
       const validMonths = DATA.quiz.validMonths || 12;
@@ -1607,6 +1620,78 @@ function renderQuizWelcomeTab(){
             </tr>`).join('')}
         </table>
       </div>` : ''}`;
+}
+
+function openQuizStaffDetail(memberId, attemptId){
+  QUIZ_STAFF_VIEW = {memberId, attemptId: attemptId || null};
+  showTab('manager');
+}
+function closeQuizStaffDetail(){
+  QUIZ_STAFF_VIEW = null;
+  showTab('manager');
+}
+function renderManagerQuizStaffDetail(){
+  const m = DATA.team.find(t=>t.id===QUIZ_STAFF_VIEW.memberId);
+  if(!m) return '<div class="card"><div class="empty">Staff member not found.</div></div>';
+  const attempts = m.quizAttempts||[];
+
+  // If a specific attempt is selected, show that one; otherwise show the most recent
+  let attempt = QUIZ_STAFF_VIEW.attemptId
+    ? attempts.find(a=>a.id===QUIZ_STAFF_VIEW.attemptId)
+    : (attempts.length ? attempts[attempts.length-1] : null);
+
+  const attemptSelector = attempts.length > 1 ? `
+    <div style="margin-top:10px;">
+      <label style="font-size:13px;font-weight:600;">View attempt: </label>
+      <select style="font-size:13px;" onchange="QUIZ_STAFF_VIEW.attemptId=parseInt(this.value);showTab('manager');">
+        ${[...attempts].reverse().map(a=>`
+          <option value="${a.id}" ${(attempt&&attempt.id===a.id)?'selected':''}>
+            ${fmtShortDate(a.date.slice(0,10))} — ${a.score}/${a.total||20} (${a.pct}%) ${a.passed?'✓':'✗'}
+          </option>`).join('')}
+      </select>
+    </div>` : '';
+
+  if(!attempt){
+    return `
+      <div class="card">
+        <button class="btn-ghost" onclick="closeQuizStaffDetail()">← Back to Quiz Status</button>
+        <h2 style="margin-top:10px;">${esc(m.name)} — Quiz Results</h2>
+        <div class="empty">No attempts on file yet.</div>
+      </div>`;
+  }
+
+  const details = attempt.details || [];
+  const correct = details.filter(d=>d.correct).length;
+  const wrong = details.filter(d=>!d.correct).length;
+
+  return `
+    <div class="card">
+      <button class="btn-ghost" onclick="closeQuizStaffDetail()">← Back to Quiz Status</button>
+      <h2 style="margin-top:10px;">${esc(m.name)} — Quiz Results</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;">
+        <div class="stat-box"><div class="num" style="color:#2a9d5c;">${correct}</div><div class="lbl">Correct</div></div>
+        <div class="stat-box"><div class="num" style="color:var(--red);">${wrong}</div><div class="lbl">Wrong</div></div>
+        <div class="stat-box"><div class="num">${attempt.pct}%</div><div class="lbl">Score</div></div>
+        <div class="stat-box"><div class="num" style="color:${attempt.passed?'#2a9d5c':'var(--red)'};">${attempt.passed?'Pass':'Fail'}</div><div class="lbl">Result</div></div>
+      </div>
+      <div class="sub">Taken on ${fmtShortDate(attempt.date.slice(0,10))}</div>
+      ${attemptSelector}
+    </div>
+    ${details.length ? details.map((d,i)=>`
+      <div class="card" style="border-left:4px solid ${d.correct?'#2a9d5c':'var(--red)'};padding-left:14px;margin-bottom:8px;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <span style="font-size:18px;flex-shrink:0;margin-top:1px;">${d.correct?'✓':'✗'}</span>
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px;">${i+1}. ${esc(d.question)}</div>
+            <div style="font-size:13px;color:${d.correct?'#2a9d5c':'var(--red)'};">
+              Their answer: <strong>${esc(d.selectedAnswer||'(no answer)')}</strong>
+            </div>
+            ${!d.correct ? `<div style="font-size:13px;color:#2a9d5c;margin-top:3px;">Correct answer: <strong>${esc(d.correctAnswer||'—')}</strong></div>` : ''}
+          </div>
+        </div>
+      </div>`).join('')
+    : '<div class="card"><div class="empty">No question detail stored for this attempt. Detail is recorded on attempts taken after this update.</div></div>'}
+  `;
 }
 
 /* ---------- TEAM (read-only directory + personal employee file for staff) ---------- */
@@ -5839,6 +5924,13 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'quiz'){
+    if(QUIZ_STAFF_VIEW) return `
+      <div class="card">
+        <h2>Manager</h2>
+        <div class="sub">Manage tasks, animals, staff, and settings. Staff only ever see the read-only views in their own tabs.</div>
+        <div class="detail-tabs">${tabsHtml}</div>
+      </div>
+      ${renderManagerQuizStaffDetail()}`;
     const quiz = DATA.quiz;
     const questions = quiz.questions || [];
     const staffWithQuiz = DATA.team.filter(m=>Array.isArray(m.quizAttempts) && (m.quizAttempts.length > 0 || m.quizPassedUntil));
@@ -5908,7 +6000,7 @@ function renderManager(){
             const passedUntil = m.quizPassedUntil;
             const needsQuiz = quizNeedsQuiz(m.name);
             return `<tr>
-              <td>${esc(m.name)}</td>
+              <td>${attempts.length ? `<button class="btn-ghost" style="font-weight:600;padding:2px 0;" onclick="openQuizStaffDetail(${m.id})">${esc(m.name)}</button>` : esc(m.name)}</td>
               <td>${attempts.length}</td>
               <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
               <td>${passedUntil ? `<span style="color:${passedUntil>=todayStr()?'#2a9d5c':'var(--red)'};">${fmtShortDate(passedUntil)}</span>` : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
