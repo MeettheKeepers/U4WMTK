@@ -4744,6 +4744,7 @@ let MANAGER_TAB = 'overview';
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
 let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
+let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
@@ -5517,14 +5518,50 @@ function renderManager(){
         </div>
       </div>
       <div class="card">
-        <h2>All Tasks</h2>
-        <div class="sub">Tasks are shown grouped. Use the arrows to reorder tasks within their group. Archive to hide from staff without losing history.</div>
+        <h2>🚐 Assign a Road Task</h2>
+        <div class="sub">One-off tasks assigned directly to a staff member — things like "pick up zip ties on your way back." They see these in their Tasks tab and can check them off.</div>
+        <div class="add-row" style="flex-wrap:wrap;">
+          <select id="new-roadtask-staff">
+            <option value="">Assign to…</option>
+            ${DATA.team.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')}
+          </select>
+          <input type="text" id="new-roadtask-title" placeholder="Task (e.g. Pick up zip ties)" style="flex:2;min-width:180px;">
+          <input type="date" id="new-roadtask-date" value="${todayStr()}">
+          <button class="btn-small" onclick="addRoadTaskManager()">Assign</button>
+        </div>
+        <div class="add-row" style="margin-top:4px;">
+          <input type="text" id="new-roadtask-notes" placeholder="Notes (optional)" style="flex:1;">
+        </div>
+        ${(()=>{
+          const open = DATA.roadTasks.filter(t=>!t.done);
+          const done = DATA.roadTasks.filter(t=>t.done).slice(-5).reverse();
+          if(!open.length && !done.length) return '<div class="empty" style="margin-top:10px;">No road tasks yet.</div>';
+          return `<div style="margin-top:14px;">
+            ${open.length ? `<div style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Open (${open.length})</div>
+            ${open.map(t=>`<div class="task-row" style="align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+              <span style="flex:1;min-width:120px;"><strong>${esc(t.title)}</strong> <span style="color:var(--text-light);font-size:12px;">→ ${esc(t.assignedTo)} · ${t.date||''}</span></span>
+              ${t.notes?`<span style="font-size:12px;color:var(--text-light);flex-basis:100%;padding-left:4px;">${esc(t.notes)}</span>`:''}
+              ${t.acknowledged?'<span class="tag" style="font-size:11px;background:#d7f0dc;color:#1e6b2e;">Acknowledged</span>':'<span class="tag" style="font-size:11px;background:#fde2e2;color:#a33;">Not seen</span>'}
+              <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="if(confirm('Delete this road task?')){DATA.roadTasks=DATA.roadTasks.filter(x=>x.id!==${t.id});saveData();showTab(CURRENT_TAB);}">Delete</button>
+            </div>`).join('')}` : ''}
+            ${done.length ? `<div style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-top:10px;margin-bottom:6px;">Recently Done</div>
+            ${done.map(t=>`<div style="font-size:13px;color:var(--text-light);padding:4px 0;text-decoration:line-through;">${esc(t.title)} — ${esc(t.assignedTo)}</div>`).join('')}` : ''}
+          </div>`;
+        })()}
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="MGR_ALL_TASKS_OPEN=!MGR_ALL_TASKS_OPEN;showTab(CURRENT_TAB);">
+          <h2 style="margin:0;">All Tasks <span style="font-size:13px;font-weight:400;color:var(--text-light);">(${DATA.tasks.filter(t=>!t.archived).length})</span></h2>
+          <span style="color:var(--text-light);font-size:16px;">${MGR_ALL_TASKS_OPEN ? '▾' : '▸'}</span>
+        </div>
+        ${MGR_ALL_TASKS_OPEN ? `
+        <div class="sub" style="margin-top:6px;">Tasks are shown grouped. Use the arrows to reorder tasks within their group. Archive to hide from staff without losing history.</div>
         ${sortedGroups.map(g=>{
           const gTasks = DATA.tasks.filter(t=>t.group===g.id && !t.archived).sort((a,b)=>(a.groupOrder||999)-(b.groupOrder||999));
           if(!gTasks.length) return '';
           const isOpen = MGR_TASK_GROUPS_OPEN[g.id] !== false; // default open
           return `<div style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--hover);cursor:pointer;" onclick="MGR_TASK_GROUPS_OPEN['${g.id}']=!${isOpen};showTab('manager');">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--hover);cursor:pointer;" onclick="MGR_TASK_GROUPS_OPEN['${g.id}']=!${isOpen};showTab(CURRENT_TAB);">
               <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-light);">${esc(g.name)}</span>
               <span style="color:var(--text-light);font-size:13px;">${isOpen ? '▾' : '▸'} ${gTasks.length} task${gTasks.length===1?'':'s'}</span>
             </div>
@@ -5609,7 +5646,8 @@ function renderManager(){
             </table></div>` : ''}
           </div>`;
         }).join('')}
-        ${DATA.tasks.filter(t=>!t.archived).length ? '' : '<div class="empty">No active tasks.</div>'}
+        ${DATA.tasks.filter(t=>!t.archived).length ? '' : '<div class="empty" style="margin-top:10px;">No active tasks.</div>'}
+        ` : ''}
       </div>
       <div class="card">
         <h2>Archived Tasks</h2>
