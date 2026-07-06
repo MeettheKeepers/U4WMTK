@@ -780,6 +780,7 @@ function normalizeData(d){
     }
     if(m.workFromHome===undefined) m.workFromHome=false;
     if(m.birthday===undefined) m.birthday='';
+    if(!Array.isArray(m.supervisorTabs)) m.supervisorTabs = [];
   });
   if(!d.animalTakeLog) d.animalTakeLog=[];
   (d.incidents||[]).forEach(i=>{
@@ -1143,11 +1144,86 @@ const TABS = [
   {id:'incidents', label:'Incidents'},
   {id:'team', label:'Team'},
   {id:'paystubs', label:'Pay Stubs'},
+  {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
   {id:'manager', label:'Manager'}
 ];
 function isManagerLogin(){
   return !!(CURRENT_LOGIN && CURRENT_LOGIN.role === 'manager');
+}
+/* ---------- SUPERVISOR ---------- */
+// Tabs a supervisor can be granted access to manage
+const SUPERVISABLE_TABS = [
+  {id:'tasks', label:'Tasks'},
+  {id:'shows', label:'Shows'},
+  {id:'schedule', label:'Team Schedule'},
+  {id:'animals', label:'Animals'},
+  {id:'repairs', label:'Supplies & Repairs'},
+  {id:'inventory', label:'Inventory'},
+  {id:'incidents', label:'Incidents'},
+  {id:'welcome', label:'Welcome'},
+];
+let SUPERVISOR_MODE_ACTIVE = false; // true while the supervisor tab is rendering/active
+function getSupervisorMember(){
+  if(!CURRENT_LOGIN) return null;
+  return DATA.team.find(m=>m.name===CURRENT_LOGIN.name) || null;
+}
+function isSupervisorFor(tabId){
+  const me = getSupervisorMember();
+  return !!(me && (me.supervisorTabs||[]).includes(tabId));
+}
+function hasSupervisorAccess(){
+  const me = getSupervisorMember();
+  return !!(me && (me.supervisorTabs||[]).length);
+}
+// Grant or revoke supervisor access to a specific section for a team member
+function toggleSupervisorTab(memberId, tabId){
+  const m = DATA.team.find(t=>t.id===memberId);
+  if(!m) return;
+  if(!Array.isArray(m.supervisorTabs)) m.supervisorTabs = [];
+  const idx = m.supervisorTabs.indexOf(tabId);
+  if(idx >= 0) m.supervisorTabs.splice(idx, 1);
+  else m.supervisorTabs.push(tabId);
+  saveData();
+  showTab('manager');
+}
+// Renders the "Supervisor Access" grant panel at the bottom of each manager section
+function renderSupervisorAccessPanel(tabId){
+  if(!isManagerLogin()) return '';
+  const info = SUPERVISABLE_TABS.find(t=>t.id===tabId);
+  const label = info ? info.label : tabId;
+  const eligible = DATA.team.filter(m=>{
+    const login = (DATA.logins||[]).find(l=>l.name===m.name);
+    return !(login && login.role==='manager');
+  });
+  if(!eligible.length) return '';
+  return `<div class="card" style="margin-top:8px;border:1px dashed var(--border);background:var(--hover);">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:17px;">🔑</span>
+      <span style="font-weight:700;font-size:14px;color:var(--text-light);">Supervisor Access — ${label}</span>
+    </div>
+    <div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Grant team members supervisor access to manage this section:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${eligible.map(m=>{
+        const has = (m.supervisorTabs||[]).includes(tabId);
+        return `<label style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:${has?'#e8f5e9':'var(--surface)'};border:1px solid ${has?'#4caf50':'var(--border)'};border-radius:20px;cursor:pointer;font-size:13px;color:${has?'#2e7d32':'var(--text)'};">
+          <input type="checkbox" ${has?'checked':''} onchange="toggleSupervisorTab(${m.id},'${tabId}')"> ${esc(m.name)}
+        </label>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+// Renders the supervisor panel — a filtered version of the manager tab
+function renderSupervisor(){
+  const me = getSupervisorMember();
+  const myTabs = (me && me.supervisorTabs) || [];
+  if(!myTabs.length) return '<div class="card"><div class="empty">No supervisor access has been granted yet. Contact your manager.</div></div>';
+  // Ensure MANAGER_TAB is one this supervisor can actually see
+  if(!myTabs.includes(MANAGER_TAB)){
+    const first = SUPERVISABLE_TABS.find(t=>myTabs.includes(t.id));
+    MANAGER_TAB = first ? first.id : myTabs[0];
+  }
+  return renderManager();
 }
 function hasAdminTabAccess(tabId){
   if(isManagerLogin()) return true;
@@ -1165,6 +1241,7 @@ function hasAdminAccess(){
 function visibleTabs(){
   return TABS.filter(t=>{
     if(t.id === 'manager') return isManagerLogin();
+    if(t.id === 'supervisor') return !isManagerLogin() && hasSupervisorAccess();
     if(t.id === 'admin') return hasAdminAccess();
     return true;
   });
@@ -1178,7 +1255,13 @@ let HOURS_SECTION_OPEN = true; // collapse toggle for My Hours / Hours-Payroll
 let VIEWING_STAFF_FILE_ID = null; // manager previewing a staff member's read-only file from Team tab
 function toggleHoursSection(){ HOURS_SECTION_OPEN = !HOURS_SECTION_OPEN; showTab(CURRENT_TAB); }
 function showTab(id){
-  if(id==='manager' && !isManagerLogin()) id = 'dashboard';
+  // Manager tab: redirect non-managers to supervisor if eligible, else dashboard
+  if(id==='manager' && !isManagerLogin()){
+    id = hasSupervisorAccess() ? 'supervisor' : 'dashboard';
+  }
+  // Supervisor tab: only accessible to eligible non-managers
+  if(id==='supervisor' && (isManagerLogin() || !hasSupervisorAccess())) id = 'dashboard';
+  SUPERVISOR_MODE_ACTIVE = (id === 'supervisor');
   if(id !== 'team') VIEWING_STAFF_FILE_ID = null;
   CURRENT_TAB = id;
   refreshRecurringTasks();
@@ -1198,10 +1281,11 @@ function showTab(id){
     welcome: renderWelcome,
     team: renderTeam,
     paystubs: renderPayStubs,
+    supervisor: renderSupervisor,
     admin: renderAdmin,
     manager: renderManager
   }[id];
-  document.getElementById('main-content').innerHTML = renderFn();
+  document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
 }
 
 /* ---------- ADMIN TAB ---------- */
@@ -5140,7 +5224,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
 }
 function setManagerTab(tab){
   MANAGER_TAB = tab;
-  showTab('manager');
+  // When a supervisor is using their supervisor tab, keep them there
+  showTab(CURRENT_TAB === 'supervisor' ? 'supervisor' : 'manager');
 }
 let EMPLOYEE_FILE_ID = null;
 function openEmployeeFile(id){
@@ -5339,7 +5424,11 @@ const WELCOME_EDIT_SECTIONS = [
 function renderManager(){
   const openRepairs = DATA.repairs.filter(r=>r.status!=='Done').length;
   const openIncidents = DATA.incidents.filter(i=>i.status==='Open').length;
-  const tabsHtml = MANAGER_TABS.map(t=>`<button class="detail-tab-btn ${MANAGER_TAB===t.id?'active':''}" onclick="setManagerTab('${t.id}')">${t.label}</button>`).join('');
+  // In supervisor mode, only show the tabs this user has been granted access to
+  const visibleMgrTabs = SUPERVISOR_MODE_ACTIVE
+    ? MANAGER_TABS.filter(t => isSupervisorFor(t.id))
+    : MANAGER_TABS;
+  const tabsHtml = visibleMgrTabs.map(t=>`<button class="detail-tab-btn ${MANAGER_TAB===t.id?'active':''}" onclick="setManagerTab('${t.id}')">${t.label}</button>`).join('');
 
   let body = '';
   if(MANAGER_TAB === 'overview'){
@@ -5532,6 +5621,7 @@ function renderManager(){
             </tr>`).join('')}
         </table>` : '<div class="empty">No archived tasks.</div>'}
       </div>
+      ${renderSupervisorAccessPanel('tasks')}
     `;
   } else if(MANAGER_TAB === 'shows'){
     const upcomingShows = DATA.shows.filter(isShowUpcoming);
@@ -5604,6 +5694,7 @@ function renderManager(){
         </div>
       `;
       }).join('') : '<div class="card"><div class="empty">No shows in this view.</div></div>'}
+      ${renderSupervisorAccessPanel('shows')}
     `;
   } else if(MANAGER_TAB === 'schedule'){
     const editingStart = DATA.scheduleSettings.editingStart;
@@ -5671,6 +5762,7 @@ function renderManager(){
           ${SCHEDULE_CATEGORIES.map(c=>`<span class="tag" style="background:${c.color};color:#2b2b28;">${c.label}</span>`).join('')}
         </div>
       </div>
+      ${renderSupervisorAccessPanel('schedule')}
     `;
   } else if(MANAGER_TAB === 'animals'){
     const activeAnimals = DATA.animals.filter(a=>!a.archived).slice().sort((a,b)=>a.name.localeCompare(b.name));
@@ -5739,6 +5831,7 @@ function renderManager(){
         </div>
         ` : ''}
       </div>
+      ${renderSupervisorAccessPanel('animals')}
     `;
   } else if(MANAGER_TAB === 'staff'){
     const fileMember = EMPLOYEE_FILE_ID ? DATA.team.find(x=>x.id===EMPLOYEE_FILE_ID) : null;
@@ -5915,9 +6008,10 @@ function renderManager(){
             </tr>`).join('')}
         </table>` : '<div class="empty">No archived supply requests.</div>'}
       </div>
+      ${renderSupervisorAccessPanel('repairs')}
     `;
   } else if(MANAGER_TAB === 'inventory'){
-    body = renderInventoryManager();
+    body = renderInventoryManager() + renderSupervisorAccessPanel('inventory');
   } else if(MANAGER_TAB === 'incidents'){
     const activeI = DATA.incidents.filter(i=>!i.archived);
     const archivedI = DATA.incidents.filter(i=>i.archived);
@@ -5966,6 +6060,7 @@ function renderManager(){
             </tr>`).join('')}
         </table>` : '<div class="empty">No archived incidents.</div>'}
       </div>
+      ${renderSupervisorAccessPanel('incidents')}
     `;
   } else if(MANAGER_TAB === 'welcome'){
     const customTabs = (DATA.welcome && DATA.welcome.customTabs) || [];
@@ -6006,6 +6101,7 @@ function renderManager(){
           <button class="btn-small" onclick="addWelcomeCustomTab()">Add Tab</button>
         </div>
       </div>
+      ${renderSupervisorAccessPanel('welcome')}
     `;
   } else if(MANAGER_TAB === 'quiz'){
     if(QUIZ_STAFF_VIEW) return `
@@ -6206,8 +6302,8 @@ function renderManager(){
 
   return `
     <div class="card">
-      <h2>Manager</h2>
-      <div class="sub">Manage tasks, animals, staff, and settings. Staff only ever see the read-only views in their own tabs.</div>
+      <h2>${SUPERVISOR_MODE_ACTIVE ? 'Supervisor Panel' : 'Manager'}</h2>
+      <div class="sub">${SUPERVISOR_MODE_ACTIVE ? 'Your supervisor access to selected management sections.' : 'Manage tasks, animals, staff, and settings. Staff only ever see the read-only views in their own tabs.'}</div>
       <div class="detail-tabs">${tabsHtml}</div>
     </div>
     ${body}
