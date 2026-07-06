@@ -4743,6 +4743,7 @@ function renderAnimalManagerCard(a){
 let MANAGER_TAB = 'overview';
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
+let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
 
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
@@ -5448,21 +5449,28 @@ function renderManager(){
     const sortedGroups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
     body = `
       <div class="card">
-        <h2>Task Groups</h2>
-        <div class="sub">Groups appear as collapsible sections in the Tasks tab. Rename them to match your habitat codes and animals. Tasks are ordered within each group using the arrows in the task list below.</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="MGR_TASK_GROUP_SECTION_OPEN=!MGR_TASK_GROUP_SECTION_OPEN;showTab(CURRENT_TAB);">
+          <h2 style="margin:0;">Task Groups <span style="font-size:13px;font-weight:400;color:var(--text-light);">(${sortedGroups.length})</span></h2>
+          <span style="color:var(--text-light);font-size:16px;">${MGR_TASK_GROUP_SECTION_OPEN ? '▾' : '▸'}</span>
+        </div>
+        ${MGR_TASK_GROUP_SECTION_OPEN ? `
+        <div class="sub" style="margin-top:6px;">Groups appear as collapsible sections in the Tasks tab. Rename them to match your habitat codes and animals. Tasks are ordered within each group using the arrows in the task list below.</div>
+        <div style="margin-top:10px;">
         ${sortedGroups.map((g,gi)=>`
           <div class="task-row" style="align-items:center;gap:8px;margin-bottom:6px;">
             <div style="display:flex;flex-direction:column;gap:2px;">
-              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupUp('${g.id}')" ${gi===0?'disabled':''}>▲</button>
-              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupDown('${g.id}')" ${gi===sortedGroups.length-1?'disabled':''}>▼</button>
+              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupUp('${g.id}');event.stopPropagation();" ${gi===0?'disabled':''}>▲</button>
+              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupDown('${g.id}');event.stopPropagation();" ${gi===sortedGroups.length-1?'disabled':''}>▼</button>
             </div>
-            <input type="text" value="${esc(g.name)}" id="grp-name-${g.id}" style="flex:1;" onchange="renameGroup('${g.id}',this.value)">
-            <button class="btn-ghost" onclick="deleteGroup('${g.id}')">Delete</button>
+            <input type="text" value="${esc(g.name)}" id="grp-name-${g.id}" style="flex:1;" onclick="event.stopPropagation();" onchange="renameGroup('${g.id}',this.value)">
+            <button class="btn-ghost" onclick="deleteGroup('${g.id}');event.stopPropagation();">Delete</button>
           </div>`).join('')}
-        <div class="add-row" style="margin-top:10px;">
+        </div>
+        <div class="add-row" style="margin-top:10px;" onclick="event.stopPropagation();">
           <input type="text" id="new-group-name" placeholder="New group name (e.g. H-1 Coatimundi)">
           <button class="btn-small" onclick="addGroup()">Add Group</button>
         </div>
+        ` : ''}
       </div>
       <div class="card">
         <h2>Add a Task</h2>
