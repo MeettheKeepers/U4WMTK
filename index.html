@@ -8921,14 +8921,16 @@ function chatConvoKey(otherName){
 }
 function chatConvoPeers(){
   // Returns array of unique peer names from DM messages, sorted by most recent message
+  // msg.to for DMs is the convo key "Name1~~~Name2", not just a name
   const me = chatMyName();
   if(!me) return [];
   const recency = {};
   (DATA.chatMessages||[]).forEach(msg=>{
-    if(msg.to && msg.to !== '__team__'){
-      const peer = msg.from === me ? msg.to : (msg.to === me ? msg.from : null);
-      if(peer && (!recency[peer] || msg.ts > recency[peer])) recency[peer] = msg.ts;
-    }
+    if(!msg.to || msg.to === '__team__' || msg.to.startsWith('group_')) return;
+    // Parse the convo key to find the other person
+    const parts = msg.to.split('~~~');
+    const peer = parts.find(p => p !== me);
+    if(peer && (!recency[peer] || msg.ts > recency[peer])) recency[peer] = msg.ts;
   });
   return Object.keys(recency).sort((a,b)=> recency[b] - recency[a]);
 }
@@ -9094,9 +9096,10 @@ function renderChatPanel(){
     const isMine = msg.from === me;
     const time = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     if(isMine){
-      msgsHTML += `<div class="chat-mine-wrap"><div class="chat-bubble mine">${esc(msg.text)}</div><div class="chat-meta">${time}</div></div>`;
+      msgsHTML += `<div class="chat-mine-wrap"><div style="display:flex;align-items:flex-end;gap:4px;"><button class="chat-del-btn" data-msg-id="${esc(msg.id)}" title="Delete" style="background:none;border:none;color:#ccc;font-size:14px;cursor:pointer;padding:2px;line-height:1;flex-shrink:0;">🗑</button><div class="chat-bubble mine">${esc(msg.text)}</div></div><div class="chat-meta">${time}</div></div>`;
     } else {
-      msgsHTML += `<div class="chat-theirs-wrap"><div class="chat-bubble theirs"><strong style="font-size:11px;opacity:.7;">${esc(msg.from)}</strong><br>${esc(msg.text)}</div><div class="chat-meta">${time}</div></div>`;
+      const canDel = isManagerLogin();
+      msgsHTML += `<div class="chat-theirs-wrap"><div style="display:flex;align-items:flex-end;gap:4px;"><div class="chat-bubble theirs"><strong style="font-size:11px;opacity:.7;">${esc(msg.from)}</strong><br>${esc(msg.text)}</div>${canDel ? `<button class="chat-del-btn" data-msg-id="${esc(msg.id)}" title="Delete" style="background:none;border:none;color:#ccc;font-size:14px;cursor:pointer;padding:2px;line-height:1;flex-shrink:0;">🗑</button>` : ''}</div><div class="chat-meta">${time}</div></div>`;
     }
   });
   // Seen by indicator
@@ -9138,6 +9141,10 @@ function renderChatPanel(){
   // Wire up convo item clicks via data attribute (avoids quote-escaping issues in onclick)
   panel.querySelectorAll('[data-convo-key]').forEach(el=>{
     el.addEventListener('click', ()=>{ selectConvo(el.getAttribute('data-convo-key')); });
+  });
+  // Wire up delete buttons
+  panel.querySelectorAll('.chat-del-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{ e.stopPropagation(); deleteChatMsg(btn.getAttribute('data-msg-id')); });
   });
 
   // Auto-scroll to bottom
@@ -9242,6 +9249,12 @@ function showChatNotification(msg){
     title = `${g ? g.name : 'Group'} — ${msg.from}`;
   } else title = `${msg.from} → You`;
   try{ new Notification(title, { body: msg.text, icon: '' }); } catch(e){}
+}
+function deleteChatMsg(id){
+  if(!id) return;
+  DATA.chatMessages = (DATA.chatMessages||[]).filter(m=>m.id !== id);
+  saveData();
+  renderChatPanel();
 }
 function showCreateGroupForm(){
   const panel = document.getElementById('chat-panel');
