@@ -978,6 +978,7 @@ function normalizeData(d){
   });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
   if(!d.chatReads) d.chatReads = {};
+  if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
   return d;
 }
 function loadData(){
@@ -8937,17 +8938,27 @@ function chatConvoUnread(convoKey){
   const reads = (DATA.chatReads[me] || {});
   const lastRead = reads[convoKey] || 0;
   return (DATA.chatMessages||[]).filter(msg=>{
-    if(msg.from === me) return false; // own messages never unread
+    if(msg.from === me) return false;
     if(convoKey === '__team__') return msg.to === '__team__' && msg.ts > lastRead;
+    if(convoKey.startsWith('group_')) return msg.to === convoKey && msg.ts > lastRead;
     // DM: key matches both directions
     const peerNames = convoKey.split('~~~');
-    return msg.to !== '__team__' && peerNames.includes(msg.from) && peerNames.includes(msg.to) && msg.ts > lastRead;
+    return msg.to !== '__team__' && !msg.to.startsWith('group_') && peerNames.includes(msg.from) && peerNames.includes(msg.to) && msg.ts > lastRead;
   }).length;
+}
+function myChatGroups(){
+  const me = chatMyName();
+  if(!me) return [];
+  return (DATA.chatGroups||[]).filter(g=>(g.members||[]).includes(me));
+}
+function chatGroupById(id){
+  return (DATA.chatGroups||[]).find(g=>g.id===id);
 }
 function chatTotalUnread(){
   const me = chatMyName();
   if(!me) return 0;
   let total = chatConvoUnread('__team__');
+  myChatGroups().forEach(g=>{ total += chatConvoUnread('group_'+g.id); });
   chatConvoPeers().forEach(peer=>{
     total += chatConvoUnread(chatConvoKey(peer));
   });
@@ -9002,6 +9013,10 @@ function openDMChat(staffName){
 }
 function chatConvoLabel(convoKey){
   if(convoKey === '__team__') return '👥 Team Chat';
+  if(convoKey.startsWith('group_')){
+    const g = chatGroupById(convoKey.slice(6));
+    return '👥 ' + (g ? esc(g.name) : 'Group');
+  }
   const me = chatMyName();
   const parts = convoKey.split('~~~');
   const other = parts.find(p => p !== me) || parts[0];
@@ -9028,9 +9043,11 @@ function renderChatPanel(){
   let msgs = [];
   if(activeConvo === '__team__'){
     msgs = (DATA.chatMessages||[]).filter(m => m.to === '__team__');
+  } else if(activeConvo.startsWith('group_')){
+    msgs = (DATA.chatMessages||[]).filter(m => m.to === activeConvo);
   } else {
     const peerNames = activeConvo.split('~~~');
-    msgs = (DATA.chatMessages||[]).filter(m => m.to !== '__team__' && peerNames.includes(m.from) && peerNames.includes(m.to));
+    msgs = (DATA.chatMessages||[]).filter(m => m.to !== '__team__' && !m.to.startsWith('group_') && peerNames.includes(m.from) && peerNames.includes(m.to));
   }
   msgs = msgs.slice().sort((a,b)=> a.ts - b.ts);
 
@@ -9041,6 +9058,19 @@ function renderChatPanel(){
       <span>👥 Team Chat</span>
       ${teamUnread > 0 ? `<span class="chat-badge">${teamUnread}</span>` : ''}
     </div>`;
+  // Group chats
+  myChatGroups().forEach(g=>{
+    const key = 'group_'+g.id;
+    const unread = chatConvoUnread(key);
+    convoListHTML += `
+    <div class="chat-convo-item${activeConvo===key?' active':''}" onclick="selectConvo(${JSON.stringify(key)})">
+      <span>👥 ${esc(g.name)}</span>
+      ${unread > 0 ? `<span class="chat-badge">${unread}</span>` : ''}
+    </div>`;
+  });
+  // New Group button
+  convoListHTML += `<div style="padding:6px 14px;"><button onclick="showCreateGroupForm()" style="background:none;border:1px dashed #bbb;border-radius:8px;padding:4px 10px;font-size:12px;color:#888;cursor:pointer;width:100%;">+ New Group</button></div>`;
+  // DMs
   peers.forEach(peer=>{
     const key = chatConvoKey(peer);
     const unread = chatConvoUnread(key);
@@ -9143,33 +9173,54 @@ async function pollChatMsgs(){
     const res = await sb.from('app_state').select('data').eq('id',1).single();
     if(res.error || !res.data) return;
     const incoming = res.data.data;
-    if(!incoming || !Array.isArray(incoming.chatMessages)) return;
-    const existing = new Set((DATA.chatMessages||[]).map(m=>m.id));
-    const newMsgs = incoming.chatMessages.filter(m=> !existing.has(m.id) && m.from !== me);
-    if(newMsgs.length === 0) return;
+    if(!incoming) return;
+    let changed = false;
     // Merge new messages
-    DATA.chatMessages = [...(DATA.chatMessages||[]), ...newMsgs];
-    DATA.chatMessages.sort((a,b)=>a.ts-b.ts);
-    if(DATA.chatMessages.length > CHAT_MAX_MSGS) DATA.chatMessages = DATA.chatMessages.slice(-CHAT_MAX_MSGS);
-    // Merge reads from cloud (don't overwrite local reads)
+    if(Array.isArray(incoming.chatMessages)){
+      const existing = new Set((DATA.chatMessages||[]).map(m=>m.id));
+      const newMsgs = incoming.chatMessages.filter(m=> !existing.has(m.id) && m.from !== me);
+      if(newMsgs.length > 0){
+        DATA.chatMessages = [...(DATA.chatMessages||[]), ...newMsgs];
+        DATA.chatMessages.sort((a,b)=>a.ts-b.ts);
+        if(DATA.chatMessages.length > CHAT_MAX_MSGS) DATA.chatMessages = DATA.chatMessages.slice(-CHAT_MAX_MSGS);
+        changed = true;
+        // Show notifications
+        newMsgs.forEach(msg=>{
+          let convoKey;
+          if(msg.to === '__team__') convoKey = '__team__';
+          else if(msg.to.startsWith('group_')) convoKey = msg.to;
+          else convoKey = chatConvoKey(msg.from);
+          // Only notify if user is a member of this group
+          if(convoKey && convoKey.startsWith('group_')){
+            const g = chatGroupById(convoKey.slice(6));
+            if(!g || !(g.members||[]).includes(me)) return;
+          }
+          const isActive = CHAT_PANEL_OPEN && CHAT_ACTIVE_CONVO === convoKey;
+          if(!isActive) showChatNotification(msg);
+        });
+      }
+    }
+    // Merge reads from cloud (don't overwrite local reads for self)
     if(incoming.chatReads){
       Object.keys(incoming.chatReads).forEach(user=>{
-        if(user === me) return; // keep local reads for self
+        if(user === me) return;
         DATA.chatReads[user] = incoming.chatReads[user];
       });
+      changed = true;
     }
-    saveData();
-    updateChatBadge();
-    // Show notifications for messages in non-active convo, or when panel is closed
-    newMsgs.forEach(msg=>{
-      const convoKey = msg.to === '__team__' ? '__team__' : chatConvoKey(msg.from);
-      const isActive = CHAT_PANEL_OPEN && CHAT_ACTIVE_CONVO === convoKey;
-      if(!isActive) showChatNotification(msg);
-    });
-    // Re-render if panel is open
-    if(CHAT_PANEL_OPEN){
-      renderChatPanel();
-      markConvoRead(CHAT_ACTIVE_CONVO);
+    // Merge chat groups from cloud
+    if(Array.isArray(incoming.chatGroups)){
+      const existingIds = new Set((DATA.chatGroups||[]).map(g=>g.id));
+      const newGroups = incoming.chatGroups.filter(g=>!existingIds.has(g.id));
+      if(newGroups.length > 0){
+        DATA.chatGroups = [...(DATA.chatGroups||[]), ...newGroups];
+        changed = true;
+      }
+    }
+    if(changed){
+      saveData();
+      updateChatBadge();
+      if(CHAT_PANEL_OPEN){ renderChatPanel(); markConvoRead(CHAT_ACTIVE_CONVO); }
     }
   } catch(e){ /* silent */ }
 }
@@ -9179,10 +9230,59 @@ function startChatPolling(){
 }
 function showChatNotification(msg){
   if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const title = msg.to === '__team__' ? `Team Chat — ${msg.from}` : `${msg.from} → You`;
-  try{
-    new Notification(title, { body: msg.text, icon: '' });
-  } catch(e){}
+  let title;
+  if(msg.to === '__team__') title = `Team Chat — ${msg.from}`;
+  else if(msg.to.startsWith('group_')){
+    const g = chatGroupById(msg.to.slice(6));
+    title = `${g ? g.name : 'Group'} — ${msg.from}`;
+  } else title = `${msg.from} → You`;
+  try{ new Notification(title, { body: msg.text, icon: '' }); } catch(e){}
+}
+function showCreateGroupForm(){
+  const panel = document.getElementById('chat-panel');
+  if(!panel) return;
+  const me = chatMyName();
+  const members = (DATA.team||[]).filter(m=>!m.archived && m.name!==me);
+  panel.innerHTML = `
+    <div class="chat-panel-hdr">
+      <span style="flex:1;">New Group Chat</span>
+      <button onclick="renderChatPanel()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div style="padding:16px;flex:1;overflow-y:auto;">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:4px;">Group Name</label>
+        <input id="new-group-name" type="text" placeholder="e.g. Weekend Crew" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:13px;box-sizing:border-box;outline:none;" />
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:8px;">Add Members</label>
+        ${members.map(m=>`
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;border-bottom:1px solid #f5f5f5;">
+            <input type="checkbox" class="new-group-member" value="${esc(m.name)}" style="width:16px;height:16px;" />
+            ${esc(m.name)}
+          </label>`).join('')}
+      </div>
+      <button onclick="createGroupChat()" style="width:100%;background:var(--green-dark,#2f4a2f);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;">Create Group</button>
+    </div>`;
+}
+function createGroupChat(){
+  const me = chatMyName();
+  if(!me) return;
+  const nameInput = document.getElementById('new-group-name');
+  const groupName = (nameInput ? nameInput.value.trim() : '') || 'Group Chat';
+  const checked = Array.from(document.querySelectorAll('.new-group-member:checked')).map(cb=>cb.value);
+  if(checked.length === 0){ alert('Select at least one member.'); return; }
+  const members = [me, ...checked];
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  const group = { id, name: groupName, members, createdBy: me, createdAt: Date.now() };
+  if(!Array.isArray(DATA.chatGroups)) DATA.chatGroups = [];
+  DATA.chatGroups.push(group);
+  saveData();
+  CHAT_ACTIVE_CONVO = 'group_' + id;
+  CHAT_PANEL_OPEN = true;
+  const panel = document.getElementById('chat-panel');
+  if(panel) panel.classList.add('open');
+  renderChatPanel();
+  markConvoRead('group_' + id);
 }
 </script>
 <div id="chat-panel"></div>
