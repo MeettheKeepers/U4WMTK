@@ -8945,7 +8945,7 @@ function chatConvoUnread(convoKey){
     if(convoKey.startsWith('group_')) return msg.to === convoKey && msg.ts > lastRead;
     // DM: key matches both directions
     const peerNames = convoKey.split('~~~');
-    return msg.to !== '__team__' && !msg.to.startsWith('group_') && peerNames.includes(msg.from) && peerNames.includes(msg.to) && msg.ts > lastRead;
+    return msg.to === convoKey && msg.ts > lastRead;
   }).length;
 }
 function myChatGroups(){
@@ -9049,7 +9049,7 @@ function renderChatPanel(){
     msgs = (DATA.chatMessages||[]).filter(m => m.to === activeConvo);
   } else {
     const peerNames = activeConvo.split('~~~');
-    msgs = (DATA.chatMessages||[]).filter(m => m.to !== '__team__' && !m.to.startsWith('group_') && peerNames.includes(m.from) && peerNames.includes(m.to));
+    msgs = (DATA.chatMessages||[]).filter(m => m.to === activeConvo);
   }
   msgs = msgs.slice().sort((a,b)=> a.ts - b.ts);
 
@@ -9095,11 +9095,12 @@ function renderChatPanel(){
     }
     const isMine = msg.from === me;
     const time = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const rxns = msg.reactions ? Object.entries(msg.reactions).filter(([,names])=>names.length>0).map(([em,names])=>`<span style="background:#f0ece2;border-radius:10px;padding:1px 6px;font-size:12px;cursor:pointer;" title="${names.join(', ')}">${em} ${names.length}</span>`).join(' ') : '';
+    const rxnRow = rxns ? `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;">${rxns}</div>` : '';
     if(isMine){
-      msgsHTML += `<div class="chat-mine-wrap"><div style="display:flex;align-items:flex-end;gap:4px;"><button class="chat-del-btn" data-msg-id="${esc(msg.id)}" title="Delete" style="background:none;border:none;color:#ccc;font-size:14px;cursor:pointer;padding:2px;line-height:1;flex-shrink:0;">🗑</button><div class="chat-bubble mine">${esc(msg.text)}</div></div><div class="chat-meta">${time}</div></div>`;
+      msgsHTML += `<div class="chat-mine-wrap"><div class="chat-bubble mine" data-msg-id="${esc(msg.id)}" data-is-mine="1">${esc(msg.text)}</div>${rxnRow}<div class="chat-meta">${time}</div></div>`;
     } else {
-      const canDel = isManagerLogin();
-      msgsHTML += `<div class="chat-theirs-wrap"><div style="display:flex;align-items:flex-end;gap:4px;"><div class="chat-bubble theirs"><strong style="font-size:11px;opacity:.7;">${esc(msg.from)}</strong><br>${esc(msg.text)}</div>${canDel ? `<button class="chat-del-btn" data-msg-id="${esc(msg.id)}" title="Delete" style="background:none;border:none;color:#ccc;font-size:14px;cursor:pointer;padding:2px;line-height:1;flex-shrink:0;">🗑</button>` : ''}</div><div class="chat-meta">${time}</div></div>`;
+      msgsHTML += `<div class="chat-theirs-wrap"><div class="chat-bubble theirs" data-msg-id="${esc(msg.id)}" data-is-mine="0"><strong style="font-size:11px;opacity:.7;">${esc(msg.from)}</strong><br>${esc(msg.text)}</div>${rxnRow}<div class="chat-meta">${time}</div></div>`;
     }
   });
   // Seen by indicator
@@ -9142,9 +9143,9 @@ function renderChatPanel(){
   panel.querySelectorAll('[data-convo-key]').forEach(el=>{
     el.addEventListener('click', ()=>{ selectConvo(el.getAttribute('data-convo-key')); });
   });
-  // Wire up delete buttons
-  panel.querySelectorAll('.chat-del-btn').forEach(btn=>{
-    btn.addEventListener('click', e=>{ e.stopPropagation(); deleteChatMsg(btn.getAttribute('data-msg-id')); });
+  // Wire up right-click context menu on message bubbles
+  panel.querySelectorAll('[data-msg-id]').forEach(bubble=>{
+    bubble.addEventListener('contextmenu', e=>{ e.preventDefault(); showChatCtxMenu(e, bubble.getAttribute('data-msg-id'), bubble.getAttribute('data-is-mine')==='1'); });
   });
 
   // Auto-scroll to bottom
@@ -9253,6 +9254,57 @@ function showChatNotification(msg){
 function deleteChatMsg(id){
   if(!id) return;
   DATA.chatMessages = (DATA.chatMessages||[]).filter(m=>m.id !== id);
+  saveData();
+  hideChatCtxMenu();
+  renderChatPanel();
+}
+function showChatCtxMenu(e, msgId, isMine){
+  let menu = document.getElementById('chat-ctx-menu');
+  if(!menu){ menu = document.createElement('div'); menu.id='chat-ctx-menu'; document.body.appendChild(menu); }
+  menu.innerHTML = '';
+  const canDel = isMine || isManagerLogin();
+  const QUICK_EMOJIS = ['👍','❤️','😂','😮','🙌','✅'];
+  const emojiRow = document.createElement('div');
+  emojiRow.style.cssText = 'display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid #eee;';
+  QUICK_EMOJIS.forEach(em=>{
+    const btn = document.createElement('button');
+    btn.textContent = em;
+    btn.title = 'React';
+    btn.style.cssText = 'background:none;border:1px solid #eee;border-radius:6px;padding:3px 6px;font-size:16px;cursor:pointer;';
+    btn.onmouseenter = ()=>{ btn.style.background='#f0f4ee'; };
+    btn.onmouseleave = ()=>{ btn.style.background=''; };
+    btn.onclick = ()=>{ addChatReaction(msgId, em); hideChatCtxMenu(); };
+    emojiRow.appendChild(btn);
+  });
+  menu.appendChild(emojiRow);
+  if(canDel){
+    const delItem = document.createElement('div');
+    delItem.textContent = '🗑  Delete message';
+    delItem.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:13px;color:#c0453a;';
+    delItem.onmouseenter = ()=>{ delItem.style.background='#fff0ee'; };
+    delItem.onmouseleave = ()=>{ delItem.style.background=''; };
+    delItem.onclick = ()=>{ if(confirm('Delete this message?')) deleteChatMsg(msgId); };
+    menu.appendChild(delItem);
+  }
+  const x = Math.min(e.clientX, window.innerWidth-160);
+  const y = Math.min(e.clientY, window.innerHeight-120);
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);z-index:10000;min-width:150px;overflow:hidden;`;
+  document.addEventListener('mousedown', hideChatCtxMenu, {once:true});
+}
+function hideChatCtxMenu(){
+  const menu = document.getElementById('chat-ctx-menu');
+  if(menu) menu.style.display='none';
+}
+function addChatReaction(msgId, emoji){
+  const msg = (DATA.chatMessages||[]).find(m=>m.id===msgId);
+  if(!msg) return;
+  if(!msg.reactions) msg.reactions = {};
+  const me = chatMyName();
+  if(!msg.reactions[emoji]) msg.reactions[emoji] = [];
+  const idx = msg.reactions[emoji].indexOf(me);
+  if(idx>=0) msg.reactions[emoji].splice(idx,1); // toggle off
+  else msg.reactions[emoji].push(me);
+  if(msg.reactions[emoji].length===0) delete msg.reactions[emoji];
   saveData();
   renderChatPanel();
 }
