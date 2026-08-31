@@ -2587,7 +2587,7 @@ function renderTeam(){
       <table>
         <tr><th>Name</th><th>Job Title</th><th>Phone</th></tr>
         ${DATA.team.filter(m=>!m.archived).map(m=>`
-          <tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat(${JSON.stringify(esc(m.name))})">💬</button></td><td>${m.role}</td><td>${m.phone || '—'}</td></tr>`).join('')}
+          <tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td>${m.role}</td><td>${m.phone || '—'}</td></tr>`).join('')}
       </table>
     </div>
   `;
@@ -9069,6 +9069,27 @@ function renderChatPanel(){
       msgsHTML += `<div class="chat-theirs-wrap"><div class="chat-bubble theirs"><strong style="font-size:11px;opacity:.7;">${esc(msg.from)}</strong><br>${esc(msg.text)}</div><div class="chat-meta">${time}</div></div>`;
     }
   });
+  // Seen by indicator
+  const lastMsg = msgs[msgs.length - 1];
+  if(lastMsg){
+    let seenBy = [];
+    if(activeConvo === '__team__'){
+      (DATA.team||[]).filter(m=>!m.archived && m.name !== me).forEach(m=>{
+        const reads = DATA.chatReads[m.name] || {};
+        if(reads['__team__'] && reads['__team__'] >= lastMsg.ts) seenBy.push(m.name);
+      });
+    } else {
+      const peerNames = activeConvo.split('~~~');
+      const other = peerNames.find(p=>p!==me);
+      if(other){
+        const reads = DATA.chatReads[other] || {};
+        if(reads[activeConvo] && reads[activeConvo] >= lastMsg.ts) seenBy.push(other);
+      }
+    }
+    if(seenBy.length > 0){
+      msgsHTML += `<div style="text-align:right;font-size:11px;color:#aaa;padding:2px 6px 4px;">✓✓ Seen by ${seenBy.map(n=>esc(n)).join(', ')}</div>`;
+    }
+  }
   if(!msgsHTML) msgsHTML = '<div style="text-align:center;color:#bbb;font-size:13px;padding:30px 0;">No messages yet</div>';
 
   const convoTitle = chatConvoLabel(activeConvo);
