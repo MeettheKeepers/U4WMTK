@@ -9063,7 +9063,7 @@ function renderChatPanel(){
     const key = 'group_'+g.id;
     const unread = chatConvoUnread(key);
     convoListHTML += `
-    <div class="chat-convo-item${activeConvo===key?' active':''}" onclick="selectConvo(${JSON.stringify(key)})">
+    <div class="chat-convo-item${activeConvo===key?' active':''}" data-convo-key="${esc(key)}" style="cursor:pointer;">
       <span>👥 ${esc(g.name)}</span>
       ${unread > 0 ? `<span class="chat-badge">${unread}</span>` : ''}
     </div>`;
@@ -9075,7 +9075,7 @@ function renderChatPanel(){
     const key = chatConvoKey(peer);
     const unread = chatConvoUnread(key);
     convoListHTML += `
-    <div class="chat-convo-item${activeConvo===key?' active':''}" onclick="selectConvo(${JSON.stringify(key)})">
+    <div class="chat-convo-item${activeConvo===key?' active':''}" data-convo-key="${esc(key)}" style="cursor:pointer;">
       <span>💬 ${esc(peer)}</span>
       ${unread > 0 ? `<span class="chat-badge">${unread}</span>` : ''}
     </div>`;
@@ -9134,6 +9134,11 @@ function renderChatPanel(){
       <input id="chat-input" type="text" placeholder="Message…" onkeydown="if(event.key==='Enter')sendChatMsg()" />
       <button onclick="sendChatMsg()">Send</button>
     </div>`;
+
+  // Wire up convo item clicks via data attribute (avoids quote-escaping issues in onclick)
+  panel.querySelectorAll('[data-convo-key]').forEach(el=>{
+    el.addEventListener('click', ()=>{ selectConvo(el.getAttribute('data-convo-key')); });
+  });
 
   // Auto-scroll to bottom
   requestAnimationFrame(()=>{
