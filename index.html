@@ -992,6 +992,7 @@ function normalizeData(d){
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
   if(!Array.isArray(d.foundation.access)) d.foundation.access = [];
+  (d.foundation.customTabs||[]).forEach(ct=>{ if(ct.editable===undefined) ct.editable=false; });
   if(!d.wildlifeShow) d.wildlifeShow = { access: [], videos: [], notes: '' };
   if(!Array.isArray(d.wildlifeShow.access)) d.wildlifeShow.access = [];
   if(!Array.isArray(d.wildlifeShow.videos)) d.wildlifeShow.videos = [];
@@ -2488,6 +2489,21 @@ function saveFoundationTabTitle(id, title){
   const ct = (DATA.foundation.customTabs||[]).find(t=>t.id===id);
   if(ct && title.trim()){ ct.title=title.trim(); saveData(); showTab('foundation'); }
 }
+function addFoundationTabFromManager(){
+  const titleEl = document.getElementById('new-foundation-tab-title-mgr');
+  const title = titleEl ? titleEl.value.trim() : '';
+  if(!title){ alert('Enter a tab title.'); return; }
+  if(!DATA.foundation.customTabs) DATA.foundation.customTabs = [];
+  const id = nextId(DATA.foundation.customTabs);
+  DATA.foundation.customTabs.push({id, title, content:'', editable:false});
+  if(!DATA.foundation.tabAccess) DATA.foundation.tabAccess = {};
+  DATA.foundation.tabAccess['ft_'+id] = [];
+  saveData(); showTab('manager');
+}
+function setFoundationTabEditable(id, editable){
+  const ct = (DATA.foundation.customTabs||[]).find(t=>t.id===id);
+  if(ct){ ct.editable = editable; saveData(); }
+}
 function toggleFoundationAccess(name, checked){
   if(!DATA.foundation.access) DATA.foundation.access = [];
   if(checked){ if(!DATA.foundation.access.includes(name)) DATA.foundation.access.push(name); }
@@ -2496,44 +2512,14 @@ function toggleFoundationAccess(name, checked){
 }
 function renderFoundation(){
   const isMgr = isManagerLogin();
-  const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
-  const access = DATA.foundation.access || [];
   const tabs = (DATA.foundation && DATA.foundation.customTabs) || [];
   const allSubTabs = tabs.map(ct=>({id:'ft_'+ct.id, label:ct.title, rawId:ct.id}));
   const visibleSubTabs = isMgr ? allSubTabs : allSubTabs.filter(t=>hasFoundationTabAccess(t.id));
   if(!FOUNDATION_TAB || !visibleSubTabs.find(t=>t.id===FOUNDATION_TAB)){
     FOUNDATION_TAB = visibleSubTabs.length ? visibleSubTabs[0].id : null;
   }
-  // Access panel (manager only)
-  const accessPanel = isMgr ? `<div class="card">
-    <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
-    <div class="sub" style="margin-bottom:10px;">Select staff who can access Charitable Foundation.</div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
-      ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
-        ${esc(m.name)}
-      </label>`).join('')}
-    </div>
-    <h3 style="margin-bottom:10px;">Add Tab</h3>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:${visibleSubTabs.length?'20':'0'}px;">
-      <input type="text" id="new-foundation-tab-title" placeholder="Tab title" style="flex:1;">
-      <button class="btn-small" onclick="addFoundationTab()">Add Tab</button>
-    </div>
-    ${visibleSubTabs.length ? `<h3 style="margin-bottom:10px;">Tab Access</h3>
-    <div class="sub" style="margin-bottom:10px;">Control which staff can see each sub-tab.</div>
-    ${visibleSubTabs.map(st=>`
-      <div style="margin-bottom:14px;">
-        <div style="font-weight:700;margin-bottom:6px;">${esc(st.label)}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-            <input type="checkbox" ${((DATA.foundation.tabAccess||{})[st.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('${st.id}','${esc(m.name)}',this.checked)">
-            ${esc(m.name)}
-          </label>`).join('')}
-        </div>
-      </div>`).join('')}` : ''}
-  </div>` : '';
   if(!visibleSubTabs.length){
-    return `${accessPanel}<div class="card"><div class="empty">${isMgr?'No tabs yet — add one above.':'No foundation sections available.'}</div></div>`;
+    return `<div class="card"><div class="empty">${isMgr?'No tabs yet — add them in the Manager tab.':'No foundation sections available.'}</div></div>`;
   }
   const tabsHtml = visibleSubTabs.map(t=>`<button class="detail-tab-btn ${FOUNDATION_TAB===t.id?'active':''}" onclick="setFoundationTab('${t.id}')">${t.label}</button>`).join('');
   const active = visibleSubTabs.find(t=>t.id===FOUNDATION_TAB);
@@ -2541,12 +2527,8 @@ function renderFoundation(){
   const ct = rawId !== undefined ? tabs.find(t=>t.id===rawId) : null;
   let body = '';
   if(ct){
-    if(isMgr){
+    if(isMgr || ct.editable){
       body = `<div class="card">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-          <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
-          <button class="btn-ghost" style="color:var(--red);" onclick="deleteFoundationTab(${ct.id})">Delete Tab</button>
-        </div>
         <div class="rich-editor-wrap">
           ${richToolbarFull('foundation-edit-'+ct.id)}
           <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})" style="min-height:220px;">${ct.content||''}</div>
@@ -2558,8 +2540,7 @@ function renderFoundation(){
   }
   return `
     <div class="detail-tabs" style="margin-bottom:12px;">${tabsHtml}</div>
-    ${body}
-    ${accessPanel}`;
+    ${body}`;
 }
 
 /* ---------- WILDLIFE ADVENTURES SHOW ---------- */
@@ -6437,6 +6418,7 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
+  {id:'foundation', label:'Charitable Foundation'},
   {id:'data', label:'Data Tools'}
 ];
 const WELCOME_EDIT_SECTIONS = [
@@ -7427,6 +7409,48 @@ function renderManager(){
               ${esc(m.name)}
             </label>`).join('')}
         `).join('')}
+      </div>
+    `;
+  } else if(MANAGER_TAB === 'foundation'){
+    const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
+    const faccess = DATA.foundation.access || [];
+    const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+    body = `
+      <div class="card">
+        <h2 style="margin-bottom:6px;">Who Can See Charitable Foundation</h2>
+        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the Charitable Foundation tab.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:0;">
+          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+            <input type="checkbox" ${faccess.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
+            ${esc(m.name)}
+          </label>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:12px;">Tabs</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+          <input type="text" id="new-foundation-tab-title-mgr" placeholder="New tab title" style="flex:1;">
+          <button class="btn-small" onclick="addFoundationTabFromManager()">Add Tab</button>
+        </div>
+        ${ftabs.length ? ftabs.map(ct=>`
+          <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+              <input type="text" value="${esc(ct.title)}" style="font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:14px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
+              <button class="btn-ghost" style="color:var(--red);padding:2px 8px;" onclick="deleteFoundationTab(${ct.id})">Delete</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" ${ct.editable?'checked':''} onchange="setFoundationTabEditable(${ct.id},this.checked)">
+              <span><strong>Staff can edit this tab</strong> — unchecked = read-only for staff</span>
+            </label>
+            <div style="font-weight:600;font-size:12px;color:#666;margin-bottom:6px;">Who can see this tab:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+                <input type="checkbox" ${((DATA.foundation.tabAccess||{})['ft_'+ct.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('ft_${ct.id}','${esc(m.name)}',this.checked)">
+                ${esc(m.name)}
+              </label>`).join('')}
+            </div>
+          </div>`).join('')
+        : '<div class="empty">No tabs yet — add one above.</div>'}
       </div>
     `;
   } else if(MANAGER_TAB === 'data'){
