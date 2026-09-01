@@ -981,9 +981,13 @@ function normalizeData(d){
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
   if(!d.chatReads) d.chatReads = {};
   if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
-  if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {} };
+  if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
+  if(!Array.isArray(d.foundation.access)) d.foundation.access = [];
+  if(!d.wildlifeShow) d.wildlifeShow = { access: [], videos: [], notes: '' };
+  if(!Array.isArray(d.wildlifeShow.access)) d.wildlifeShow.access = [];
+  if(!Array.isArray(d.wildlifeShow.videos)) d.wildlifeShow.videos = [];
   return d;
 }
 function loadData(){
@@ -1455,7 +1459,8 @@ const TABS = [
   {id:'paystubs', label:'Pay Stubs'},
   {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
-  {id:'foundation', label:'Foundation'},
+  {id:'foundation', label:'Charitable Foundation'},
+  {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
 ];
 function isManagerLogin(){
@@ -1555,6 +1560,7 @@ function visibleTabs(){
     if(t.id === 'supervisor') return !isManagerLogin() && hasSupervisorAccess();
     if(t.id === 'admin') return hasAdminAccess();
     if(t.id === 'foundation') return isManagerLogin() || hasFoundationAccess();
+    if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
     return true;
   });
 }
@@ -1596,6 +1602,7 @@ function showTab(id){
     supervisor: renderSupervisor,
     admin: renderAdmin,
     foundation: renderFoundation,
+    'wildlife-show': renderWildlifeShow,
     manager: renderManager
   }[id];
   document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
@@ -2425,8 +2432,12 @@ let FOUNDATION_TAB = null;
 function hasFoundationAccess(){
   const myName = getWelcomeStaffName();
   if(!myName) return false;
-  const tabAccess = (DATA.foundation && DATA.foundation.tabAccess) || {};
-  return Object.values(tabAccess).some(arr=>(arr||[]).includes(myName));
+  return ((DATA.foundation && DATA.foundation.access) || []).includes(myName);
+}
+function hasWildlifeShowAccess(){
+  const myName = getWelcomeStaffName();
+  if(!myName) return false;
+  return ((DATA.wildlifeShow && DATA.wildlifeShow.access) || []).includes(myName);
 }
 function hasFoundationTabAccess(tabId){
   if(isManagerLogin()) return true;
@@ -2470,26 +2481,52 @@ function saveFoundationTabTitle(id, title){
   const ct = (DATA.foundation.customTabs||[]).find(t=>t.id===id);
   if(ct && title.trim()){ ct.title=title.trim(); saveData(); showTab('foundation'); }
 }
+function toggleFoundationAccess(name, checked){
+  if(!DATA.foundation.access) DATA.foundation.access = [];
+  if(checked){ if(!DATA.foundation.access.includes(name)) DATA.foundation.access.push(name); }
+  else { DATA.foundation.access = DATA.foundation.access.filter(n=>n!==name); }
+  saveData(); buildTabs();
+}
 function renderFoundation(){
   const isMgr = isManagerLogin();
+  const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+  const access = DATA.foundation.access || [];
   const tabs = (DATA.foundation && DATA.foundation.customTabs) || [];
   const allSubTabs = tabs.map(ct=>({id:'ft_'+ct.id, label:ct.title, rawId:ct.id}));
-  const visibleSubTabs = allSubTabs.filter(t=>hasFoundationTabAccess(t.id));
+  const visibleSubTabs = isMgr ? allSubTabs : allSubTabs.filter(t=>hasFoundationTabAccess(t.id));
   if(!FOUNDATION_TAB || !visibleSubTabs.find(t=>t.id===FOUNDATION_TAB)){
     FOUNDATION_TAB = visibleSubTabs.length ? visibleSubTabs[0].id : null;
   }
-  if(!visibleSubTabs.length){
-    if(isMgr){
-      return `<div class="card">
-        <h2>Foundation</h2>
-        <div class="sub" style="margin-bottom:16px;">Create tabs to organise foundation content for your team.</div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="text" id="new-foundation-tab-title" placeholder="Tab title" style="flex:1;">
-          <button class="btn-small" onclick="addFoundationTab()">Add Tab</button>
+  // Access panel (manager only)
+  const accessPanel = isMgr ? `<div class="card">
+    <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
+    <div class="sub" style="margin-bottom:10px;">Select staff who can access Charitable Foundation.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+      ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
+        ${esc(m.name)}
+      </label>`).join('')}
+    </div>
+    <h3 style="margin-bottom:10px;">Add Tab</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:${visibleSubTabs.length?'20':'0'}px;">
+      <input type="text" id="new-foundation-tab-title" placeholder="Tab title" style="flex:1;">
+      <button class="btn-small" onclick="addFoundationTab()">Add Tab</button>
+    </div>
+    ${visibleSubTabs.length ? `<h3 style="margin-bottom:10px;">Tab Access</h3>
+    <div class="sub" style="margin-bottom:10px;">Control which staff can see each sub-tab.</div>
+    ${visibleSubTabs.map(st=>`
+      <div style="margin-bottom:14px;">
+        <div style="font-weight:700;margin-bottom:6px;">${esc(st.label)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+            <input type="checkbox" ${((DATA.foundation.tabAccess||{})[st.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('${st.id}','${esc(m.name)}',this.checked)">
+            ${esc(m.name)}
+          </label>`).join('')}
         </div>
-      </div>`;
-    }
-    return '<div class="card"><div class="empty">No foundation sections available.</div></div>';
+      </div>`).join('')}` : ''}
+  </div>` : '';
+  if(!visibleSubTabs.length){
+    return `${accessPanel}<div class="card"><div class="empty">${isMgr?'No tabs yet — add one above.':'No foundation sections available.'}</div></div>`;
   }
   const tabsHtml = visibleSubTabs.map(t=>`<button class="detail-tab-btn ${FOUNDATION_TAB===t.id?'active':''}" onclick="setFoundationTab('${t.id}')">${t.label}</button>`).join('');
   const active = visibleSubTabs.find(t=>t.id===FOUNDATION_TAB);
@@ -2500,45 +2537,120 @@ function renderFoundation(){
     if(isMgr){
       body = `<div class="card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-          <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;" onchange="saveFoundationTabTitle(${ct.id},this.value)" placeholder="Tab title">
+          <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
           <button class="btn-ghost" style="color:var(--red);" onclick="deleteFoundationTab(${ct.id})">Delete Tab</button>
         </div>
-        <div class="sub" style="margin-bottom:6px;">Edit content below — changes auto-save when you switch tabs.</div>
+        <div class="sub" style="margin-bottom:6px;">Changes save automatically when you click away.</div>
         <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})">${ct.content||''}</div>
       </div>`;
     } else {
-      body = `<div class="card"><h2>${esc(ct.title)}</h2>${ct.content ? `<div class="welcome-content">${ct.content}</div>` : '<div class="empty">No content yet.</div>'}</div>`;
+      body = `<div class="card"><h2>${esc(ct.title)}</h2>${ct.content?`<div class="welcome-content">${ct.content}</div>`:'<div class="empty">No content yet.</div>'}</div>`;
     }
-  }
-  // Access management + add tab (manager only)
-  let mgmtHtml = '';
-  if(isMgr){
-    const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
-    mgmtHtml = `<div class="card">
-      <h3 style="margin-bottom:12px;">Add Tab</h3>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;">
-        <input type="text" id="new-foundation-tab-title" placeholder="Tab title" style="flex:1;">
-        <button class="btn-small" onclick="addFoundationTab()">Add Tab</button>
-      </div>
-      <h3 style="margin-bottom:10px;">Tab Access</h3>
-      <div class="sub" style="margin-bottom:10px;">Control which staff can see each Foundation tab.</div>
-      ${visibleSubTabs.map(st=>`
-        <div style="margin-bottom:14px;">
-          <div style="font-weight:700;margin-bottom:6px;">${esc(st.label)}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            ${nonMgr.map(m=>`
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-                <input type="checkbox" ${hasFoundationTabAccess(st.id) && ((DATA.foundation.tabAccess||{})[st.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('${st.id}','${esc(m.name)}',this.checked)">
-                ${esc(m.name)}
-              </label>`).join('')}
-          </div>
-        </div>`).join('')}
-    </div>`;
   }
   return `
     <div class="detail-tabs" style="margin-bottom:12px;">${tabsHtml}</div>
     ${body}
-    ${mgmtHtml}`;
+    ${accessPanel}`;
+}
+
+/* ---------- WILDLIFE ADVENTURES SHOW ---------- */
+function toggleWildlifeShowAccess(name, checked){
+  if(!DATA.wildlifeShow.access) DATA.wildlifeShow.access = [];
+  if(checked){ if(!DATA.wildlifeShow.access.includes(name)) DATA.wildlifeShow.access.push(name); }
+  else { DATA.wildlifeShow.access = DATA.wildlifeShow.access.filter(n=>n!==name); }
+  saveData(); buildTabs();
+}
+function addWildlifeVideo(){
+  const titleEl = document.getElementById('ws-video-title');
+  const urlEl = document.getElementById('ws-video-url');
+  const fileEl = document.getElementById('ws-video-file');
+  const title = (titleEl ? titleEl.value.trim() : '') || 'Video';
+  const url = urlEl ? urlEl.value.trim() : '';
+  const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
+  if(!url && !file){ alert('Paste a URL or choose a video file.'); return; }
+  if(file){
+    if(file.size > 80*1024*1024){ alert('File is larger than 80 MB. Please use a YouTube or Vimeo link instead for large videos.'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const id = Date.now();
+      DATA.wildlifeShow.videos.push({ id, title, type:'file', data:e.target.result, mime:file.type, uploadedBy:chatMyName()||'', uploadedAt:Date.now() });
+      saveData(); showTab('wildlife-show');
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+  // URL: detect YouTube / Vimeo
+  let type = 'url';
+  if(/youtube\.com|youtu\.be/.test(url)) type = 'youtube';
+  else if(/vimeo\.com/.test(url)) type = 'vimeo';
+  const id = Date.now();
+  DATA.wildlifeShow.videos.push({ id, title, type, url, uploadedBy:chatMyName()||'', uploadedAt:Date.now() });
+  saveData(); showTab('wildlife-show');
+}
+function deleteWildlifeVideo(id){
+  if(!confirm('Remove this video?')) return;
+  DATA.wildlifeShow.videos = (DATA.wildlifeShow.videos||[]).filter(v=>v.id!==id);
+  saveData(); showTab('wildlife-show');
+}
+function youtubeEmbedUrl(url){
+  let id = '';
+  const m1 = url.match(/[?&]v=([^&]+)/);
+  const m2 = url.match(/youtu\.be\/([^?]+)/);
+  const m3 = url.match(/embed\/([^?]+)/);
+  if(m1) id=m1[1]; else if(m2) id=m2[1]; else if(m3) id=m3[1];
+  return id ? `https://www.youtube.com/embed/${id}` : url;
+}
+function vimeoEmbedUrl(url){
+  const m = url.match(/vimeo\.com\/(\d+)/);
+  return m ? `https://player.vimeo.com/video/${m[1]}` : url;
+}
+function renderWildlifeShow(){
+  const isMgr = isManagerLogin();
+  const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+  const access = (DATA.wildlifeShow && DATA.wildlifeShow.access) || [];
+  const videos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+  const accessPanel = isMgr ? `<div class="card">
+    <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
+    <div class="sub" style="margin-bottom:10px;">Select staff who can access Wildlife Adventures Show.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+      ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleWildlifeShowAccess('${esc(m.name)}',this.checked)">
+        ${esc(m.name)}
+      </label>`).join('')}
+    </div>
+  </div>` : '';
+  const uploadPanel = isMgr ? `<div class="card">
+    <h3 style="margin-bottom:12px;">Add Video</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <input type="text" id="ws-video-title" placeholder="Video title" style="border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:14px;">
+      <div style="font-size:13px;font-weight:600;color:#555;">Option 1 — Paste a YouTube or Vimeo link:</div>
+      <input type="url" id="ws-video-url" placeholder="https://www.youtube.com/watch?v=..." style="border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:14px;">
+      <div style="font-size:13px;font-weight:600;color:#555;">Option 2 — Upload a video file (max 80 MB):</div>
+      <input type="file" id="ws-video-file" accept="video/*" style="font-size:13px;">
+      <button class="btn-small" style="align-self:flex-start;" onclick="addWildlifeVideo()">Add Video</button>
+    </div>
+  </div>` : '';
+  const videoCards = videos.length ? videos.map(v=>{
+    let player = '';
+    if(v.type==='youtube') player=`<iframe src="${youtubeEmbedUrl(v.url)}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:8px;" allowfullscreen></iframe>`;
+    else if(v.type==='vimeo') player=`<iframe src="${vimeoEmbedUrl(v.url)}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:8px;" allowfullscreen></iframe>`;
+    else if(v.type==='file') player=`<video controls style="width:100%;border-radius:8px;max-height:400px;" src="${v.data}"></video>`;
+    else player=`<video controls style="width:100%;border-radius:8px;max-height:400px;" src="${esc(v.url)}"></video>`;
+    const d = new Date(v.uploadedAt).toLocaleDateString();
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <strong style="flex:1;font-size:15px;">${esc(v.title)}</strong>
+        ${isMgr?`<button class="btn-ghost" style="color:var(--red);padding:2px 8px;" onclick="deleteWildlifeVideo(${v.id})">Remove</button>`:''}
+      </div>
+      ${player}
+      <div style="font-size:11px;color:#aaa;margin-top:6px;">Added ${d}${v.uploadedBy?' by '+esc(v.uploadedBy):''}</div>
+    </div>`;
+  }).join('') : `<div class="card"><div class="empty">No videos yet.${isMgr?' Add one above.':''}</div></div>`;
+  return `
+    <div class="card" style="margin-bottom:4px;"><h2 style="margin:0;">🎬 Wildlife Adventures Show</h2></div>
+    ${uploadPanel}
+    ${videoCards}
+    ${accessPanel}`;
 }
 
 /* ---------- TEAM (read-only directory + personal employee file for staff) ---------- */
