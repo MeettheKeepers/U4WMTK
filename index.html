@@ -2569,7 +2569,7 @@ function toggleWildlifeShowAccess(name, checked){
   else { DATA.wildlifeShow.access = DATA.wildlifeShow.access.filter(n=>n!==name); }
   saveData(); buildTabs();
 }
-function addWildlifeVideo(){
+async function addWildlifeVideo(){
   const titleEl = document.getElementById('ws-video-title');
   const urlEl = document.getElementById('ws-video-url');
   const fileEl = document.getElementById('ws-video-file');
@@ -2579,13 +2579,23 @@ function addWildlifeVideo(){
   if(!url && !file){ alert('Paste a URL or choose a video file.'); return; }
   if(file){
     if(file.size > 200*1024*1024){ alert('File is larger than 200 MB. Please use a YouTube or Vimeo link instead for large videos.'); return; }
-    const reader = new FileReader();
-    reader.onload = function(e){
+    // Show uploading state
+    const addBtn = document.querySelector('[onclick="addWildlifeVideo()"]');
+    if(addBtn){ addBtn.textContent = 'Uploading…'; addBtn.disabled = true; }
+    try{
+      const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const { data: upData, error: upErr } = await sb.storage.from('wildlife-videos').upload(fileName, file, { cacheControl:'3600', upsert:false });
+      if(upErr) throw upErr;
+      const { data: urlData } = sb.storage.from('wildlife-videos').getPublicUrl(upData.path);
+      const publicUrl = urlData.publicUrl;
       const id = Date.now();
-      DATA.wildlifeShow.videos.push({ id, title, type:'file', data:e.target.result, mime:file.type, uploadedBy:chatMyName()||'', uploadedAt:Date.now() });
+      DATA.wildlifeShow.videos.push({ id, title, type:'supabase', url:publicUrl, storagePath:upData.path, mime:file.type, uploadedBy:chatMyName()||'', uploadedAt:Date.now() });
       saveData(); showTab('wildlife-show');
-    };
-    reader.readAsDataURL(file);
+    } catch(e){
+      alert('Upload failed: ' + (e.message || e));
+      const addBtn2 = document.querySelector('[onclick="addWildlifeVideo()"]');
+      if(addBtn2){ addBtn2.textContent = 'Add Video'; addBtn2.disabled = false; }
+    }
     return;
   }
   // URL: detect YouTube / Vimeo
@@ -2596,8 +2606,13 @@ function addWildlifeVideo(){
   DATA.wildlifeShow.videos.push({ id, title, type, url, uploadedBy:chatMyName()||'', uploadedAt:Date.now() });
   saveData(); showTab('wildlife-show');
 }
-function deleteWildlifeVideo(id){
+async function deleteWildlifeVideo(id){
   if(!confirm('Remove this video?')) return;
+  const v = (DATA.wildlifeShow.videos||[]).find(v=>v.id===id);
+  // Remove from Supabase Storage if uploaded there
+  if(v && v.storagePath){
+    await sb.storage.from('wildlife-videos').remove([v.storagePath]);
+  }
   DATA.wildlifeShow.videos = (DATA.wildlifeShow.videos||[]).filter(v=>v.id!==id);
   saveData(); showTab('wildlife-show');
 }
@@ -2644,6 +2659,7 @@ function renderWildlifeShow(){
     if(v.type==='youtube') player=`<iframe src="${youtubeEmbedUrl(v.url)}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:8px;" allowfullscreen></iframe>`;
     else if(v.type==='vimeo') player=`<iframe src="${vimeoEmbedUrl(v.url)}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:8px;" allowfullscreen></iframe>`;
     else if(v.type==='file') player=`<video controls style="width:100%;border-radius:8px;max-height:400px;" src="${v.data}"></video>`;
+    else if(v.type==='supabase') player=`<video controls style="width:100%;border-radius:8px;max-height:400px;" src="${esc(v.url)}"></video>`;
     else player=`<video controls style="width:100%;border-radius:8px;max-height:400px;" src="${esc(v.url)}"></video>`;
     const d = new Date(v.uploadedAt).toLocaleDateString();
     return `<div class="card">
