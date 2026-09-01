@@ -493,6 +493,13 @@
     outline:none;
   }
   .welcome-editor:focus{ outline:none; }
+  .rich-toolbar{display:flex;flex-wrap:wrap;gap:3px;padding:8px 10px;background:#f7f5ef;border-bottom:1px solid var(--border,#e3ddcd);align-items:center;}
+  .rich-toolbar select{border:1px solid #ccc;border-radius:5px;padding:3px 5px;font-size:12px;background:#fff;cursor:pointer;height:26px;}
+  .rich-toolbar button{border:1px solid #ccc;border-radius:5px;padding:3px 7px;font-size:13px;background:#fff;cursor:pointer;height:26px;line-height:1;}
+  .rich-toolbar button:hover{background:#e8f0e8;border-color:#999;}
+  .rich-toolbar .rt-sep{width:1px;background:#ccc;height:20px;margin:0 3px;flex-shrink:0;}
+  .rich-toolbar input[type=color]{width:26px;height:26px;border:1px solid #ccc;border-radius:5px;padding:1px;cursor:pointer;}
+  .rich-editor-wrap{border:1px solid var(--border,#e3ddcd);border-radius:10px;overflow:hidden;}
   .welcome-content{ font-size:15px; line-height:1.7; }
   .welcome-content h1,.welcome-content h2,.welcome-content h3{ margin-top:0; }
   .welcome-content ul,.welcome-content ol{ padding-left:22px; }
@@ -2540,8 +2547,10 @@ function renderFoundation(){
           <input type="text" value="${esc(ct.title)}" style="font-size:16px;font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
           <button class="btn-ghost" style="color:var(--red);" onclick="deleteFoundationTab(${ct.id})">Delete Tab</button>
         </div>
-        <div class="sub" style="margin-bottom:6px;">Changes save automatically when you click away.</div>
-        <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})">${ct.content||''}</div>
+        <div class="rich-editor-wrap">
+          ${richToolbarFull('foundation-edit-'+ct.id)}
+          <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})" style="min-height:220px;">${ct.content||''}</div>
+        </div>
       </div>`;
     } else {
       body = `<div class="card"><h2>${esc(ct.title)}</h2>${ct.content?`<div class="welcome-content">${ct.content}</div>`:'<div class="empty">No content yet.</div>'}</div>`;
@@ -2569,7 +2578,7 @@ function addWildlifeVideo(){
   const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
   if(!url && !file){ alert('Paste a URL or choose a video file.'); return; }
   if(file){
-    if(file.size > 80*1024*1024){ alert('File is larger than 80 MB. Please use a YouTube or Vimeo link instead for large videos.'); return; }
+    if(file.size > 200*1024*1024){ alert('File is larger than 200 MB. Please use a YouTube or Vimeo link instead for large videos.'); return; }
     const reader = new FileReader();
     reader.onload = function(e){
       const id = Date.now();
@@ -2625,7 +2634,7 @@ function renderWildlifeShow(){
       <input type="text" id="ws-video-title" placeholder="Video title" style="border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:14px;">
       <div style="font-size:13px;font-weight:600;color:#555;">Option 1 — Paste a YouTube or Vimeo link:</div>
       <input type="url" id="ws-video-url" placeholder="https://www.youtube.com/watch?v=..." style="border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:14px;">
-      <div style="font-size:13px;font-weight:600;color:#555;">Option 2 — Upload a video file (max 80 MB):</div>
+      <div style="font-size:13px;font-weight:600;color:#555;">Option 2 — Upload a video file (max 200 MB):</div>
       <input type="file" id="ws-video-file" accept="video/*" style="font-size:13px;">
       <button class="btn-small" style="align-self:flex-start;" onclick="addWildlifeVideo()">Add Video</button>
     </div>
@@ -7730,6 +7739,59 @@ function richToolbar(editorId){
     <div class="rich-sep"></div>
     ${b('insertUnorderedList','• List','Bullet list')}
     ${b('insertOrderedList','1. List','Numbered list')}
+  </div>`;
+}
+function richCmdVal(editorId, cmd, value){
+  const el = document.getElementById(editorId);
+  if(el) el.focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand(cmd, false, value);
+}
+function richToolbarFull(editorId){
+  const b = (cmd, label, title) =>
+    `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="richCmd('${editorId}','${cmd}')" style="border:1px solid #ccc;border-radius:5px;padding:3px 7px;font-size:13px;background:#fff;cursor:pointer;height:26px;line-height:1;">${label}</button>`;
+  return `<div class="rich-toolbar">
+    <select title="Font" onmousedown="event.stopPropagation()" onchange="richCmdVal('${editorId}','fontName',this.value);this.selectedIndex=0;" style="border:1px solid #ccc;border-radius:5px;padding:3px 5px;font-size:12px;background:#fff;height:26px;">
+      <option>Font</option>
+      <option value="Arial">Arial</option>
+      <option value="Georgia">Georgia</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+      <option value="Verdana">Verdana</option>
+      <option value="Trebuchet MS">Trebuchet MS</option>
+      <option value="Impact">Impact</option>
+    </select>
+    <select title="Size" onmousedown="event.stopPropagation()" onchange="richFontSize('${editorId}',this.value);this.value='';" style="border:1px solid #ccc;border-radius:5px;padding:3px 5px;font-size:12px;background:#fff;height:26px;">
+      <option value="">Size</option>
+      <option value="1">Tiny</option>
+      <option value="2">Small</option>
+      <option value="3">Normal</option>
+      <option value="4">Large</option>
+      <option value="5">Larger</option>
+      <option value="6">Heading</option>
+      <option value="7">Big Heading</option>
+    </select>
+    <div class="rt-sep"></div>
+    ${b('bold','<b>B</b>','Bold')}
+    ${b('italic','<i>I</i>','Italic')}
+    ${b('underline','<u>U</u>','Underline')}
+    ${b('strikeThrough','<s>S</s>','Strikethrough')}
+    <div class="rt-sep"></div>
+    ${b('justifyLeft','⬅','Align left')}
+    ${b('justifyCenter','☰','Centre')}
+    ${b('justifyRight','➡','Align right')}
+    <div class="rt-sep"></div>
+    ${b('insertUnorderedList','• List','Bullet list')}
+    ${b('insertOrderedList','1. List','Numbered list')}
+    <div class="rt-sep"></div>
+    <label title="Text colour" style="display:flex;align-items:center;gap:2px;font-size:11px;cursor:pointer;">
+      A <input type="color" value="#000000" title="Text colour" onmousedown="event.stopPropagation()" oninput="richCmdVal('${editorId}','foreColor',this.value);" style="width:22px;height:22px;border:1px solid #ccc;border-radius:4px;padding:1px;cursor:pointer;">
+    </label>
+    <label title="Highlight colour" style="display:flex;align-items:center;gap:2px;font-size:11px;cursor:pointer;">
+      H <input type="color" value="#ffff00" title="Highlight" onmousedown="event.stopPropagation()" oninput="richCmdVal('${editorId}','hiliteColor',this.value);" style="width:22px;height:22px;border:1px solid #ccc;border-radius:4px;padding:1px;cursor:pointer;">
+    </label>
+    <div class="rt-sep"></div>
+    ${b('removeFormat','✕ Clear','Clear formatting')}
   </div>`;
 }
 function saveWelcomeSection(key){
