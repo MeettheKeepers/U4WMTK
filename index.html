@@ -494,6 +494,8 @@
   }
   .welcome-editor:focus{ outline:none; }
   .rich-toolbar{display:flex;flex-wrap:wrap;gap:3px;padding:8px 10px;background:#f7f5ef;border-bottom:1px solid var(--border,#e3ddcd);align-items:center;}
+  .habitat-drag-row.drag-over{outline:2px dashed var(--green,#3f5e3f);outline-offset:2px;border-radius:6px;}
+  .habitat-drag-row[draggable="true"]{cursor:default;}
   .rich-toolbar select{border:1px solid #ccc;border-radius:5px;padding:3px 5px;font-size:12px;background:#fff;cursor:pointer;height:26px;}
   .rich-toolbar button{border:1px solid #ccc;border-radius:5px;padding:3px 7px;font-size:13px;background:#fff;cursor:pointer;height:26px;line-height:1;}
   .rich-toolbar button:hover{background:#e8f0e8;border-color:#999;}
@@ -1639,6 +1641,7 @@ function showTab(id){
     manager: renderManager
   }[id];
   document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
+  if(id === 'manager' && HABITAT_MGR_OPEN) wireHabitatDrag();
 }
 
 /* ---------- ADMIN TAB ---------- */
@@ -5499,6 +5502,44 @@ function filterAnimals(q){
 }
 let HABITAT_MGR_OPEN = false;
 function toggleHabitatMgr(){ HABITAT_MGR_OPEN = !HABITAT_MGR_OPEN; showTab('manager'); }
+function wireHabitatDrag(){
+  const list = document.getElementById('habitat-drag-list');
+  if(!list) return;
+  let dragSrc = null;
+  list.querySelectorAll('.habitat-drag-row').forEach(row=>{
+    row.addEventListener('dragstart', e=>{
+      dragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(()=>row.style.opacity='0.4', 0);
+    });
+    row.addEventListener('dragend', ()=>{
+      row.style.opacity='';
+      list.querySelectorAll('.habitat-drag-row').forEach(r=>r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect='move';
+      list.querySelectorAll('.habitat-drag-row').forEach(r=>r.classList.remove('drag-over'));
+      if(row !== dragSrc) row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', ()=>row.classList.remove('drag-over'));
+    row.addEventListener('drop', e=>{
+      e.preventDefault();
+      if(!dragSrc || dragSrc===row) return;
+      const srcId = dragSrc.getAttribute('data-habitat-cardid');
+      const tgtId = row.getAttribute('data-habitat-cardid');
+      const habs = DATA.habitats||[];
+      const si = habs.findIndex(h=>h.cardId===srcId);
+      const ti = habs.findIndex(h=>h.cardId===tgtId);
+      if(si===-1||ti===-1) return;
+      const [moved] = habs.splice(si,1);
+      habs.splice(ti,0,moved);
+      DATA.habitats = habs;
+      saveData();
+      showTab('manager');
+    });
+  });
+}
 let SHOW_ADD_ANIMAL_FORM = false;
 function toggleAddAnimalForm(){
   SHOW_ADD_ANIMAL_FORM = !SHOW_ADD_ANIMAL_FORM;
@@ -6911,12 +6952,14 @@ function renderManager(){
       <div class="card">
         <button class="collapsible-toggle" onclick="toggleHabitatMgr()">${HABITAT_MGR_OPEN ? '▾' : '▸'} Habitat / Pen Management</button>
         ${HABITAT_MGR_OPEN ? `
-        <div class="sub" style="margin-top:8px;">Add and rename habitat pens here. Rename a pen and it updates everywhere. To move an animal, open its profile and change the Habitat Card dropdown. Empty pens are flagged below.</div>
+        <div class="sub" style="margin-top:8px;">Add and rename habitat pens here. Drag the ⠿ handle to reorder. Rename a pen and it updates everywhere. To move an animal, open its profile and change the Habitat Card dropdown. Empty pens are flagged below.</div>
+        <div id="habitat-drag-list">
         ${(DATA.habitats||[]).map(h=>{
           const occupants = DATA.animals.filter(a=>!a.archived && a.cardId===h.cardId).map(a=>a.name);
           const isEmpty = occupants.length === 0;
           return `
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <div class="habitat-drag-row" data-habitat-cardid="${h.cardId}" draggable="true" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <span class="drag-handle" style="cursor:grab;font-size:18px;color:var(--text-light);padding:0 2px;user-select:none;" title="Drag to reorder">⠿</span>
             <span style="font-size:12px;color:var(--text-light);min-width:36px;font-family:monospace;">${esc(h.cardId)}</span>
             <input value="${esc(h.cardTitle)}" style="flex:1;min-width:180px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);" onchange="renameCardTitle('${h.cardId}', this.value.trim())">
             ${isEmpty
@@ -6925,6 +6968,7 @@ function renderManager(){
             }
           </div>`;
         }).join('')}
+        </div>
         <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px;">
           <input id="new-habitat-name" type="text" placeholder="New habitat name (e.g. T1 — Tortoises)" style="flex:1;min-width:200px;">
           <button class="btn-small" onclick="addHabitat(document.getElementById('new-habitat-name').value.trim()); document.getElementById('new-habitat-name').value='';">Add Habitat</button>
