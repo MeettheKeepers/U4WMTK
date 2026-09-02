@@ -9641,9 +9641,12 @@ async function pollChatMsgs(){
     if(incoming.chatReads){
       Object.keys(incoming.chatReads).forEach(user=>{
         if(user === me) return;
-        DATA.chatReads[user] = incoming.chatReads[user];
+        const incoming_val = incoming.chatReads[user];
+        if(JSON.stringify(DATA.chatReads[user]) !== JSON.stringify(incoming_val)){
+          DATA.chatReads[user] = incoming_val;
+          changed = true;
+        }
       });
-      changed = true;
     }
     // Merge chat groups from cloud
     if(Array.isArray(incoming.chatGroups)){
@@ -9725,9 +9728,10 @@ function showChatCtxMenu(e, msgId, isMine){
     delItem.onclick = ()=>{ if(confirm('Delete this message?')) deleteChatMsg(msgId); };
     menu.appendChild(delItem);
   }
-  const x = Math.min(e.clientX, window.innerWidth-160);
+  const menuWidth = 260;
+  const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
   const y = Math.min(e.clientY, window.innerHeight-120);
-  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);z-index:10000;min-width:150px;overflow:hidden;`;
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);z-index:10000;min-width:${menuWidth}px;overflow:hidden;`;
   // Dismiss only when clicking OUTSIDE the menu
   setTimeout(()=>{
     function onOutside(e){
