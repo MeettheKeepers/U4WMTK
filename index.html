@@ -1188,7 +1188,12 @@ function mergeAnimals(incomingAnimals, localAnimals){
   let changed = false;
   localAnimals.forEach(localA => {
     const idx = result.findIndex(a => a.id === localA.id);
-    if(idx === -1) return;
+    if(idx === -1){
+      // New animal only in local — cloud push must have failed; preserve it
+      result.push(Object.assign({}, localA));
+      changed = true;
+      return;
+    }
     const localT = localA._updatedAt || 0;
     const cloudT = result[idx]._updatedAt || 0;
     if(localT > cloudT){
@@ -1198,6 +1203,17 @@ function mergeAnimals(incomingAnimals, localAnimals){
     }
   });
   return { animals: result, changed };
+}
+function mergeHabitats(incomingHabitats, localHabitats){
+  if(!Array.isArray(incomingHabitats)) return { habitats: Array.isArray(localHabitats) ? localHabitats.slice() : [], changed: false };
+  if(!Array.isArray(localHabitats) || localHabitats.length === 0) return { habitats: incomingHabitats, changed: false };
+  const result = incomingHabitats.map(h => Object.assign({}, h));
+  let changed = false;
+  localHabitats.forEach(localH => {
+    const idx = result.findIndex(h => h.cardId === localH.cardId);
+    if(idx === -1){ result.push(Object.assign({}, localH)); changed = true; }
+  });
+  return { habitats: result, changed };
 }
 
 async function pollCloudData(){
@@ -1214,6 +1230,7 @@ async function pollCloudData(){
       const localTasks = DATA.tasks;
       const localShows = DATA.shows;
       const localAnimals = DATA.animals;
+      const localHabitats = DATA.habitats;
       DATA = normalizeData(incoming);
       DATA._savedAt = incoming._savedAt;
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1224,7 +1241,9 @@ async function pollCloudData(){
       DATA.timeClock = mergedTC.tc;
       const mergedAnimals = mergeAnimals(DATA.animals, localAnimals);
       DATA.animals = mergedAnimals.animals;
-      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed){
+      const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
+      DATA.habitats = mergedHabitats.habitats;
+      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
         // Local had data the cloud didn't — push the healed version back
         DATA._savedAt = Date.now();
         SUPPRESS_NEXT_REALTIME = true;
@@ -1257,6 +1276,7 @@ async function initCloudSync(){
       const localTasks = DATA.tasks;
       const localShows = DATA.shows;
       const localAnimals = DATA.animals;
+      const localHabitats = DATA.habitats;
       DATA = normalizeData(cloud);
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
       DATA.tasks = mergedTasks.tasks;
@@ -1266,7 +1286,9 @@ async function initCloudSync(){
       DATA.timeClock = mergedTC.tc;
       const mergedAnimals = mergeAnimals(DATA.animals, localAnimals);
       DATA.animals = mergedAnimals.animals;
-      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed){
+      const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
+      DATA.habitats = mergedHabitats.habitats;
+      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
         // Local had data the cloud didn't — push back.
         // Subscription isn't set up yet at this point, so no SUPPRESS needed.
         DATA._savedAt = Date.now();
@@ -1304,6 +1326,7 @@ async function initCloudSync(){
         const localTasks = DATA.tasks;
         const localShows = DATA.shows;
         const localAnimals = DATA.animals;
+        const localHabitats = DATA.habitats;
         DATA = normalizeData(incoming);
         DATA._savedAt = incoming._savedAt || Date.now();
         const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1314,7 +1337,9 @@ async function initCloudSync(){
         DATA.timeClock = mergedTC.tc;
         const mergedAnimals = mergeAnimals(DATA.animals, localAnimals);
         DATA.animals = mergedAnimals.animals;
-        if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed){
+        const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
+        DATA.habitats = mergedHabitats.habitats;
+        if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
           DATA._savedAt = Date.now();
           SUPPRESS_NEXT_REALTIME = true;
           const _st = setTimeout(()=>{ SUPPRESS_NEXT_REALTIME = false; }, 12000);
