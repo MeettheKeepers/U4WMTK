@@ -991,6 +991,7 @@ function normalizeData(d){
   if(!d.chatReads) d.chatReads = {};
   if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
   if(!Array.isArray(d.chatDeletedIds)) d.chatDeletedIds = [];
+  if(!Array.isArray(d.chatHiddenDMs)) d.chatHiddenDMs = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1261,6 +1262,7 @@ async function pollCloudData(){
       const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
+      const localHiddenDMs = DATA.chatHiddenDMs || [];
       DATA = normalizeData(incoming);
       DATA._savedAt = incoming._savedAt;
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1278,6 +1280,7 @@ async function pollCloudData(){
       const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
+      DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
       if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push the healed version back
         DATA._savedAt = Date.now();
@@ -1315,6 +1318,7 @@ async function initCloudSync(){
       const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
+      const localHiddenDMs = DATA.chatHiddenDMs || [];
       DATA = normalizeData(cloud);
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
       DATA.tasks = mergedTasks.tasks;
@@ -1331,6 +1335,7 @@ async function initCloudSync(){
       const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
+      DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
       if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push back.
         // Subscription isn't set up yet at this point, so no SUPPRESS needed.
@@ -1390,6 +1395,7 @@ async function initCloudSync(){
         const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
         DATA.chatMessages = mergedChat.msgs;
         DATA.chatDeletedIds = localDeletedIds;
+      DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
         if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
           DATA._savedAt = Date.now();
           SUPPRESS_NEXT_REALTIME = true;
@@ -9410,7 +9416,8 @@ function chatConvoPeers(){
     const peer = parts.find(p => p !== me);
     if(peer && (!recency[peer] || msg.ts > recency[peer])) recency[peer] = msg.ts;
   });
-  return Object.keys(recency).sort((a,b)=> recency[b] - recency[a]);
+  const hidden = new Set(DATA.chatHiddenDMs||[]);
+  return Object.keys(recency).filter(p=>!hidden.has(p)).sort((a,b)=> recency[b] - recency[a]);
 }
 function chatConvoUnread(convoKey){
   const me = chatMyName();
@@ -9683,6 +9690,16 @@ async function pollChatMsgs(){
         DATA.chatMessages.sort((a,b)=>a.ts-b.ts);
         if(DATA.chatMessages.length > CHAT_MAX_MSGS) DATA.chatMessages = DATA.chatMessages.slice(-CHAT_MAX_MSGS);
         changed = true;
+        // Unhide any DM peer who sent a new message
+        newMsgs.forEach(msg=>{
+          if(msg.to && !msg.to.startsWith('group_') && msg.to !== '__team__'){
+            const parts = msg.to.split('~~~');
+            const peer = parts.find(p=>p!==me);
+            if(peer && Array.isArray(DATA.chatHiddenDMs)){
+              DATA.chatHiddenDMs = DATA.chatHiddenDMs.filter(h=>h!==peer);
+            }
+          }
+        });
         // Show notifications
         newMsgs.forEach(msg=>{
           let convoKey;
@@ -9750,10 +9767,17 @@ function deleteConvo(key){
   if(DATA.chatDeletedIds.length > 2000) DATA.chatDeletedIds = DATA.chatDeletedIds.slice(-2000);
   // Remove messages
   DATA.chatMessages = (DATA.chatMessages||[]).filter(m=>m.to !== key);
-  // If it's a group, remove the group entry
+  // If it's a group, remove the group entry; for DMs hide the peer name
   if(key.startsWith('group_')){
     const id = key.slice(6);
     DATA.chatGroups = (DATA.chatGroups||[]).filter(g=>g.id !== id);
+  } else {
+    const me = chatMyName();
+    const peer = key.split('~~~').find(p=>p!==me);
+    if(peer){
+      if(!Array.isArray(DATA.chatHiddenDMs)) DATA.chatHiddenDMs=[];
+      if(!DATA.chatHiddenDMs.includes(peer)) DATA.chatHiddenDMs.push(peer);
+    }
   }
   // If active convo was deleted, go back to team chat
   if(CHAT_ACTIVE_CONVO === key) CHAT_ACTIVE_CONVO = '__team__';
