@@ -990,6 +990,7 @@ function normalizeData(d){
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
   if(!d.chatReads) d.chatReads = {};
   if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
+  if(!Array.isArray(d.chatDeletedIds)) d.chatDeletedIds = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1217,6 +1218,30 @@ function mergeHabitats(incomingHabitats, localHabitats){
   });
   return { habitats: result, changed };
 }
+function mergeChatMessages(incomingMsgs, localMsgs, localDeletedIds){
+  if(!Array.isArray(incomingMsgs)) return { msgs: Array.isArray(localMsgs) ? localMsgs.slice() : [], changed: false };
+  if(!Array.isArray(localMsgs) || localMsgs.length === 0) return { msgs: incomingMsgs, changed: false };
+  const deletedSet = new Set(localDeletedIds||[]);
+  const incomingIds = new Set(incomingMsgs.map(m=>m.id));
+  // Keep local messages not yet in cloud (e.g. my outgoing messages before push completed), excluding deleted
+  const localOnly = localMsgs.filter(m=> !incomingIds.has(m.id) && !deletedSet.has(m.id));
+  // Also filter out deleted IDs from incoming
+  const filteredIncoming = incomingMsgs.filter(m=> !deletedSet.has(m.id));
+  if(localOnly.length === 0 && filteredIncoming.length === incomingMsgs.length) return { msgs: incomingMsgs, changed: false };
+  const merged = [...filteredIncoming, ...localOnly].sort((a,b)=>a.ts-b.ts);
+  return { msgs: merged, changed: true };
+}
+function mergeWildlifeVideos(incomingVideos, localVideos){
+  if(!Array.isArray(incomingVideos)) return { videos: Array.isArray(localVideos) ? localVideos.slice() : [], changed: false };
+  if(!Array.isArray(localVideos) || localVideos.length === 0) return { videos: incomingVideos, changed: false };
+  const result = incomingVideos.map(v => Object.assign({}, v));
+  let changed = false;
+  localVideos.forEach(localV => {
+    const idx = result.findIndex(v => v.id === localV.id);
+    if(idx === -1){ result.push(Object.assign({}, localV)); changed = true; }
+  });
+  return { videos: result, changed };
+}
 
 async function pollCloudData(){
   // Polling fallback: fetch fresh data from Supabase every 30 seconds.
@@ -1233,6 +1258,9 @@ async function pollCloudData(){
       const localShows = DATA.shows;
       const localAnimals = DATA.animals;
       const localHabitats = DATA.habitats;
+      const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+      const localMsgs = DATA.chatMessages || [];
+      const localDeletedIds = DATA.chatDeletedIds || [];
       DATA = normalizeData(incoming);
       DATA._savedAt = incoming._savedAt;
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1245,7 +1273,12 @@ async function pollCloudData(){
       DATA.animals = mergedAnimals.animals;
       const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
       DATA.habitats = mergedHabitats.habitats;
-      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
+      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+      DATA.wildlifeShow.videos = mergedVideos.videos;
+      const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
+      DATA.chatMessages = mergedChat.msgs;
+      DATA.chatDeletedIds = localDeletedIds;
+      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push the healed version back
         DATA._savedAt = Date.now();
         SUPPRESS_NEXT_REALTIME = true;
@@ -1279,6 +1312,9 @@ async function initCloudSync(){
       const localShows = DATA.shows;
       const localAnimals = DATA.animals;
       const localHabitats = DATA.habitats;
+      const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+      const localMsgs = DATA.chatMessages || [];
+      const localDeletedIds = DATA.chatDeletedIds || [];
       DATA = normalizeData(cloud);
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
       DATA.tasks = mergedTasks.tasks;
@@ -1290,7 +1326,12 @@ async function initCloudSync(){
       DATA.animals = mergedAnimals.animals;
       const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
       DATA.habitats = mergedHabitats.habitats;
-      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
+      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+      DATA.wildlifeShow.videos = mergedVideos.videos;
+      const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
+      DATA.chatMessages = mergedChat.msgs;
+      DATA.chatDeletedIds = localDeletedIds;
+      if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push back.
         // Subscription isn't set up yet at this point, so no SUPPRESS needed.
         DATA._savedAt = Date.now();
@@ -1329,6 +1370,9 @@ async function initCloudSync(){
         const localShows = DATA.shows;
         const localAnimals = DATA.animals;
         const localHabitats = DATA.habitats;
+        const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+        const localMsgs = DATA.chatMessages || [];
+        const localDeletedIds = DATA.chatDeletedIds || [];
         DATA = normalizeData(incoming);
         DATA._savedAt = incoming._savedAt || Date.now();
         const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1341,7 +1385,12 @@ async function initCloudSync(){
         DATA.animals = mergedAnimals.animals;
         const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
         DATA.habitats = mergedHabitats.habitats;
-        if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed){
+        const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+        DATA.wildlifeShow.videos = mergedVideos.videos;
+        const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
+        DATA.chatMessages = mergedChat.msgs;
+        DATA.chatDeletedIds = localDeletedIds;
+        if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
           DATA._savedAt = Date.now();
           SUPPRESS_NEXT_REALTIME = true;
           const _st = setTimeout(()=>{ SUPPRESS_NEXT_REALTIME = false; }, 12000);
@@ -4184,13 +4233,25 @@ function toggleAnimalOutreach(id){
 }
 function archiveAnimal(id){
   const a = DATA.animals.find(x=>x.id===id);
+  if(!a) return;
   a.archived = true;
+  // Archive tasks whose name contains this animal's name
+  const nameLower = a.name.toLowerCase();
+  (DATA.tasks||[]).forEach(t=>{
+    if(!t.archived && t.name.toLowerCase().includes(nameLower)) t.archived = true;
+  });
   saveData();
   showTab('manager');
 }
 function restoreAnimal(id){
   const a = DATA.animals.find(x=>x.id===id);
+  if(!a) return;
   a.archived = false;
+  // Restore tasks that were archived along with this animal
+  const nameLower = a.name.toLowerCase();
+  (DATA.tasks||[]).forEach(t=>{
+    if(t.archived && t.name.toLowerCase().includes(nameLower)) t.archived = false;
+  });
   saveData();
   showTab('manager');
 }
@@ -9615,7 +9676,8 @@ async function pollChatMsgs(){
     // Merge new messages
     if(Array.isArray(incoming.chatMessages)){
       const existing = new Set((DATA.chatMessages||[]).map(m=>m.id));
-      const newMsgs = incoming.chatMessages.filter(m=> !existing.has(m.id) && m.from !== me);
+      const deleted = new Set(DATA.chatDeletedIds||[]);
+      const newMsgs = incoming.chatMessages.filter(m=> !existing.has(m.id) && !deleted.has(m.id) && m.from !== me);
       if(newMsgs.length > 0){
         DATA.chatMessages = [...(DATA.chatMessages||[]), ...newMsgs];
         DATA.chatMessages.sort((a,b)=>a.ts-b.ts);
@@ -9681,6 +9743,11 @@ function showChatNotification(msg){
 function deleteConvo(key){
   if(!key) return;
   if(!confirm('Delete this entire conversation and all its messages?')) return;
+  // Track deleted IDs so poll doesn't re-add them from cloud
+  const deletedIds = (DATA.chatMessages||[]).filter(m=>m.to===key).map(m=>m.id);
+  if(!Array.isArray(DATA.chatDeletedIds)) DATA.chatDeletedIds = [];
+  DATA.chatDeletedIds.push(...deletedIds);
+  if(DATA.chatDeletedIds.length > 2000) DATA.chatDeletedIds = DATA.chatDeletedIds.slice(-2000);
   // Remove messages
   DATA.chatMessages = (DATA.chatMessages||[]).filter(m=>m.to !== key);
   // If it's a group, remove the group entry
@@ -9690,13 +9757,17 @@ function deleteConvo(key){
   }
   // If active convo was deleted, go back to team chat
   if(CHAT_ACTIVE_CONVO === key) CHAT_ACTIVE_CONVO = '__team__';
-  saveData();
+  clearTimeout(SAVE_DEBOUNCE_TIMER); SAVE_DEBOUNCE_TIMER = null;
+  saveData(); pushCloudData();
   renderChatPanel();
 }
 function deleteChatMsg(id){
   if(!id) return;
+  if(!Array.isArray(DATA.chatDeletedIds)) DATA.chatDeletedIds = [];
+  DATA.chatDeletedIds.push(id);
+  if(DATA.chatDeletedIds.length > 2000) DATA.chatDeletedIds = DATA.chatDeletedIds.slice(-2000);
   DATA.chatMessages = (DATA.chatMessages||[]).filter(m=>m.id !== id);
-  saveData();
+  saveData(); pushCloudData();
   hideChatCtxMenu();
   renderChatPanel();
 }
