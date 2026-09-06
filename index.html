@@ -4059,7 +4059,6 @@ function setAnimalDetailTab(tab){
 }
 const ANIMAL_DETAIL_TABS = [
   {id:'overview', label:'Overview'},
-  {id:'scripts', label:'Scripts'},
   {id:'funfacts', label:'Fun Facts'},
   {id:'medical', label:'Medical Records'},
   {id:'training', label:'Training Videos'},
@@ -4080,11 +4079,6 @@ function renderAnimalDetail(a){
       </div>
       <div class="detail-section-title">Rescue Story</div>
       <div class="detail-section-body">${a.rescueStory || 'Not entered yet.'}</div>
-    `;
-  } else if(ANIMAL_DETAIL_TAB === 'scripts'){
-    body = `
-      <div class="detail-section-title">Presentation Script / Talking Points</div>
-      <div class="detail-section-body">${a.script || 'No script added yet.'}</div>
     `;
   } else if(ANIMAL_DETAIL_TAB === 'funfacts'){
     body = `
