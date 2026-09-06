@@ -987,6 +987,7 @@ function normalizeData(d){
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
     if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
   });
+  (d.animals||[]).forEach(a=>{ if(a.scriptFr===undefined) a.scriptFr=''; });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
   if(!d.chatReads) d.chatReads = {};
   if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
@@ -1549,6 +1550,7 @@ const TABS = [
   {id:'paystubs', label:'Pay Stubs'},
   {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
+  {id:'scripts', label:'Scripts'},
   {id:'foundation', label:'Charitable Foundation'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
@@ -1691,6 +1693,7 @@ function showTab(id){
     paystubs: renderPayStubs,
     supervisor: renderSupervisor,
     admin: renderAdmin,
+    scripts: renderScripts,
     foundation: renderFoundation,
     'wildlife-show': renderWildlifeShow,
     manager: renderManager
@@ -2624,6 +2627,89 @@ function renderFoundation(){
   return `
     <div class="detail-tabs" style="margin-bottom:12px;">${tabsHtml}</div>
     ${body}`;
+}
+
+/* ---------- SCRIPTS TAB ---------- */
+let SCRIPT_LANG = 'en';
+let SCRIPT_SEARCH = '';
+let SCRIPT_SELECTED = []; // up to 10 animal names
+let SCRIPT_DROPDOWN_OPEN = false;
+function setScriptLang(lang){ SCRIPT_LANG = lang; showTab('scripts'); }
+function toggleScriptDropdown(){ SCRIPT_DROPDOWN_OPEN = !SCRIPT_DROPDOWN_OPEN; showTab('scripts'); }
+function toggleScriptAnimal(name){
+  const idx = SCRIPT_SELECTED.indexOf(name);
+  if(idx >= 0){ SCRIPT_SELECTED.splice(idx,1); }
+  else if(SCRIPT_SELECTED.length < 10){ SCRIPT_SELECTED.push(name); }
+  showTab('scripts');
+}
+function clearScriptFilter(){ SCRIPT_SELECTED = []; SCRIPT_SEARCH = ''; showTab('scripts'); }
+function renderScripts(){
+  const isMgr = isManagerLogin();
+  const allActive = (DATA.animals||[]).filter(a=>!a.archived);
+  // Filter list
+  const search = SCRIPT_SEARCH.toLowerCase().trim();
+  let filtered = allActive;
+  if(SCRIPT_SELECTED.length > 0){
+    filtered = filtered.filter(a=>SCRIPT_SELECTED.includes(a.name));
+  }
+  if(search){ filtered = filtered.filter(a=>a.name.toLowerCase().includes(search) || a.species.toLowerCase().includes(search)); }
+  // Dropdown animal list
+  const dropdownHtml = SCRIPT_DROPDOWN_OPEN ? `
+    <div style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.13);z-index:200;max-height:260px;overflow-y:auto;margin-top:4px;">
+      ${allActive.length === 0 ? '<div style="padding:12px;color:var(--gray);font-size:13px;">No animals found.</div>' :
+        allActive.map(a=>{
+          const checked = SCRIPT_SELECTED.includes(a.name);
+          const disabled = !checked && SCRIPT_SELECTED.length >= 10;
+          return `<label style="display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:${disabled?'default':'pointer'};border-bottom:1px solid #f5f3ed;${disabled?'opacity:.45':''}">
+            <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''} onchange="toggleScriptAnimal('${esc(a.name)}')">
+            <span style="font-weight:600;font-size:14px;">${esc(a.name)}</span>
+            <span style="font-size:12px;color:var(--gray);">${esc(a.species)}</span>
+          </label>`;
+        }).join('')}
+    </div>` : '';
+  const selectedLabel = SCRIPT_SELECTED.length > 0
+    ? `${SCRIPT_SELECTED.length} selected (max 10)`
+    : 'Filter by animal';
+  return `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <h2 style="margin:0;">Scripts</h2>
+        <div style="display:flex;gap:6px;">
+          <button onclick="setScriptLang('en')" style="padding:6px 16px;border-radius:20px;border:2px solid var(--green);background:${SCRIPT_LANG==='en'?'var(--green)':'transparent'};color:${SCRIPT_LANG==='en'?'#fff':'var(--green)'};font-weight:700;cursor:pointer;font-size:13px;">🇨🇦 English</button>
+          <button onclick="setScriptLang('fr')" style="padding:6px 16px;border-radius:20px;border:2px solid var(--green);background:${SCRIPT_LANG==='fr'?'var(--green)':'transparent'};color:${SCRIPT_LANG==='fr'?'#fff':'var(--green)'};font-weight:700;cursor:pointer;font-size:13px;">🇫🇷 Français</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${SCRIPT_SELECTED.length?'8':'16'}px;align-items:center;">
+        <input type="text" placeholder="Search animal or species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('scripts')" style="flex:1;min-width:160px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
+        <div style="position:relative;min-width:180px;">
+          <button onclick="toggleScriptDropdown()" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:14px;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;">
+            <span>${selectedLabel}</span><span>▾</span>
+          </button>
+          ${dropdownHtml}
+        </div>
+        ${(SCRIPT_SELECTED.length > 0 || SCRIPT_SEARCH) ? `<button class="btn-ghost" onclick="clearScriptFilter()">Clear</button>` : ''}
+      </div>
+      ${SCRIPT_SELECTED.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${SCRIPT_SELECTED.map(n=>`<span style="background:var(--green-light);color:var(--green-dark);padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${esc(n)}</span>`).join('')}</div>` : ''}
+      ${isMgr ? `<div style="font-size:12px;color:var(--gray);margin-bottom:12px;">Edit scripts in Manager → animal card.</div>` : ''}
+    </div>
+    ${filtered.length === 0 ? `<div class="card"><div class="empty">No animals match your filter.</div></div>` :
+      filtered.map(a=>{
+        const scriptText = SCRIPT_LANG === 'fr' ? (a.scriptFr||'') : (a.script||'');
+        const noScript = !scriptText.trim();
+        return `<div class="card" style="margin-bottom:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:18px;font-weight:700;">${esc(a.name)}</div>
+              <div style="font-size:13px;color:var(--gray);">${esc(a.species)}</div>
+            </div>
+          </div>
+          ${noScript
+            ? `<div class="empty" style="font-style:italic;">${SCRIPT_LANG==='fr'?'Aucun script en français encore ajouté.':'No script added yet.'}</div>`
+            : `<div style="white-space:pre-wrap;font-size:15px;line-height:1.65;color:var(--text);">${esc(scriptText)}</div>`
+          }
+        </div>`;
+      }).join('')
+    }`;
 }
 
 /* ---------- WILDLIFE ADVENTURES SHOW ---------- */
@@ -5636,6 +5722,7 @@ function saveAnimalCard(id){
   a.rescueStory = val(`m-rescue-${id}`);
   a.overviewNotes = val(`m-overview-${id}`);
   a.script = val(`m-script-${id}`);
+  a.scriptFr = val(`m-script-fr-${id}`);
   a.funFacts = val(`m-funfacts-${id}`);
   a.medicalNotes = val(`m-mednotes-${id}`);
   a.bowlCode = val(`m-bowlcode-${id}`);
@@ -5787,8 +5874,12 @@ function renderAnimalManagerCard(a){
         <textarea id="m-overview-${a.id}" placeholder="General notes shown on the animal's overview page." oninput="saveAnimalCard(${a.id})">${a.overviewNotes||''}</textarea>
       </div>
       <div class="field-block">
-        <label>Scripts / presentation talking points</label>
+        <label>Scripts / presentation talking points (English)</label>
         <textarea id="m-script-${a.id}" style="min-height:120px;" placeholder="Add animal script here." oninput="saveAnimalCard(${a.id})">${a.script||''}</textarea>
+      </div>
+      <div class="field-block">
+        <label>Script (Français)</label>
+        <textarea id="m-script-fr-${a.id}" style="min-height:120px;" placeholder="Ajoutez le script en français ici." oninput="saveAnimalCard(${a.id})">${a.scriptFr||''}</textarea>
       </div>
       <div class="field-block">
         <label>Fun facts</label>
