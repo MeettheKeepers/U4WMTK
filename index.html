@@ -1700,6 +1700,7 @@ function showTab(id){
   }[id];
   document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
   if(id === 'manager' && HABITAT_MGR_OPEN) wireHabitatDrag();
+  if(id === 'manager' && MGR_TASK_GROUP_SECTION_OPEN) wireTaskGroupDrag();
 }
 
 /* ---------- ADMIN TAB ---------- */
@@ -5692,6 +5693,44 @@ function wireHabitatDrag(){
     });
   });
 }
+function wireTaskGroupDrag(){
+  const list = document.getElementById('task-group-drag-list');
+  if(!list) return;
+  let dragSrc = null;
+  list.querySelectorAll('.habitat-drag-row').forEach(row=>{
+    row.addEventListener('dragstart', e=>{
+      dragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(()=>row.style.opacity='0.4', 0);
+    });
+    row.addEventListener('dragend', ()=>{
+      row.style.opacity='';
+      list.querySelectorAll('.habitat-drag-row').forEach(r=>r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect='move';
+      list.querySelectorAll('.habitat-drag-row').forEach(r=>r.classList.remove('drag-over'));
+      if(row !== dragSrc) row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', ()=>row.classList.remove('drag-over'));
+    row.addEventListener('drop', e=>{
+      e.preventDefault();
+      if(!dragSrc || dragSrc===row) return;
+      const srcId = dragSrc.getAttribute('data-group-id');
+      const tgtId = row.getAttribute('data-group-id');
+      const groups = [...(DATA.taskGroups||[])].sort((a,b)=>a.order-b.order);
+      const si = groups.findIndex(g=>g.id===srcId);
+      const ti = groups.findIndex(g=>g.id===tgtId);
+      if(si===-1||ti===-1) return;
+      const [moved] = groups.splice(si,1);
+      groups.splice(ti,0,moved);
+      groups.forEach((g,i)=>{ const orig = DATA.taskGroups.find(x=>x.id===g.id); if(orig) orig.order=i; });
+      saveData();
+      showTab('manager');
+    });
+  });
+}
 let SHOW_ADD_ANIMAL_FORM = false;
 function toggleAddAnimalForm(){
   SHOW_ADD_ANIMAL_FORM = !SHOW_ADD_ANIMAL_FORM;
@@ -6686,15 +6725,14 @@ function renderManager(){
         ${MGR_TASK_GROUP_SECTION_OPEN ? `
         <div class="sub" style="margin-top:6px;">Groups appear as collapsible sections in the Tasks tab. Rename them to match your habitat codes and animals. Tasks are ordered within each group using the arrows in the task list below.</div>
         <div style="margin-top:10px;">
-        ${sortedGroups.map((g,gi)=>`
-          <div class="task-row" style="align-items:center;gap:8px;margin-bottom:6px;">
-            <div style="display:flex;flex-direction:column;gap:2px;">
-              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupUp('${g.id}');event.stopPropagation();" ${gi===0?'disabled':''}>▲</button>
-              <button class="btn-ghost" style="padding:1px 6px;font-size:11px;" onclick="moveGroupDown('${g.id}');event.stopPropagation();" ${gi===sortedGroups.length-1?'disabled':''}>▼</button>
-            </div>
+        <div id="task-group-drag-list">
+        ${sortedGroups.map((g)=>`
+          <div class="task-row habitat-drag-row" draggable="true" data-group-id="${g.id}" style="align-items:center;gap:8px;margin-bottom:6px;cursor:default;">
+            <span style="cursor:grab;font-size:18px;color:var(--text-light);padding:0 4px;line-height:1;user-select:none;" title="Drag to reorder">⠿</span>
             <input type="text" value="${esc(g.name)}" id="grp-name-${g.id}" style="flex:1;" onclick="event.stopPropagation();" onchange="renameGroup('${g.id}',this.value)">
             <button class="btn-ghost" onclick="deleteGroup('${g.id}');event.stopPropagation();">Delete</button>
           </div>`).join('')}
+        </div>
         </div>
         <div class="add-row" style="margin-top:10px;" onclick="event.stopPropagation();">
           <input type="text" id="new-group-name" placeholder="New group name (e.g. H-1 Coatimundi)">
