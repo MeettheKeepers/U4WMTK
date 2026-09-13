@@ -993,6 +993,7 @@ function normalizeData(d){
   if(!Array.isArray(d.chatGroups)) d.chatGroups = [];
   if(!Array.isArray(d.chatDeletedIds)) d.chatDeletedIds = [];
   if(!Array.isArray(d.chatHiddenDMs)) d.chatHiddenDMs = [];
+  if(!Array.isArray(d.wildlifeDeletedVideoIds)) d.wildlifeDeletedVideoIds = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1233,12 +1234,17 @@ function mergeChatMessages(incomingMsgs, localMsgs, localDeletedIds){
   const merged = [...filteredIncoming, ...localOnly].sort((a,b)=>a.ts-b.ts);
   return { msgs: merged, changed: true };
 }
-function mergeWildlifeVideos(incomingVideos, localVideos){
-  if(!Array.isArray(incomingVideos)) return { videos: Array.isArray(localVideos) ? localVideos.slice() : [], changed: false };
-  if(!Array.isArray(localVideos) || localVideos.length === 0) return { videos: incomingVideos, changed: false };
-  const result = incomingVideos.map(v => Object.assign({}, v));
-  let changed = false;
+function mergeWildlifeVideos(incomingVideos, localVideos, localDeletedVideoIds){
+  const deletedSet = new Set(localDeletedVideoIds||[]);
+  if(!Array.isArray(incomingVideos)) return { videos: Array.isArray(localVideos) ? localVideos.filter(v=>!deletedSet.has(v.id)) : [], changed: false };
+  if(!Array.isArray(localVideos) || localVideos.length === 0){
+    const filtered = incomingVideos.filter(v=>!deletedSet.has(v.id));
+    return { videos: filtered, changed: filtered.length !== incomingVideos.length };
+  }
+  const result = incomingVideos.filter(v=>!deletedSet.has(v.id)).map(v => Object.assign({}, v));
+  let changed = result.length !== incomingVideos.length;
   localVideos.forEach(localV => {
+    if(deletedSet.has(localV.id)) return;
     const idx = result.findIndex(v => v.id === localV.id);
     if(idx === -1){ result.push(Object.assign({}, localV)); changed = true; }
   });
@@ -1261,6 +1267,7 @@ async function pollCloudData(){
       const localAnimals = DATA.animals;
       const localHabitats = DATA.habitats;
       const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+      const localDeletedVideoIds = DATA.wildlifeDeletedVideoIds || [];
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
@@ -1276,8 +1283,9 @@ async function pollCloudData(){
       DATA.animals = mergedAnimals.animals;
       const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
       DATA.habitats = mergedHabitats.habitats;
-      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos, localDeletedVideoIds);
       DATA.wildlifeShow.videos = mergedVideos.videos;
+      DATA.wildlifeDeletedVideoIds = localDeletedVideoIds;
       const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
@@ -1317,6 +1325,7 @@ async function initCloudSync(){
       const localAnimals = DATA.animals;
       const localHabitats = DATA.habitats;
       const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+      const localDeletedVideoIds = DATA.wildlifeDeletedVideoIds || [];
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
@@ -1331,8 +1340,9 @@ async function initCloudSync(){
       DATA.animals = mergedAnimals.animals;
       const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
       DATA.habitats = mergedHabitats.habitats;
-      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+      const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos, localDeletedVideoIds);
       DATA.wildlifeShow.videos = mergedVideos.videos;
+      DATA.wildlifeDeletedVideoIds = localDeletedVideoIds;
       const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
@@ -1377,8 +1387,10 @@ async function initCloudSync(){
         const localAnimals = DATA.animals;
         const localHabitats = DATA.habitats;
         const localVideos = (DATA.wildlifeShow && DATA.wildlifeShow.videos) || [];
+        const localDeletedVideoIds = DATA.wildlifeDeletedVideoIds || [];
         const localMsgs = DATA.chatMessages || [];
         const localDeletedIds = DATA.chatDeletedIds || [];
+        const localHiddenDMs = DATA.chatHiddenDMs || [];
         DATA = normalizeData(incoming);
         DATA._savedAt = incoming._savedAt || Date.now();
         const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1391,12 +1403,13 @@ async function initCloudSync(){
         DATA.animals = mergedAnimals.animals;
         const mergedHabitats = mergeHabitats(DATA.habitats, localHabitats);
         DATA.habitats = mergedHabitats.habitats;
-        const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos);
+        const mergedVideos = mergeWildlifeVideos(DATA.wildlifeShow.videos, localVideos, localDeletedVideoIds);
         DATA.wildlifeShow.videos = mergedVideos.videos;
+        DATA.wildlifeDeletedVideoIds = localDeletedVideoIds;
         const mergedChat = mergeChatMessages(DATA.chatMessages, localMsgs, localDeletedIds);
         DATA.chatMessages = mergedChat.msgs;
         DATA.chatDeletedIds = localDeletedIds;
-      DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
+        DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
         if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
           DATA._savedAt = Date.now();
           SUPPRESS_NEXT_REALTIME = true;
@@ -2764,6 +2777,8 @@ async function deleteWildlifeVideo(id){
   if(v && v.storagePath){
     await sb.storage.from('wildlife-videos').remove([v.storagePath]);
   }
+  if(!Array.isArray(DATA.wildlifeDeletedVideoIds)) DATA.wildlifeDeletedVideoIds = [];
+  if(!DATA.wildlifeDeletedVideoIds.includes(id)) DATA.wildlifeDeletedVideoIds.push(id);
   DATA.wildlifeShow.videos = (DATA.wildlifeShow.videos||[]).filter(v=>v.id!==id);
   saveData(); showTab('wildlife-show');
 }
