@@ -1423,15 +1423,21 @@ async function initCloudSync(){
       })
       .subscribe();
     // Polling fallback — catches updates when WebSocket drops (mobile background, etc.)
+    // Interval is intentionally long (2 min) — the realtime subscription handles instant updates.
+    // Polling is only a safety net for when the WebSocket drops.
     if(POLL_TIMER) clearInterval(POLL_TIMER);
-    POLL_TIMER = setInterval(pollCloudData, 30000);
+    POLL_TIMER = setInterval(()=>{ if(!document.hidden) pollCloudData(); }, 120000);
     // Re-fetch when user returns to the tab, AND flush any pending save when leaving
     document.addEventListener('visibilitychange', ()=>{
       if(!document.hidden){
+        // Came back to foreground — sync once immediately and restart chat polling
         pollCloudData();
+        startChatPolling();
       } else {
-        // Page going to background — flush any pending debounced save immediately
+        // Going to background — flush any pending debounced save and stop wasting egress
         if(SAVE_DEBOUNCE_TIMER){ clearTimeout(SAVE_DEBOUNCE_TIMER); SAVE_DEBOUNCE_TIMER = null; pushCloudData(); }
+        // Also pause chat polling while hidden
+        if(CHAT_POLL_TIMER){ clearInterval(CHAT_POLL_TIMER); CHAT_POLL_TIMER = null; }
       }
     });
   }catch(e){
@@ -9883,7 +9889,7 @@ async function pollChatMsgs(){
 }
 function startChatPolling(){
   if(CHAT_POLL_TIMER) return; // already running
-  CHAT_POLL_TIMER = setInterval(pollChatMsgs, 15000);
+  CHAT_POLL_TIMER = setInterval(()=>{ if(!document.hidden) pollChatMsgs(); }, 60000);
 }
 function showChatNotification(msg){
   if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
