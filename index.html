@@ -968,6 +968,9 @@ function normalizeData(d){
   (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
   if(d.habitatNotes===undefined) d.habitatNotes='';
   if(d.bowlNotes===undefined) d.bowlNotes='';
+  if(!d.dietLists) d.dietLists = { herbivore: [], basicDiet: [] };
+  if(!Array.isArray(d.dietLists.herbivore)) d.dietLists.herbivore = [];
+  if(!Array.isArray(d.dietLists.basicDiet)) d.dietLists.basicDiet = [];
   // Build habitats list from animals if not yet present
   if(!d.habitats || !d.habitats.length){
     const seen = {};
@@ -3984,7 +3987,34 @@ function renderDiets(){
           }
         </div>` : ''}
     </div>`;
+  const herbivore = (DATA.dietLists && DATA.dietLists.herbivore) || [];
+  const basicDiet = (DATA.dietLists && DATA.dietLists.basicDiet) || [];
+  function dietColumn(listKey, title, items){
+    return `<div style="flex:1;min-width:200px;">
+      <div style="font-weight:700;font-size:15px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--green);">${title}</div>
+      ${items.length
+        ? items.map((item, idx)=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="flex:1;font-size:14px;">• ${esc(item)}</span>
+            ${isMgr ? `<button onclick="removeDietListItem('${listKey}',${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;" title="Remove">×</button>` : ''}
+          </div>`)
+          .join('')
+        : `<div class="empty" style="font-size:13px;">No entries yet.</div>`
+      }
+      ${isMgr ? `<div style="display:flex;gap:6px;margin-top:10px;">
+        <input id="diet-list-input-${listKey}" type="text" placeholder="Add animal…" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:14px;" onkeydown="if(event.key==='Enter')addDietListItem('${listKey}')">
+        <button class="btn-small" onclick="addDietListItem('${listKey}')">Add</button>
+      </div>` : ''}
+    </div>`;
+  }
+  const dietListsBlock = `<div class="card" style="margin-bottom:0;">
+    <button class="collapsible-toggle" onclick="toggleDietLists()" style="font-size:15px;font-weight:700;">${DIET_LISTS_OPEN ? '▾' : '▸'} Diet Lists</button>
+    ${DIET_LISTS_OPEN ? `<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
+      ${dietColumn('herbivore','Herbivore Diets', herbivore)}
+      ${dietColumn('basicDiet','Basic Diet', basicDiet)}
+    </div>` : ''}
+  </div>`;
   return `
+    ${dietListsBlock}
     <div class="card">
       <h2>Diets</h2>
       <div class="sub">Staff view only. This page clearly shows what each animal gets, the bowl code, and care notes. Editing is locked in the Manager tab.</div>
@@ -4122,6 +4152,23 @@ function saveHabitatNotes(val){ DATA.habitatNotes = val; saveData(); }
 let BOWL_NOTES_OPEN = false;
 function toggleBowlNotes(){ BOWL_NOTES_OPEN = !BOWL_NOTES_OPEN; showTab('diets'); }
 function saveBowlNotes(v){ DATA.bowlNotes = v; saveData(); }
+let DIET_LISTS_OPEN = false;
+function toggleDietLists(){ DIET_LISTS_OPEN = !DIET_LISTS_OPEN; showTab('diets'); }
+function addDietListItem(listKey){
+  const inputId = 'diet-list-input-' + listKey;
+  const el = document.getElementById(inputId);
+  const val = (el && el.value.trim()) || '';
+  if(!val) return;
+  if(!DATA.dietLists) DATA.dietLists = { herbivore: [], basicDiet: [] };
+  if(!Array.isArray(DATA.dietLists[listKey])) DATA.dietLists[listKey] = [];
+  DATA.dietLists[listKey].push(val);
+  saveData(); showTab('diets');
+}
+function removeDietListItem(listKey, idx){
+  if(!DATA.dietLists || !Array.isArray(DATA.dietLists[listKey])) return;
+  DATA.dietLists[listKey].splice(idx, 1);
+  saveData(); showTab('diets');
+}
 function viewAnimal(id){
   VIEWING_ANIMAL_ID = id;
   ANIMAL_DETAIL_TAB = 'overview';
