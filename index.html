@@ -1572,8 +1572,8 @@ const TABS = [
   {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
   {id:'scripts', label:'Scripts'},
-  {id:'nonprofit', label:'Non Profit'},
-  {id:'foundation', label:'Charitable Foundation'},
+  {id:'nonprofit', label:'U4W Non Profit Org.'},
+  {id:'foundation', label:'U4W Charity FDN'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
 ];
@@ -2515,7 +2515,7 @@ function renderNonProfit(){
   const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
   return `
     <div class="card">
-      <h2>Non Profit</h2>
+      <h2>U4W Non Profit Org.</h2>
       <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
         <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-sheet']=!ADMIN_COLLAPSED['grants-sheet'];showTab('nonprofit')">
           <strong>📊 Grant Pipeline Spreadsheet</strong>
@@ -2566,7 +2566,7 @@ function renderNonProfit(){
     </div>
     ${isMgr ? `<div class="card" style="margin-top:8px;">
       <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
-      <div class="sub" style="margin-bottom:10px;">Select staff who can access the Non Profit tab.</div>
+      <div class="sub" style="margin-bottom:10px;">Select staff who can access U4W Non Profit Org.</div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;">
         ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
           <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
@@ -6757,7 +6757,7 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
-  {id:'foundation', label:'Charitable Foundation'},
+  {id:'foundation', label:'U4W Charity FDN'},
   {id:'data', label:'Data Tools'}
 ];
 const WELCOME_EDIT_SECTIONS = [
@@ -7735,8 +7735,8 @@ function renderManager(){
     const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
     body = `
       <div class="card">
-        <h2 style="margin-bottom:6px;">Who Can See Charitable Foundation</h2>
-        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the Charitable Foundation tab.</div>
+        <h2 style="margin-bottom:6px;">Who Can See U4W Charity FDN</h2>
+        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Charity FDN tab.</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:0;">
           ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
             <input type="checkbox" ${faccess.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
