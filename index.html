@@ -994,6 +994,8 @@ function normalizeData(d){
   if(!Array.isArray(d.chatDeletedIds)) d.chatDeletedIds = [];
   if(!Array.isArray(d.chatHiddenDMs)) d.chatHiddenDMs = [];
   if(!Array.isArray(d.wildlifeDeletedVideoIds)) d.wildlifeDeletedVideoIds = [];
+  if(!d.nonprofit) d.nonprofit = { access: [] };
+  if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1570,6 +1572,7 @@ const TABS = [
   {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
   {id:'scripts', label:'Scripts'},
+  {id:'nonprofit', label:'Non Profit'},
   {id:'foundation', label:'Charitable Foundation'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
@@ -1670,6 +1673,7 @@ function visibleTabs(){
     if(t.id === 'manager') return isManagerLogin();
     if(t.id === 'supervisor') return !isManagerLogin() && hasSupervisorAccess();
     if(t.id === 'admin') return hasAdminAccess();
+    if(t.id === 'nonprofit') return isManagerLogin() || hasNonProfitAccess();
     if(t.id === 'foundation') return isManagerLogin() || hasFoundationAccess();
     if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
     return true;
@@ -1713,6 +1717,7 @@ function showTab(id){
     supervisor: renderSupervisor,
     admin: renderAdmin,
     scripts: renderScripts,
+    nonprofit: renderNonProfit,
     foundation: renderFoundation,
     'wildlife-show': renderWildlifeShow,
     manager: renderManager
@@ -2046,12 +2051,10 @@ function saveManagerAdminHiring(){
 function renderAdmin(){
   const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
   const hiringEnabled = DATA.admin.hiringEnabled !== false;
-  const grantsEnabled = DATA.admin.grantsEnabled !== false;
   const isMgr = isManagerLogin();
   const loggedIn = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
   const allSubTabs = [
     ...(hiringEnabled ? [{id:'hiring', label:'Hiring'}] : []),
-    ...(grantsEnabled ? [{id:'grants', label:'Grants / Fundraising'}] : []),
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
   // Only show tabs this user has access to
@@ -2076,63 +2079,6 @@ function renderAdmin(){
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openProsConsTool()">⚖️ Pros &amp; Cons</button>
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openFounderInterviewTool()">👑 Final Interview</button>
           </div>
-        </div>
-      </div>`;
-  } else if(ADMIN_TAB === 'grants'){
-    const log = (DATA.admin && DATA.admin.grantsLog) || [];
-    const sheetCollapsed = !!ADMIN_COLLAPSED['grants-sheet'];
-    const logCollapsed   = !!ADMIN_COLLAPSED['grants-log'];
-    const activeLog  = log.filter(e=>!e.archived);
-    const archivedLog= log.filter(e=>e.archived);
-    const visibleLog = GRANTS_SHOW_ARCHIVED ? archivedLog : activeLog;
-    body = `<div class="card">
-        <h2>Grants / Fundraising</h2>
-        <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
-          <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="toggleAdminSection('grants-sheet')">
-            <strong>📊 Grant Pipeline Spreadsheet</strong>
-            <button class="admin-toggle-btn">${sheetCollapsed?'▶':'▼'}</button>
-          </div>
-          ${sheetCollapsed?'':` <div style="padding:14px 16px;">${renderAdminSheets()}</div>`}
-        </div>
-        <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-          <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="toggleAdminSection('grants-log')">
-            <strong>📝 Notes Log ${activeLog.length?`<span style="font-size:12px;color:var(--text-light);font-weight:400;">(${activeLog.length} active${archivedLog.length?' · '+archivedLog.length+' archived':''})</span>`:''}
-            </strong>
-            <button class="admin-toggle-btn">${logCollapsed?'▶':'▼'}</button>
-          </div>
-          ${logCollapsed?'':` <div style="padding:14px 16px;">
-            <div class="sub">Your name and today's date are recorded automatically.</div>
-            <textarea id="grants-note-input" placeholder="Write your update for today…" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>
-            <button class="btn-small" style="margin-top:8px;" onclick="addGrantsNote(document.getElementById('grants-note-input').value.trim())">Save Note</button>
-            <div style="margin-top:16px;display:flex;align-items:center;gap:10px;">
-              <span style="font-size:13px;font-weight:600;">${GRANTS_SHOW_ARCHIVED?'Archived notes':'Active notes'}</span>
-              ${archivedLog.length||GRANTS_SHOW_ARCHIVED?`<button class="btn-ghost" style="padding:3px 10px;font-size:12px;" onclick="toggleGrantsArchived()">${GRANTS_SHOW_ARCHIVED?'← Back to active':'View archived ('+archivedLog.length+')'}</button>`:''}
-            </div>
-            <div style="margin-top:10px;">
-              ${visibleLog.length ? visibleLog.slice().reverse().map(e=>{
-                const isAuthor = loggedIn === e.author;
-                const isEditing = GRANTS_EDITING_ID === e.id;
-                return `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);${e.archived?'opacity:0.65;':''}">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                    <span style="font-size:12px;color:var(--text-light);flex:1;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}${e.editedAt?' <em>(edited)</em>':''}${e.archived?' <em style="color:var(--text-light)">(archived)</em>':''}</span>
-                    ${isEditing ? '' : `
-                      ${(!e.archived&&(isAuthor||isMgr)) ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="editGrantsNote(${e.id})">Edit</button>` : ''}
-                      ${isMgr&&!e.archived ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="archiveGrantsNote(${e.id})">Archive</button>` : ''}
-                      ${isMgr&&e.archived  ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="unarchiveGrantsNote(${e.id})">Unarchive</button>` : ''}
-                      ${isMgr ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--red);" onclick="deleteGrantsNote(${e.id})">Delete</button>` : ''}
-                    `}
-                  </div>
-                  ${isEditing ? `
-                    <textarea id="grants-edit-${e.id}" style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;">${esc(e.note)}</textarea>
-                    <div style="display:flex;gap:8px;margin-top:6px;">
-                      <button class="btn-small" onclick="saveGrantsNoteEdit(${e.id})">Save</button>
-                      <button class="btn-ghost" onclick="cancelGrantsNoteEdit()">Cancel</button>
-                    </div>
-                  ` : `<div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>`}
-                </div>`;
-              }).join('') : `<div class="empty">${GRANTS_SHOW_ARCHIVED?'No archived notes.':'No notes yet.'}</div>`}
-            </div>
-          </div>`}
         </div>
       </div>`;
   } else {
@@ -2539,6 +2485,116 @@ function renderManagerQuizStaffDetail(){
       </div>`).join('')
     : '<div class="card"><div class="empty">No question detail stored for this attempt. Detail is recorded on attempts taken after this update.</div></div>'}
   `;
+}
+
+/* ---------- NON PROFIT TAB ---------- */
+let GRANTS_EDITING_ID_NP = null; // separate from admin grants editing
+let GRANTS_SHOW_ARCHIVED_NP = false;
+function hasNonProfitAccess(){
+  const myName = getWelcomeStaffName();
+  if(!myName) return false;
+  return ((DATA.nonprofit && DATA.nonprofit.access) || []).includes(myName);
+}
+function toggleNonProfitAccess(name, checked){
+  if(!DATA.nonprofit) DATA.nonprofit = { access: [] };
+  if(!DATA.nonprofit.access) DATA.nonprofit.access = [];
+  if(checked){ if(!DATA.nonprofit.access.includes(name)) DATA.nonprofit.access.push(name); }
+  else { DATA.nonprofit.access = DATA.nonprofit.access.filter(n=>n!==name); }
+  saveData(); buildTabs();
+}
+function renderNonProfit(){
+  const isMgr = isManagerLogin();
+  const loggedIn = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const log = (DATA.admin && DATA.admin.grantsLog) || [];
+  const sheetCollapsed = !!ADMIN_COLLAPSED['grants-sheet'];
+  const logCollapsed   = !!ADMIN_COLLAPSED['grants-log'];
+  const activeLog   = log.filter(e=>!e.archived);
+  const archivedLog = log.filter(e=>e.archived);
+  const visibleLog  = GRANTS_SHOW_ARCHIVED_NP ? archivedLog : activeLog;
+  const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+  const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
+  return `
+    <div class="card">
+      <h2>Non Profit</h2>
+      <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
+        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-sheet']=!ADMIN_COLLAPSED['grants-sheet'];showTab('nonprofit')">
+          <strong>📊 Grant Pipeline Spreadsheet</strong>
+          <button class="admin-toggle-btn">${sheetCollapsed?'▶':'▼'}</button>
+        </div>
+        ${sheetCollapsed?'':` <div style="padding:14px 16px;">${renderAdminSheets()}</div>`}
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-log']=!ADMIN_COLLAPSED['grants-log'];showTab('nonprofit')">
+          <strong>📝 Notes Log ${activeLog.length?`<span style="font-size:12px;color:var(--text-light);font-weight:400;">(${activeLog.length} active${archivedLog.length?' · '+archivedLog.length+' archived':''})</span>`:''}
+          </strong>
+          <button class="admin-toggle-btn">${logCollapsed?'▶':'▼'}</button>
+        </div>
+        ${logCollapsed?'':` <div style="padding:14px 16px;">
+          <div class="sub">Your name and today's date are recorded automatically.</div>
+          <textarea id="grants-note-input-np" placeholder="Write your update for today…" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>
+          <button class="btn-small" style="margin-top:8px;" onclick="addGrantsNoteNP(document.getElementById('grants-note-input-np').value.trim())">Save Note</button>
+          <div style="margin-top:16px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:13px;font-weight:600;">${GRANTS_SHOW_ARCHIVED_NP?'Archived notes':'Active notes'}</span>
+            ${archivedLog.length||GRANTS_SHOW_ARCHIVED_NP?`<button class="btn-ghost" style="padding:3px 10px;font-size:12px;" onclick="GRANTS_SHOW_ARCHIVED_NP=!GRANTS_SHOW_ARCHIVED_NP;showTab('nonprofit')">${GRANTS_SHOW_ARCHIVED_NP?'← Back to active':'View archived ('+archivedLog.length+')'}</button>`:''}
+          </div>
+          <div style="margin-top:10px;">
+            ${visibleLog.length ? visibleLog.slice().reverse().map(e=>{
+              const isAuthor = loggedIn === e.author;
+              const isEditing = GRANTS_EDITING_ID_NP === e.id;
+              return `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);${e.archived?'opacity:0.65;':''}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  <span style="font-size:12px;color:var(--text-light);flex:1;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}${e.editedAt?' <em>(edited)</em>':''}${e.archived?' <em style="color:var(--text-light)">(archived)</em>':''}</span>
+                  ${isEditing ? '' : `
+                    ${(!e.archived&&(isAuthor||isMgr)) ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="GRANTS_EDITING_ID_NP=${e.id};showTab('nonprofit')">Edit</button>` : ''}
+                    ${isMgr&&!e.archived ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="archiveGrantsNote(${e.id});showTab('nonprofit')">Archive</button>` : ''}
+                    ${isMgr&&e.archived  ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;" onclick="unarchiveGrantsNote(${e.id});showTab('nonprofit')">Unarchive</button>` : ''}
+                    ${isMgr ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--red);" onclick="deleteGrantsNote(${e.id});showTab('nonprofit')">Delete</button>` : ''}
+                  `}
+                </div>
+                ${isEditing ? `
+                  <textarea id="grants-edit-np-${e.id}" style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;">${esc(e.note)}</textarea>
+                  <div style="display:flex;gap:8px;margin-top:6px;">
+                    <button class="btn-small" onclick="saveGrantsNoteEditNP(${e.id})">Save</button>
+                    <button class="btn-ghost" onclick="GRANTS_EDITING_ID_NP=null;showTab('nonprofit')">Cancel</button>
+                  </div>
+                ` : `<div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>`}
+              </div>`;
+            }).join('') : `<div class="empty">${GRANTS_SHOW_ARCHIVED_NP?'No archived notes.':'No notes yet.'}</div>`}
+          </div>
+        </div>`}
+      </div>
+    </div>
+    ${isMgr ? `<div class="card" style="margin-top:8px;">
+      <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
+      <div class="sub" style="margin-bottom:10px;">Select staff who can access the Non Profit tab.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
+          ${esc(m.name)}
+        </label>`).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+function addGrantsNoteNP(note){
+  if(!note) return;
+  if(!DATA.admin.grantsLog) DATA.admin.grantsLog = [];
+  DATA.admin.grantsLog.push({
+    id: nextId(DATA.admin.grantsLog),
+    author: CURRENT_LOGIN ? CURRENT_LOGIN.name : 'Unknown',
+    date: todayStr(),
+    note,
+    archived: false
+  });
+  saveData(); showTab('nonprofit');
+}
+function saveGrantsNoteEditNP(id){
+  const el = document.getElementById('grants-edit-np-'+id);
+  if(!el||!el.value.trim()) return;
+  const entry = (DATA.admin.grantsLog||[]).find(e=>e.id===id);
+  if(entry){ entry.note=el.value.trim(); entry.editedAt=Date.now(); }
+  GRANTS_EDITING_ID_NP = null;
+  saveData(); showTab('nonprofit');
 }
 
 /* ---------- FOUNDATION TAB ---------- */
@@ -7614,10 +7670,8 @@ function renderManager(){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
     const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
     const hiringOn = DATA.admin.hiringEnabled !== false;
-    const grantsOn = DATA.admin.grantsEnabled !== false;
     const allSubTabs = [
       ...(hiringOn ? [{id:'hiring', label:'Hiring'}] : []),
-      ...(grantsOn ? [{id:'grants', label:'Grants/Fundraising'}] : []),
       ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title, ctId:ct.id}))
     ];
     body = `
@@ -7638,27 +7692,6 @@ function renderManager(){
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminHiring()">Save Hiring</button>
         <span class="sub" id="admin-hiring-saved" style="margin-left:10px;display:none;">Saved.</span>
         ` : `<div class="sub" style="color:var(--red);">Hiring tab is currently hidden from Admin. Click Restore to bring it back.</div>`}
-      </div>
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <h2 style="margin:0;">Grants / Fundraising</h2>
-          ${grantsOn
-            ? `<button class="btn-ghost" style="color:var(--red);margin-left:auto;" onclick="if(confirm('Hide the Grants/Fundraising tab from Admin?')){DATA.admin.grantsEnabled=false;saveData();MANAGER_TAB='admin';showTab('manager');}">Hide Tab</button>`
-            : `<button class="btn-small" style="margin-left:auto;" onclick="DATA.admin.grantsEnabled=true;saveData();MANAGER_TAB='admin';showTab('manager');">Restore Tab</button>`
-          }
-        </div>
-        ${grantsOn ? `
-        <div class="sub">Staff with access can log daily notes. You see all entries in reverse chronological order. Entries cannot be deleted.</div>
-        <div style="margin-top:10px;">
-          ${((DATA.admin.grantsLog)||[]).length
-            ? (DATA.admin.grantsLog).slice().reverse().map(e=>`
-              <div style="margin-bottom:12px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
-                <div style="font-size:12px;color:var(--text-light);margin-bottom:4px;">${esc(e.author)} &mdash; ${fmtShortDate(e.date)}</div>
-                <div style="font-size:14px;white-space:pre-wrap;">${esc(e.note)}</div>
-              </div>`).join('')
-            : '<div class="empty">No entries yet.</div>'}
-        </div>
-        ` : `<div class="sub" style="color:var(--red);">Grants/Fundraising tab is currently hidden. Click Restore to bring it back.</div>`}
       </div>
       ${customTabs.map(ct=>`
       <div class="card">
