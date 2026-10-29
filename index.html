@@ -643,6 +643,23 @@
 const STORAGE_KEY = "ufw_app_data_v8";
 function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.name); }
 const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
+const SHOW_REGIONS = [
+  {id:'O1',  label:'O1 – Alfred / Vankleek Hill'},
+  {id:'O2',  label:'O2 – Plantagenet / Rockland'},
+  {id:'O3',  label:'O3 – Cumberland / Orleans'},
+  {id:'O4',  label:'O4 – Ottawa / Nepean / Gloucester'},
+  {id:'O5',  label:'O5 – Casselman / Embrun / Russell'},
+  {id:'O6',  label:'O6 – Lancaster / Cornwall'},
+  {id:'O7',  label:'O7 – Kanata / Carp / Stittsville'},
+  {id:'O8',  label:'O8 – Winchester / Kemptville'},
+  {id:'O9',  label:'O9 – Renfrew / Almonte'},
+  {id:'O10', label:'O10 – Carleton Place / Kingston'},
+  {id:'O11', label:'O11 – Toronto / Southern Ontario'},
+  {id:'Q1',  label:'Q1 – Shawville / Wakefield / Luskville'},
+  {id:'Q2',  label:'Q2 – Gatineau / Buckingham / Chelsea'},
+  {id:'Q3',  label:'Q3 – Mont-Tremblant / St-Jérôme'},
+  {id:'Q4',  label:'Q4 – Laval / Montréal'},
+];
 const DEFAULT_VEHICLES = ["White Chevy Express","Nissan Cube","Honda CR-V","Dodge Caravan","Own Vehicle"];
 const SHOW_LANGUAGES = ["English","French","Bilingual"];
 const SHOW_CENTRE_ADDRESS = "19799 County Road 24, Dunvegan";
@@ -961,6 +978,7 @@ function normalizeData(d){
     if(s.overnight===undefined) s.overnight=false;
     if(s.overnightNote===undefined) s.overnightNote='';
     if(s.clientEmail===undefined) s.clientEmail='';
+    if(s.region===undefined) s.region='';
   });
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
@@ -4882,6 +4900,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
         <strong>Vehicle:</strong> ${s.vehicle||'—'}<br>
         ${s.childApplicable ? `<strong>Child name:</strong> ${s.childName||'—'}<br>` : ''}
         <strong>Address:</strong> ${s.address||'—'}<br>
+        ${s.region ? `<strong>Region:</strong> ${esc(s.region)}<br>` : ''}
         <strong>Show type(s):</strong> ${s.showTypes.join(', ')||'—'}
         ${es.notes ? `<br><strong>Notes:</strong> ${es.notes}` : ''}
       </div>
@@ -6328,6 +6347,7 @@ function addShowManager(){
   const clientName = val('new-show-client');
   const clientPhone = val('new-show-phone');
   const clientEmail = val('new-show-email');
+  const region = val('new-show-region');
   const childApplicable = document.getElementById('new-show-childcheck').checked;
   const childName = val('new-show-childname');
   const address = val('new-show-address');
@@ -6350,7 +6370,7 @@ function addShowManager(){
       if(!confirm(`${vIssue} Book ${vehicle} for this show anyway? It will be flagged in red until fixed.`)) return;
     }
   }
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, childApplicable, childName, address, language, showTypes, notes, paid, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, notes, paid, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -6394,6 +6414,13 @@ function renderShowForm(){
       <input type="text" id="new-show-client" placeholder="Client name">
       <input type="text" id="new-show-phone" placeholder="Client phone">
       <input type="email" id="new-show-email" placeholder="Client email">
+    </div>
+    <div class="field-block">
+      <label>Region</label>
+      <select id="new-show-region">
+        <option value="">— Select region —</option>
+        ${SHOW_REGIONS.map(r=>`<option value="${r.id}">${r.label}</option>`).join('')}
+      </select>
     </div>
     <div class="field-block">
       <label class="checkbox-line"><input type="checkbox" id="new-show-childcheck"> Child name applicable</label>
@@ -6587,6 +6614,13 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
           <label>Client email</label>
           <input type="email" value="${esc(s.clientEmail||'')}" onchange="saveShowField(${s.id},'clientEmail',this.value)">
         </div>
+      </div>
+      <div class="field-block">
+        <label>Region</label>
+        <select onchange="saveShowField(${s.id},'region',this.value)">
+          <option value="">— Select region —</option>
+          ${SHOW_REGIONS.map(r=>`<option value="${r.id}" ${s.region===r.id?'selected':''}>${r.label}</option>`).join('')}
+        </select>
       </div>
       <div class="field-block">
         <label class="checkbox-line"><input type="checkbox" ${s.childApplicable?'checked':''} onchange="toggleShowBool(${s.id},'childApplicable')"> Child name applicable</label>
@@ -7809,6 +7843,26 @@ function renderManager(){
       const yearRows = Object.keys(yearCounts).sort().reverse().map(yr =>
         `<tr><td style="padding:6px 12px 6px 0;font-weight:600;">${yr}</td><td style="padding:6px 0;">${yearCounts[yr]} show${yearCounts[yr]===1?'':'s'}</td></tr>`
       ).join('');
+      // Region stats
+      const regionCounts = {};
+      SHOW_REGIONS.forEach(r => { regionCounts[r.id] = 0; });
+      allShows.forEach(s => { if(s.region && regionCounts[s.region] !== undefined) regionCounts[s.region]++; });
+      const maxRegion = Math.max(1, ...Object.values(regionCounts));
+      const regionRows = SHOW_REGIONS.map(r => {
+        const count = regionCounts[r.id];
+        if(!count) return '';
+        const pct = Math.round((count / maxRegion) * 100);
+        return `<div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <span style="font-weight:600;font-size:13px;">${r.label}</span>
+            <span style="font-size:13px;color:var(--text-light);">${count}</span>
+          </div>
+          <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
+            <div style="background:#e6a817;height:8px;width:${pct}%;border-radius:5px;"></div>
+          </div>
+        </div>`;
+      }).join('');
+      const noRegionCount = allShows.filter(s=>!s.region).length;
       analyticsBody = `
         <div class="stat-row" style="margin-bottom:20px;">
           <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
@@ -7817,7 +7871,16 @@ function renderManager(){
         </div>
         <h3 style="margin-bottom:14px;">Completed shows by type</h3>
         ${typeRows}
-        ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}`;
+        ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}
+        <h3 style="margin:20px 0 10px;">Shows by region</h3>
+        ${regionRows || '<div style="color:#bbb;font-size:13px;">No region data yet — add regions when booking shows.</div>'}
+        ${noRegionCount ? `<div style="font-size:12px;color:#bbb;margin-top:6px;">${noRegionCount} show${noRegionCount===1?'':' s'} have no region set.</div>` : ''}
+        <h3 style="margin:20px 0 10px;">Region map</h3>
+        <div style="position:relative;width:100%;max-width:660px;height:399px;overflow:hidden;border-radius:10px;border:1px solid var(--border);background:#f8f8f8;">
+          <img src="region-map.png" alt="Region map"
+               style="position:absolute;top:50%;left:50%;width:399px;height:660px;transform:translate(-50%,-50%) rotate(90deg);"
+               onerror="this.parentElement.innerHTML='<div style=\'padding:16px;color:#bbb;font-size:13px;\'>Map not found — make sure region-map.png is committed to the repo alongside index.html.</div>'">
+        </div>`;
 
     } else if(ANALYTICS_TAB === 'clients'){
       const clientMap = {};
