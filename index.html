@@ -966,7 +966,7 @@ function normalizeData(d){
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
   (d.roadTasks||[]).forEach(t=>{ if(t.acknowledged===undefined) t.acknowledged=false; if(t.acknowledgedAt===undefined) t.acknowledgedAt=null; });
   (d.shows||[]).forEach(s=>{ if(!s.arrivals) s.arrivals=[]; if(!s.departures) s.departures=[]; if(!s.dayOverrides) s.dayOverrides={}; });
-  (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; });
+  (d.animals||[]).forEach(a=>{ if(a.importantNote===undefined) a.importantNote=''; if(a.archiveReason===undefined) a.archiveReason=''; });
   if(d.habitatNotes===undefined) d.habitatNotes='';
   if(d.bowlNotes===undefined) d.bowlNotes='';
   if(!d.dietLists) d.dietLists = { herbivore: [], basicDiet: [] };
@@ -4462,10 +4462,11 @@ function toggleAnimalOutreach(id){
   saveData();
   showTab('manager');
 }
-function archiveAnimal(id){
+function archiveAnimal(id, reason){
   const a = DATA.animals.find(x=>x.id===id);
   if(!a) return;
   a.archived = true;
+  a.archiveReason = reason || '';
   // Archive tasks whose name contains this animal's name
   const nameLower = a.name.toLowerCase();
   (DATA.tasks||[]).forEach(t=>{
@@ -4473,6 +4474,13 @@ function archiveAnimal(id){
   });
   saveData();
   showTab('manager');
+}
+function setAnimalArchiveReason(id, reason){
+  if(!reason) return;
+  const a = DATA.animals.find(x=>x.id===id);
+  if(!a) return;
+  a.archiveReason = reason;
+  saveData(); showTab('manager');
 }
 function restoreAnimal(id){
   const a = DATA.animals.find(x=>x.id===id);
@@ -4624,6 +4632,11 @@ function vehicleDayConflictShowIds(vehicle, date){
     }
   }
   return conflictIds;
+}
+function clientShowCount(clientName){
+  if(!clientName) return 0;
+  const name = clientName.trim().toLowerCase();
+  return (DATA.shows||[]).filter(s => (s.clientName||'').trim().toLowerCase() === name).length;
 }
 function showConflictInfo(s){
   const names = [];
@@ -4838,14 +4851,19 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
   const isMultiDay = s.endDate && s.endDate > s.date;
   const dayOverrideActive = viewDate && s.dayOverrides && s.dayOverrides[viewDate] && Object.keys(s.dayOverrides[viewDate]).length > 0;
   const missingInfo = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
+  const repeatCount = clientShowCount(s.clientName);
+  const isRepeat = repeatCount > 1;
+  const borderColor = conflictInfo.hasConflict ? 'var(--red)' : missingInfo ? '#7c3fad' : isRepeat ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const outlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingInfo ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : isRepeat ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
   return `
-    <div class="animal-card" style="margin-bottom:14px; border-left:5px solid ${conflictInfo.hasConflict ? 'var(--red)' : missingInfo ? '#7c3fad' : (s.paid ? 'var(--paid-green)' : 'var(--red)')}; ${conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingInfo ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : ''}">
+    <div class="animal-card" style="margin-bottom:14px; border-left:5px solid ${borderColor}; ${outlineStyle}">
       <div class="animal-card-top">
         <h3>${s.title}</h3>
         <span class="status-badge status-progress">${s.showTypes.length} type${s.showTypes.length===1?'':'s'}</span>
       </div>
       ${missingInfo && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing info: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day.</div>` : ''}
+      ${isRepeat ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCount} shows booked. Review animal list before this show.</div>` : ''}
       ${chainTooTight ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Not enough time to travel from "${prevShow.title}" (ends ${prevShow.endTime}) and still arrive ${CHAINED_SHOW_MIN_BUFFER_MIN} min early — would need to leave by ${fmtHM(chainLeaveBy)}.</div>` : ''}
       ${s.overnight ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;font-weight:700;">🌙 This is an OVERNIGHT event — staff will be staying overnight.${s.overnightNote ? ' ' + s.overnightNote : ''}</div>` : ''}
       <div class="task-tags" style="margin-bottom:10px;">
@@ -5991,7 +6009,9 @@ function renderAnimalManagerCard(a){
             ? `<button class="pill-btn" style="background:#fde2e2;color:#a33;" onclick="toggleAnimalOutreach(${a.id})">Remove from Outreach</button>`
             : `<button class="pill-btn" style="background:#d7e8d0;color:#2a5a1a;" onclick="toggleAnimalOutreach(${a.id})">Return to Outreach</button>`
           }
-          <button class="pill-btn" onclick="archiveAnimal(${a.id})">Archive animal</button>
+          <button class="pill-btn" style="background:#f5e6e6;color:#7a1a1a;" onclick="archiveAnimal(${a.id},'deceased')">☠ Deceased</button>
+          <button class="pill-btn" style="background:#e6f0fa;color:#1a3a7a;" onclick="archiveAnimal(${a.id},'transferred')">🚚 Transferred</button>
+          <button class="pill-btn" style="background:#e6f5eb;color:#1a5a2a;" onclick="archiveAnimal(${a.id},'adopted')">🏠 Adopted Out</button>
           <button class="btn-ghost" style="font-size:18px;padding:2px 10px;line-height:1;" onclick="toggleAnimalExpand(${a.id})" title="${expanded?'Collapse':'Expand'}">${expanded ? '▾' : '▸'}</button>
         </div>
       </div>
@@ -6153,6 +6173,7 @@ function renderAnimalManagerCard(a){
 
 /* ---------- MANAGER ---------- */
 let MANAGER_TAB = 'overview';
+let ANALYTICS_TAB = 'shows';
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
 let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
@@ -6423,6 +6444,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const st = showStatus(s);
   const isPast = s.date < todayStr();
   const missingMgr = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
+  const repeatCountMgr = clientShowCount(s.clientName);
+  const isRepeatMgr = repeatCountMgr > 1;
   // Time/notes handlers — per-day for continuation days, base show for day 1
   const startTimeVal = isContinuation ? (ov.startTime || s.startTime) : s.startTime;
   const endTimeVal = isContinuation ? (ov.endTime || s.endTime) : s.endTime;
@@ -6447,8 +6470,10 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
     : `saveShowField(${s.id},'vehicle',this.value)`;
   const dayArrivals = isContinuation ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
   const dayDepartures = isContinuation ? getDayDepartures(s, viewDate) : (s.departures||[]);
+  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : isRepeatMgr ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : isRepeatMgr ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
   return `
-    <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : (s.paid ? 'var(--paid-green)' : 'var(--red)')}; ${conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : ''}">
+    <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${mgrBorderColor}; ${mgrOutlineStyle}">
       <div class="animal-card-top">
         <div>
           ${isMultiDay && dayNum ? `<span class="tag" style="background:#e8f4ff;color:#1a5fa8;font-weight:700;margin-right:6px;">Day ${dayNum} of ${totalDays}</span>` : ''}
@@ -6459,6 +6484,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${isContinuation ? `<div class="notice" style="background:#e8f4ff;color:#1a5fa8;font-size:13px;">Changing times or notes here only affects Day ${dayNum}. Staff, client, vehicle and other details are shared across all days.</div>` : ''}
       ${missingMgr && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day. Adjust times, travel, or arrival buffer to clear this.</div>` : ''}
+      ${isRepeatMgr ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCountMgr} shows booked. Review animal list before this show.</div>` : ''}
       <div class="add-row" style="margin-top:0;align-items:center;">
         <span class="status-badge ${st==='completed'?'status-done':st==='cancelled'?'status-open':'status-progress'}">${st.charAt(0).toUpperCase()+st.slice(1)}</span>
         ${isPast && st!=='completed' ? `<button class="btn-small" onclick="setShowStatus(${s.id},'completed')">Mark Completed</button>` : ''}
@@ -6822,7 +6848,6 @@ const MANAGER_TABS = [
   {id:'tasks', label:'Tasks'},
   {id:'shows', label:'Shows'},
   {id:'analytics', label:'Analytics'},
-  {id:'clients', label:'Clients'},
   {id:'schedule', label:'Team Schedule'},
   {id:'animals', label:'Animals'},
   {id:'staff', label:'Staff'},
@@ -7286,15 +7311,26 @@ function renderManager(){
         <button class="collapsible-toggle" onclick="toggleArchivedAnimalsMgr()">${SHOW_ARCHIVED_ANIMALS_MGR ? '▾' : '▸'} Archived Animals (${archivedAnimals.length})</button>
         ${SHOW_ARCHIVED_ANIMALS_MGR ? (archivedAnimals.length ? `
         <table>
-          <tr><th>Name</th><th>Species</th><th>Card Group</th><th></th></tr>
-          ${archivedAnimals.map(a=>`
-            <tr>
-              <td>${a.name}</td><td>${a.species}</td><td>${a.cardTitle}</td>
+          <tr><th>Name</th><th>Species</th><th>Reason</th><th></th></tr>
+          ${archivedAnimals.map(a=>{
+            const reasonLabel = a.archiveReason==='deceased'?'☠ Deceased':a.archiveReason==='transferred'?'🚚 Transferred':a.archiveReason==='adopted'?'🏠 Adopted Out':'—';
+            const reasonColor = a.archiveReason==='deceased'?'#7a1a1a':a.archiveReason==='transferred'?'#1a3a7a':a.archiveReason==='adopted'?'#1a5a2a':'#999';
+            return `<tr>
+              <td>${a.name}</td><td>${a.species}</td>
+              <td>
+                <span style="color:${reasonColor};font-weight:600;">${reasonLabel}</span>
+                <select style="margin-left:8px;font-size:12px;padding:2px 4px;" onchange="setAnimalArchiveReason(${a.id},this.value)">
+                  <option value="">Change…</option>
+                  <option value="deceased">☠ Deceased</option>
+                  <option value="transferred">🚚 Transferred</option>
+                  <option value="adopted">🏠 Adopted Out</option>
+                </select>
+              </td>
               <td style="white-space:nowrap;">
                 <button class="btn-ghost" onclick="restoreAnimal(${a.id})">Restore</button>
                 <button class="btn-ghost" onclick="deleteRow('animals',${a.id})">Delete Permanently</button>
               </td>
-            </tr>`).join('')}
+            </tr>`;}).join('')}
         </table>` : '<div class="empty">No archived animals.</div>') : ''}
       </div>
       <div class="card">
@@ -7743,38 +7779,37 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'analytics'){
-    const allShows = DATA.shows || [];
-    const completedShows = allShows.filter(s => showStatus(s) === 'completed');
-    const upcomingShows = allShows.filter(s => isShowUpcoming(s));
-    const typeCounts = {};
-    SHOW_TYPES_LIST.forEach(t => { typeCounts[t] = 0; });
-    completedShows.forEach(s => { (s.showTypes||[]).forEach(t => { if(typeCounts[t] !== undefined) typeCounts[t]++; }); });
-    const maxCount = Math.max(1, ...Object.values(typeCounts));
-    const typeRows = SHOW_TYPES_LIST.map(t => {
-      const count = typeCounts[t];
-      const pct = Math.round((count / maxCount) * 100);
-      return `<div style="margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-weight:600;font-size:14px;">${t}</span>
-          <span style="font-size:14px;color:var(--text-light);">${count} show${count===1?'':'s'}</span>
-        </div>
-        <div style="background:var(--hover);border-radius:6px;height:10px;overflow:hidden;">
-          <div style="background:var(--green);height:10px;width:${pct}%;border-radius:6px;transition:width 0.3s;"></div>
-        </div>
-      </div>`;
-    }).join('');
-    // Year breakdown
-    const yearCounts = {};
-    completedShows.forEach(s => {
-      const yr = (s.date||'').slice(0,4);
-      if(yr) yearCounts[yr] = (yearCounts[yr]||0) + 1;
-    });
-    const yearRows = Object.keys(yearCounts).sort().reverse().map(yr =>
-      `<tr><td style="padding:6px 12px 6px 0;font-weight:600;">${yr}</td><td style="padding:6px 0;">${yearCounts[yr]} show${yearCounts[yr]===1?'':'s'}</td></tr>`
-    ).join('');
-    body = `
-      <div class="card">
-        <h2>Show Analytics</h2>
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'}];
+    const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
+    let analyticsBody = '';
+
+    if(ANALYTICS_TAB === 'shows'){
+      const allShows = DATA.shows || [];
+      const completedShows = allShows.filter(s => showStatus(s) === 'completed');
+      const upcomingShows = allShows.filter(s => isShowUpcoming(s));
+      const typeCounts = {};
+      SHOW_TYPES_LIST.forEach(t => { typeCounts[t] = 0; });
+      completedShows.forEach(s => { (s.showTypes||[]).forEach(t => { if(typeCounts[t] !== undefined) typeCounts[t]++; }); });
+      const maxCount = Math.max(1, ...Object.values(typeCounts));
+      const typeRows = SHOW_TYPES_LIST.map(t => {
+        const count = typeCounts[t];
+        const pct = Math.round((count / maxCount) * 100);
+        return `<div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-weight:600;font-size:14px;">${t}</span>
+            <span style="font-size:14px;color:var(--text-light);">${count} show${count===1?'':'s'}</span>
+          </div>
+          <div style="background:var(--hover);border-radius:6px;height:10px;overflow:hidden;">
+            <div style="background:var(--green);height:10px;width:${pct}%;border-radius:6px;"></div>
+          </div>
+        </div>`;
+      }).join('');
+      const yearCounts = {};
+      completedShows.forEach(s => { const yr=(s.date||'').slice(0,4); if(yr) yearCounts[yr]=(yearCounts[yr]||0)+1; });
+      const yearRows = Object.keys(yearCounts).sort().reverse().map(yr =>
+        `<tr><td style="padding:6px 12px 6px 0;font-weight:600;">${yr}</td><td style="padding:6px 0;">${yearCounts[yr]} show${yearCounts[yr]===1?'':'s'}</td></tr>`
+      ).join('');
+      analyticsBody = `
         <div class="stat-row" style="margin-bottom:20px;">
           <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
           <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
@@ -7782,57 +7817,79 @@ function renderManager(){
         </div>
         <h3 style="margin-bottom:14px;">Completed shows by type</h3>
         ${typeRows}
-        ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}
-      </div>
-    `;
-  } else if(MANAGER_TAB === 'clients'){
-    // Build client list from all shows, keyed by clientName, tracking email and last booking date
-    const clientMap = {};
-    (DATA.shows||[]).forEach(s => {
-      const name = (s.clientName||'').trim();
-      if(!name) return;
-      const email = (s.clientEmail||'').trim();
-      const date = s.date||'';
-      if(!clientMap[name]) {
-        clientMap[name] = { name, email, lastDate: date };
-      } else {
-        if(email && !clientMap[name].email) clientMap[name].email = email;
-        if(date > clientMap[name].lastDate) clientMap[name].lastDate = date;
-      }
-    });
-    const clients = Object.values(clientMap).sort((a,b) => a.name.localeCompare(b.name));
-    const clientRows = clients.map((c,i) => `
-      <tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:10px 12px;font-weight:600;">${esc(c.name)}</td>
-        <td style="padding:10px 12px;color:var(--text-light);">${esc(c.email)||'<span style="color:#bbb;">—</span>'}</td>
-        <td style="padding:10px 12px;color:var(--text-light);">${c.lastDate ? fmtShortDate(c.lastDate) : '—'}</td>
-        <td style="padding:10px 12px;">
-          ${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy</button>` : ''}
-        </td>
-      </tr>`).join('');
-    const allEmails = clients.filter(c=>c.email).map(c=>c.email);
-    body = `
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
-          <h2 style="margin:0;">Clients <span style="font-size:13px;font-weight:400;color:var(--text-light);">${clients.length} total</span></h2>
+        ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}`;
+
+    } else if(ANALYTICS_TAB === 'clients'){
+      const clientMap = {};
+      (DATA.shows||[]).forEach(s => {
+        const name = (s.clientName||'').trim();
+        if(!name) return;
+        const email = (s.clientEmail||'').trim();
+        const phone = (s.clientPhone||'').trim();
+        const date = s.date||'';
+        if(!clientMap[name]){ clientMap[name] = { name, email, phone, lastDate: date, count: 1 }; }
+        else {
+          if(email && !clientMap[name].email) clientMap[name].email = email;
+          if(phone && !clientMap[name].phone) clientMap[name].phone = phone;
+          if(date > clientMap[name].lastDate) clientMap[name].lastDate = date;
+          clientMap[name].count++;
+        }
+      });
+      const clients = Object.values(clientMap).sort((a,b) => a.name.localeCompare(b.name));
+      const clientRows = clients.map(c => `
+        <tr style="border-bottom:1px solid var(--border);${c.count > 1 ? 'background:#fffbea;' : ''}">
+          <td style="padding:10px 12px;font-weight:600;">${esc(c.name)}${c.count > 1 ? ` <span style="font-size:11px;background:#e6a817;color:#fff;padding:2px 7px;border-radius:10px;font-weight:700;margin-left:6px;">${c.count} shows</span>` : ''}</td>
+          <td style="padding:10px 12px;color:var(--text-light);">${esc(c.email)||'<span style="color:#bbb;">—</span>'}</td>
+          <td style="padding:10px 12px;color:var(--text-light);">${esc(c.phone)||'<span style="color:#bbb;">—</span>'}</td>
+          <td style="padding:10px 12px;color:var(--text-light);">${c.lastDate ? fmtShortDate(c.lastDate) : '—'}</td>
+          <td style="padding:10px 12px;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button>` : ''}</td>
+        </tr>`).join('');
+      const allEmails = clients.filter(c=>c.email).map(c=>c.email);
+      analyticsBody = `
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          <span style="color:var(--text-light);font-size:13px;">${clients.length} total clients · sorted A–Z</span>
           ${allEmails.length ? `<button class="btn" onclick="copyAllClientEmails()">Copy all emails (${allEmails.length})</button>` : ''}
         </div>
-        <div class="sub" style="margin-bottom:14px;">Built automatically from all shows. Add or update a client's email in the Shows tab. Sorted alphabetically.</div>
         ${clients.length ? `
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead>
-              <tr style="border-bottom:2px solid var(--border);text-align:left;">
-                <th style="padding:8px 12px 8px 0;font-size:13px;color:var(--text-light);">Name</th>
-                <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Email</th>
-                <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Last booked</th>
-                <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
-              </tr>
-            </thead>
+            <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th style="padding:8px 12px 8px 0;font-size:13px;color:var(--text-light);">Name</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Email</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Phone</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Last booked</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
+            </tr></thead>
             <tbody>${clientRows}</tbody>
           </table>
-        </div>` : '<div class="empty">No clients yet. Add client names when creating shows.</div>'}
-      </div>
+        </div>` : '<div class="empty">No clients yet. Add client names when creating shows.</div>'}`;
+
+    } else if(ANALYTICS_TAB === 'animals'){
+      const archivedA = (DATA.animals||[]).filter(a=>a.archived);
+      const deceased = archivedA.filter(a=>a.archiveReason==='deceased');
+      const transferred = archivedA.filter(a=>a.archiveReason==='transferred');
+      const adopted = archivedA.filter(a=>a.archiveReason==='adopted');
+      const unknown = archivedA.filter(a=>!a.archiveReason);
+      const activeCount = (DATA.animals||[]).filter(a=>!a.archived).length;
+      const makeList = (arr) => arr.length ? arr.map(a=>`<span style="display:inline-block;background:var(--hover);border-radius:6px;padding:3px 10px;margin:3px;font-size:13px;">${esc(a.name)} <span style="color:var(--text-light);font-size:12px;">(${a.species})</span></span>`).join('') : '<span style="color:#bbb;font-size:13px;">None</span>';
+      analyticsBody = `
+        <div class="stat-row" style="margin-bottom:20px;">
+          <div class="stat-box"><div class="num">${activeCount}</div><div class="lbl">Active animals</div></div>
+          <div class="stat-box"><div class="num">${archivedA.length}</div><div class="lbl">Archived total</div></div>
+          <div class="stat-box" style="border-left:4px solid #7a1a1a;"><div class="num">${deceased.length}</div><div class="lbl">Deceased</div></div>
+          <div class="stat-box" style="border-left:4px solid #1a3a7a;"><div class="num">${transferred.length}</div><div class="lbl">Transferred</div></div>
+          <div class="stat-box" style="border-left:4px solid #1a5a2a;"><div class="num">${adopted.length}</div><div class="lbl">Adopted Out</div></div>
+        </div>
+        ${deceased.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#7a1a1a;margin-bottom:6px;">☠ Deceased (${deceased.length})</div>${makeList(deceased)}</div>` : ''}
+        ${transferred.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#1a3a7a;margin-bottom:6px;">🚚 Transferred (${transferred.length})</div>${makeList(transferred)}</div>` : ''}
+        ${adopted.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#1a5a2a;margin-bottom:6px;">🏠 Adopted Out (${adopted.length})</div>${makeList(adopted)}</div>` : ''}
+        ${unknown.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#999;margin-bottom:6px;">Unknown reason (${unknown.length})</div>${makeList(unknown)}</div>` : ''}
+        ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
+    }
+
+    body = `
+      <div class="detail-tabs" style="margin-bottom:16px;">${analyticsTabsHtml}</div>
+      <div class="card">${analyticsBody}</div>
     `;
   } else if(MANAGER_TAB === 'admin'){
     const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
