@@ -6236,6 +6236,56 @@ let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 let SHOW_MGR_VIEW = 'upcoming';
 function setShowMgrView(v){ SHOW_MGR_VIEW = v; showTab('manager'); }
 let SHOW_MGR_ADD_FORM = false;
+let CENTRE_COORDS_CACHE = null;
+let _travelLookupTimer = null;
+
+async function lookupTravelTime(address, onResult, onStatus){
+  if(!address || address.trim().length < 6){ onStatus(''); return; }
+  onStatus('Looking up travel time…');
+  try {
+    if(!CENTRE_COORDS_CACHE){
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent('19799 County Road 24, Dunvegan, Ontario, Canada')}&format=json&limit=1`);
+      const data = await res.json();
+      if(!data.length) throw new Error('origin not found');
+      CENTRE_COORDS_CACHE = {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+    }
+    await new Promise(r=>setTimeout(r,1100)); // Nominatim rate limit: 1 req/sec
+    const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+    const destData = await destRes.json();
+    if(!destData.length) throw new Error('destination not found');
+    const dest = {lat: parseFloat(destData[0].lat), lon: parseFloat(destData[0].lon)};
+    const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${CENTRE_COORDS_CACHE.lon},${CENTRE_COORDS_CACHE.lat};${dest.lon},${dest.lat}?overview=false`);
+    const routeData = await routeRes.json();
+    if(routeData.code !== 'Ok' || !routeData.routes.length) throw new Error('no route');
+    const mins = Math.ceil(routeData.routes[0].duration / 60);
+    const km = (routeData.routes[0].distance / 1000).toFixed(1);
+    onResult(mins);
+    onStatus(`✓ ${km} km · ${mins} min drive`);
+  } catch(e) {
+    onStatus('Could not look up address — enter travel time manually');
+  }
+}
+function autoFillTravelTimeNewShow(){
+  clearTimeout(_travelLookupTimer);
+  const address = val('new-show-address');
+  _travelLookupTimer = setTimeout(()=>{
+    lookupTravelTime(
+      address,
+      mins => { const el=document.getElementById('new-show-travel'); if(el){ el.value=mins; updateNewShowPlanPreview(); } },
+      msg  => { const el=document.getElementById('travel-lookup-status'); if(el) el.textContent=msg; }
+    );
+  }, 800);
+}
+async function lookupTravelTimeMgr(showId){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s||!s.address) return;
+  const statusEl = document.getElementById(`travel-status-${showId}`);
+  await lookupTravelTime(
+    s.address,
+    mins => { s.travelMinutes=mins; saveData(); showTab('manager'); },
+    msg  => { if(statusEl) statusEl.textContent=msg; }
+  );
+}
 function toggleShowAddForm(){ SHOW_MGR_ADD_FORM = !SHOW_MGR_ADD_FORM; showTab('manager'); }
 let SHOW_MGR_VEHICLES_OPEN = false;
 function toggleVehiclesPanel(){ SHOW_MGR_VEHICLES_OPEN = !SHOW_MGR_VEHICLES_OPEN; showTab('manager'); }
@@ -6483,7 +6533,8 @@ function renderShowForm(){
       </div>
       <div class="field-block" style="flex:1; min-width:160px;">
         <label>Travel time from centre (minutes)</label>
-        <input type="number" id="new-show-travel" placeholder="e.g. 30" min="0" oninput="updateNewShowPlanPreview()">
+        <input type="number" id="new-show-travel" placeholder="Auto-filled from address" min="0" oninput="updateNewShowPlanPreview()">
+        <div id="travel-lookup-status" style="font-size:12px;color:#1a6a1a;margin-top:4px;"></div>
       </div>
       <div class="field-block" style="flex:1; min-width:200px;">
         <label>Arrival buffer (minutes before show)</label>
@@ -6513,7 +6564,7 @@ function renderShowForm(){
       <input type="text" id="new-show-childname" placeholder="Child name" style="margin-top:8px;">
     </div>
     <div class="add-row">
-      <input type="text" id="new-show-address" placeholder="Address">
+      <input type="text" id="new-show-address" placeholder="Address" oninput="autoFillTravelTimeNewShow()">
       <select id="new-show-language">${SHOW_LANGUAGES.map(l=>`<option value="${l}">${l}</option>`).join('')}</select>
     </div>
     <div class="field-block">
@@ -6674,6 +6725,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         <div class="field-block" style="flex:1; min-width:160px;">
           <label>Travel time (min)${isContinuation?' (this day)':''}</label>
           <input type="number" min="0" value="${travelVal}" onchange="${travelHandler}">
+          ${!isContinuation ? `<button class="btn-ghost" style="font-size:12px;margin-top:4px;padding:2px 8px;" onclick="lookupTravelTimeMgr(${s.id})">Look up from address</button><div id="travel-status-${s.id}" style="font-size:12px;color:#1a6a1a;margin-top:2px;"></div>` : ''}
         </div>
         <div class="field-block" style="flex:1; min-width:200px;">
           <label>Arrival buffer (minutes before show)</label>
