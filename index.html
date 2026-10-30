@@ -4932,7 +4932,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
         if(!activeAnimals.length) return '';
         const takenIds = s.animalsTaken||[];
         return `<div class="field-block" style="background:#f4faf4;border:1px solid #b0d8b0;border-radius:8px;padding:10px;margin-top:8px;">
-          <label style="font-weight:700;color:#1a5a1a;">🐾 Animals Taken to This Show</label>
+          <label style="font-weight:700;color:#1a5a1a;">Animals Taken to This Show</label>
           <div class="task-tags" style="margin-top:8px;">
             ${activeAnimals.map(a=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${takenIds.includes(a.id)?'checked':''} onchange="toggleShowAnimal(${s.id},${a.id})"> ${esc(a.name)}</label>`).join('')}
           </div>
@@ -6544,7 +6544,7 @@ function renderShowForm(){
       </div>
     </div>
     <div class="field-block" id="new-show-occasion-extra" style="display:none; background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:12px;">
-      <label style="color:#1a6a1a; font-weight:700;">🎉 What is the occasion?</label>
+      <label style="color:#1a6a1a; font-weight:700;">What is the occasion?</label>
       <div class="task-tags" style="margin-top:8px;">
         ${OCCASIONS_LIST.map(o=>`<label class="checkbox-line" style="margin-right:4px;"><input type="radio" name="new-show-occasion" class="add-show-occasion" value="${o}"> ${o}</label>`).join('')}
       </div>
@@ -6751,7 +6751,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       </div>` : ''}
       ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
       <div class="field-block" style="background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:10px;">
-        <label style="color:#1a6a1a; font-weight:700;">🎉 Occasion</label>
+        <label style="color:#1a6a1a; font-weight:700;">Occasion</label>
         <div class="task-tags" style="margin-top:8px;">
           ${OCCASIONS_LIST.map(o=>`<label class="checkbox-line" style="margin-right:4px;"><input type="radio" name="occasion-${s.id}" ${s.occasion===o?'checked':''} onchange="setShowOccasion(${s.id},'${o}')"> ${o}</label>`).join('')}
         </div>
@@ -6766,7 +6766,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         if(!activeAnimals.length) return '';
         const takenIds = s.animalsTaken||[];
         return `<div class="field-block" style="background:#f4faf4;border:1px solid #b0d8b0;border-radius:8px;padding:10px;">
-          <label style="font-weight:700;color:#1a5a1a;">🐾 Animals Taken to This Show</label>
+          <label style="font-weight:700;color:#1a5a1a;">Animals Taken to This Show</label>
           <div class="task-tags" style="margin-top:8px;">
             ${activeAnimals.map(a=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${takenIds.includes(a.id)?'checked':''} onchange="toggleShowAnimal(${s.id},${a.id})"> ${esc(a.name)}</label>`).join('')}
           </div>
