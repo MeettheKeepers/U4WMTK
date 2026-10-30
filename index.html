@@ -4673,10 +4673,22 @@ function vehicleDayConflictShowIds(vehicle, date){
   }
   return conflictIds;
 }
-function clientShowCount(clientName){
-  if(!clientName) return 0;
-  const name = clientName.trim().toLowerCase();
-  return (DATA.shows||[]).filter(s => (s.clientName||'').trim().toLowerCase() === name).length;
+function clientShowCount(show){
+  // Match on name, email, or phone — any one of them linking two shows means same client
+  if(!show) return 0;
+  const name  = (show.clientName ||'').trim().toLowerCase();
+  const email = (show.clientEmail||'').trim().toLowerCase();
+  const phone = (show.clientPhone||'').trim().replace(/\D/g,'');
+  return (DATA.shows||[]).filter(s => {
+    if(s.id === show.id) return true; // always count self
+    const sName  = (s.clientName ||'').trim().toLowerCase();
+    const sEmail = (s.clientEmail||'').trim().toLowerCase();
+    const sPhone = (s.clientPhone||'').trim().replace(/\D/g,'');
+    if(name  && sName  && name  === sName)  return true;
+    if(email && sEmail && email === sEmail) return true;
+    if(phone && sPhone && phone === sPhone) return true;
+    return false;
+  }).length;
 }
 function showConflictInfo(s){
   const names = [];
@@ -4891,7 +4903,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
   const isMultiDay = s.endDate && s.endDate > s.date;
   const dayOverrideActive = viewDate && s.dayOverrides && s.dayOverrides[viewDate] && Object.keys(s.dayOverrides[viewDate]).length > 0;
   const missingInfo = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
-  const repeatCount = clientShowCount(s.clientName);
+  const repeatCount = clientShowCount(s);
   const isRepeat = repeatCount > 1;
   const borderColor = conflictInfo.hasConflict ? 'var(--red)' : missingInfo ? '#7c3fad' : isRepeat ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
   const outlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingInfo ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : isRepeat ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
@@ -6630,7 +6642,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const st = showStatus(s);
   const isPast = s.date < todayStr();
   const missingMgr = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
-  const repeatCountMgr = clientShowCount(s.clientName);
+  const repeatCountMgr = clientShowCount(s);
   const isRepeatMgr = repeatCountMgr > 1;
   // Time/notes handlers — per-day for continuation days, base show for day 1
   const startTimeVal = isContinuation ? (ov.startTime || s.startTime) : s.startTime;
