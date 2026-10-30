@@ -5076,25 +5076,82 @@ function renderCalDetail(){
 }
 
 function renderCalMonthView(){
-  const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const firstDow = new Date(CAL_YEAR, CAL_MONTH, 1).getDay();
   const daysInMonth = new Date(CAL_YEAR, CAL_MONTH+1, 0).getDate();
   const today = todayStr();
+
+  // Sort shows so multi-day shows appear first (consistent slot across days), then by start time
+  function sortedDayShows(ds){
+    return showsOnDate(ds).sort((a,b)=>{
+      const aMulti = !!(a.endDate && a.endDate > a.date);
+      const bMulti = !!(b.endDate && b.endDate > b.date);
+      if(aMulti && !bMulti) return -1;
+      if(!aMulti && bMulti) return 1;
+      return (a.startTime||'').localeCompare(b.startTime||'');
+    });
+  }
+
+  // Render one event pill, styled based on its position within a multi-day span
+  function eventPill(s, ds, dow){
+    const c = calEventColor(s);
+    const sel = CAL_DETAIL_ID === s.id;
+    const showEnd = (s.endDate && s.endDate > s.date) ? s.endDate : s.date;
+    const isMulti = showEnd > s.date;
+    const isActualStart = s.date === ds;
+    const isActualEnd   = showEnd === ds;
+    const isSat = dow === 6; // last cell of week row
+    const isSun = dow === 0; // first cell of week row
+
+    if(!isMulti){
+      // Single-day: normal pill
+      const lbl = (s.startTime ? s.startTime.replace(':00','')+' ' : '') + (s.title||'Show');
+      return `<div onclick="event.stopPropagation();calToggleDetail(${s.id})" title="${s.title||''}"
+        style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${sel?'outline:2px solid #000;outline-offset:-1px;':''}"
+      >${lbl}</div>`;
+    }
+
+    // Multi-day: connected bar
+    // Determine visual edges for this cell
+    const startEdge = isActualStart || isSun;  // left side gets a cap
+    const endEdge   = isActualEnd   || isSat;  // right side gets a cap
+    const showLabel = isActualStart || isSun;   // only show text on the first visible cell each week
+
+    // Border radius: round the caps, straight edges where it connects
+    const radL = startEdge ? '4px' : '0';
+    const radR = endEdge   ? '4px' : '0';
+    const borderRadius = `${radL} ${radR} ${radR} ${radL}`;
+
+    // Margin: bleed to cell edge on connecting sides (cell has 4px padding + 1px border = 5px to bleed)
+    const mL = startEdge ? '0px' : '-5px';
+    const mR = endEdge   ? '0px' : '-5px';
+
+    // Slightly lighter shade for mid-span sections so the span is obvious
+    const midBg = !isActualStart && !isActualEnd && !isSun ? c.bg+'cc' : c.bg;
+
+    const lbl = showLabel
+      ? (s.startTime ? s.startTime.replace(':00','')+' ' : '') + (s.title||'Show') + (!isActualEnd && isSat ? ' →' : '')
+      : (!isActualEnd && isSat ? '<span style="float:right;">→</span>' : '&nbsp;');
+
+    return `<div onclick="event.stopPropagation();calToggleDetail(${s.id})" title="${s.title||''}"
+      style="cursor:pointer;background:${midBg};color:${c.text};border-radius:${borderRadius};
+             padding:1px 5px;font-size:11px;margin-bottom:2px;margin-left:${mL};margin-right:${mR};
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+             ${sel?'outline:2px solid #000;outline-offset:-1px;':''}"
+    >${lbl}</div>`;
+  }
+
   let cells='';
   for(let i=0;i<firstDow;i++) cells+=`<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);min-height:90px;background:#fafafa;"></div>`;
   for(let d=1;d<=daysInMonth;d++){
     const ds=`${CAL_YEAR}-${String(CAL_MONTH+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=(firstDow+d-1)%7;
     const isToday=ds===today;
-    const dayShows=showsOnDate(ds).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+    const dayShows=sortedDayShows(ds);
     const staff=staffOnDate(ds);
-    const evts=dayShows.slice(0,3).map(s=>{
-      const c=calEventColor(s); const sel=CAL_DETAIL_ID===s.id;
-      const lbl=(s.startTime?s.startTime.replace(':00','')+' ':'')+( s.title||'Show');
-      return `<div onclick="event.stopPropagation();calToggleDetail(${s.id})" title="${s.title||''}" style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${sel?'outline:2px solid #000;outline-offset:-1px;':''}">${lbl}</div>`;
-    }).join('');
+    const evts=dayShows.slice(0,3).map(s=>eventPill(s,ds,dow)).join('');
     const more=dayShows.length>3?`<div style="font-size:11px;color:#888;padding-left:2px;">+${dayShows.length-3} more</div>`:'';
     const staffRow=staff.length?`<div style="font-size:10px;color:#1a4a7a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${staff.join(', ')}">${staff.join(', ')}</div>`:'';
-    cells+=`<div onclick="calGoDay('${ds}')" style="cursor:pointer;min-height:90px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;">
+    cells+=`<div onclick="calGoDay('${ds}')" style="cursor:pointer;min-height:90px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;">
       <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${isToday?700:400};background:${isToday?'var(--accent)':'transparent'};color:${isToday?'#fff':'inherit'};margin-bottom:3px;">${d}</div>
       ${evts}${more}${staffRow}
     </div>`;
