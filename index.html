@@ -1607,6 +1607,7 @@ const TABS = [
   {id:'diets', label:'Diets'},
   {id:'animals', label:'Animals'},
   {id:'shows', label:'Shows'},
+  {id:'showcalendar', label:'Show Calendar'},
   {id:'schedule', label:'Team Schedule'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
@@ -1751,6 +1752,7 @@ function showTab(id){
     diets: renderDiets,
     animals: renderAnimals,
     shows: renderShows,
+    showcalendar: renderShowCalendar,
     schedule: renderSchedule,
     repairs: renderRepairs,
     inventory: renderInventory,
@@ -1768,7 +1770,7 @@ function showTab(id){
   }[id];
   // Save scroll positions of named scrollable containers before wiping innerHTML
   const scrollSave = {};
-  ['schedule-scroll-container'].forEach(elId => {
+  ['schedule-scroll-container', 'cal-detail-panel'].forEach(elId => {
     const el = document.getElementById(elId);
     if(el) scrollSave[elId] = { left: el.scrollLeft, top: el.scrollTop };
   });
@@ -4989,6 +4991,181 @@ function toggleShowStaffRow(key){
   EXPANDED_SHOW_STAFF[key] = !EXPANDED_SHOW_STAFF[key];
   showTab('shows');
 }
+
+/* ============================================================
+   SHOW CALENDAR
+   ============================================================ */
+let CAL_VIEW  = 'month';
+let CAL_YEAR  = new Date().getFullYear();
+let CAL_MONTH = new Date().getMonth(); // 0-indexed
+let CAL_DAY   = todayStr();
+let CAL_DETAIL_ID = null;
+
+function calSetView(v){ CAL_VIEW=v; CAL_DETAIL_ID=null; showTab('showcalendar'); }
+function calSetMonth(y,m){
+  if(m<0){m=11;y--;} if(m>11){m=0;y++;}
+  CAL_YEAR=y; CAL_MONTH=m; CAL_DETAIL_ID=null; showTab('showcalendar');
+}
+function calGoToday(){
+  const n=new Date(); CAL_YEAR=n.getFullYear(); CAL_MONTH=n.getMonth();
+  CAL_DAY=todayStr(); CAL_DETAIL_ID=null; showTab('showcalendar');
+}
+function calGoDay(d){ CAL_VIEW='day'; CAL_DAY=d; CAL_DETAIL_ID=null; showTab('showcalendar'); }
+function calToggleDetail(id){
+  CAL_DETAIL_ID = (CAL_DETAIL_ID===id) ? null : id;
+  const el=document.getElementById('cal-detail-panel');
+  if(el) el.innerHTML=renderCalDetail();
+}
+function calCloseDetail(){ CAL_DETAIL_ID=null; const el=document.getElementById('cal-detail-panel'); if(el) el.innerHTML=''; }
+
+function showsOnDate(dateStr){
+  return (DATA.shows||[]).filter(s=>{
+    if(s.status==='cancelled') return false;
+    const end = (s.endDate && s.endDate > s.date) ? s.endDate : s.date;
+    return dateStr >= s.date && dateStr <= end;
+  });
+}
+function staffOnDate(dateStr){
+  const names=new Set();
+  showsOnDate(dateStr).forEach(s=>(s.staffNames||[]).forEach(n=>names.add(n)));
+  return [...names].sort();
+}
+function calEventColor(s){
+  if(s.status==='completed') return {bg:'#2a7a2a',text:'#fff'};
+  if(!s.paid)                return {bg:'#c0392b',text:'#fff'};
+  if(clientShowCount(s)>1)   return {bg:'#d4900f',text:'#fff'};
+  return {bg:'#1a6a1a',text:'#fff'};
+}
+
+function renderCalDetail(){
+  if(!CAL_DETAIL_ID) return '';
+  const s=(DATA.shows||[]).find(x=>x.id===CAL_DETAIL_ID);
+  if(!s) return '';
+  const c=calEventColor(s);
+  const dateRange=(s.endDate&&s.endDate>s.date)?`${fmtShortDate(s.date)} – ${fmtShortDate(s.endDate)}`:fmtShortDate(s.date);
+  const timeRange=s.startTime&&s.endTime?` · ${s.startTime} – ${s.endTime}`:s.startTime?` · ${s.startTime}`:'';
+  const rows=[
+    s.clientName?`<div><span class="lbl">Client</span> ${s.clientName}</div>`:'',
+    s.clientPhone?`<div><span class="lbl">Phone</span> ${s.clientPhone}</div>`:'',
+    s.clientEmail?`<div><span class="lbl">Email</span> ${s.clientEmail}</div>`:'',
+    s.address?`<div><span class="lbl">Address</span> ${s.address}</div>`:'',
+    s.region?`<div><span class="lbl">Region</span> ${s.region}</div>`:'',
+    (s.staffNames||[]).length?`<div><span class="lbl">Staff</span> ${s.staffNames.join(', ')}</div>`:'',
+    s.vehicle?`<div><span class="lbl">Vehicle</span> ${s.vehicle}</div>`:'',
+    s.travelMinutes?`<div><span class="lbl">Travel</span> ${s.travelMinutes} min</div>`:'',
+    (s.showTypes||[]).length?`<div><span class="lbl">Show type(s)</span> ${s.showTypes.join(', ')}</div>`:'',
+    (s.characters||[]).length?`<div><span class="lbl">Characters</span> ${s.characters.join(', ')}</div>`:'',
+    s.occasion?`<div><span class="lbl">Occasion</span> ${s.occasion}</div>`:'',
+    s.childName?`<div><span class="lbl">Child</span> ${s.childName}</div>`:'',
+    s.language&&s.language!=='English'?`<div><span class="lbl">Language</span> ${s.language}</div>`:'',
+    s.notes?`<div style="grid-column:1/-1"><span class="lbl">Notes</span> ${s.notes}</div>`:'',
+  ].filter(Boolean).join('');
+  return `
+    <div style="background:#fff;border:2px solid ${c.bg};border-radius:10px;padding:14px 16px;margin-bottom:14px;position:relative;">
+      <button onclick="calCloseDetail()" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#aaa;line-height:1;">✕</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <div style="width:13px;height:13px;border-radius:3px;background:${c.bg};flex-shrink:0;"></div>
+        <strong style="font-size:15px;">${s.title||'Untitled'}</strong>
+        <span style="font-size:12px;padding:2px 8px;border-radius:12px;background:${c.bg};color:${c.text};">${s.status||'scheduled'}</span>
+        ${s.paid?'<span style="font-size:12px;padding:2px 7px;border-radius:12px;background:#e8f5e9;color:#1a6a1a;border:1px solid #a5d6a7;">Paid</span>':'<span style="font-size:12px;padding:2px 7px;border-radius:12px;background:#fdecea;color:#c0392b;border:1px solid #ef9a9a;">Unpaid</span>'}
+        <span style="font-size:13px;color:#666;">${dateRange}${timeRange}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:13px;">${rows}</div>
+      ${isManagerLogin()?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee;"><button class="btn-small" onclick="showTab('manager')">Open in Manager →</button></div>`:''}
+    </div>`;
+}
+
+function renderCalMonthView(){
+  const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const firstDow = new Date(CAL_YEAR, CAL_MONTH, 1).getDay();
+  const daysInMonth = new Date(CAL_YEAR, CAL_MONTH+1, 0).getDate();
+  const today = todayStr();
+  let cells='';
+  for(let i=0;i<firstDow;i++) cells+=`<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);min-height:90px;background:#fafafa;"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${CAL_YEAR}-${String(CAL_MONTH+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday=ds===today;
+    const dayShows=showsOnDate(ds).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+    const staff=staffOnDate(ds);
+    const evts=dayShows.slice(0,3).map(s=>{
+      const c=calEventColor(s); const sel=CAL_DETAIL_ID===s.id;
+      const lbl=(s.startTime?s.startTime.replace(':00','')+' ':'')+( s.title||'Show');
+      return `<div onclick="event.stopPropagation();calToggleDetail(${s.id})" title="${s.title||''}" style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${sel?'outline:2px solid #000;outline-offset:-1px;':''}">${lbl}</div>`;
+    }).join('');
+    const more=dayShows.length>3?`<div style="font-size:11px;color:#888;padding-left:2px;">+${dayShows.length-3} more</div>`:'';
+    const staffRow=staff.length?`<div style="font-size:10px;color:#1a4a7a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${staff.join(', ')}">${staff.join(', ')}</div>`:'';
+    cells+=`<div onclick="calGoDay('${ds}')" style="cursor:pointer;min-height:90px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;">
+      <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${isToday?700:400};background:${isToday?'var(--accent)':'transparent'};color:${isToday?'#fff':'inherit'};margin-bottom:3px;">${d}</div>
+      ${evts}${more}${staffRow}
+    </div>`;
+  }
+  const filled=(firstDow+daysInMonth)%7;
+  if(filled) for(let i=0;i<7-filled;i++) cells+=`<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);min-height:90px;background:#fafafa;"></div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(7,1fr);border-left:1px solid var(--border);border-top:1px solid var(--border);border-radius:8px;overflow:hidden;">
+    ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div style="text-align:center;font-size:12px;font-weight:700;padding:7px 0;background:#f4f4f4;border-right:1px solid var(--border);color:#555;">${d}</div>`).join('')}
+    ${cells}
+  </div>`;
+}
+
+function renderCalDayView(){
+  const ds=CAL_DAY;
+  const dayShows=showsOnDate(ds).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+  const staff=staffOnDate(ds);
+  const HOURS=[];
+  for(let h=6;h<=22;h++) HOURS.push(h);
+  const staffHtml=staff.length?`<div style="background:#e8f0fb;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;"><strong>Staff working:</strong> ${staff.join(' · ')}</div>`:'';
+  const noTime=dayShows.filter(s=>!s.startTime);
+  const noTimeHtml=noTime.length?`<div style="margin-bottom:8px;">${noTime.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;${sel?'outline:2px solid #000;':''}">${s.title||'Show'} — all day${(s.staffNames||[]).length?' · '+(s.staffNames||[]).join(', '):''}</div>`;}).join('')}</div>`:'';
+  const hourRows=HOURS.map(h=>{
+    const slotStart=h*60, slotEnd=slotStart+60;
+    const slot=dayShows.filter(s=>{
+      if(!s.startTime) return false;
+      const sm=timeToMin(s.startTime), em=s.endTime?timeToMin(s.endTime):sm+60;
+      return sm<slotEnd && em>slotStart;
+    });
+    const label=h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
+    const evts=slot.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:${c.bg};color:${c.text};border-radius:5px;padding:3px 10px;margin-right:6px;font-size:13px;${sel?'outline:2px solid #000;':''}"><strong>${s.title||'Show'}</strong>${s.startTime?`<span style="opacity:.8;font-size:12px;">${s.startTime}–${s.endTime||'?'}</span>`:''}${(s.staffNames||[]).length?`<span style="opacity:.8;font-size:12px;">${s.staffNames.join(', ')}</span>`:''}</div>`;}).join('');
+    return `<div style="display:flex;border-bottom:1px solid var(--border);min-height:${slot.length?54:40}px;${slot.length?'background:#f6fff6;':''}">
+      <div style="width:64px;flex-shrink:0;font-size:12px;color:#888;padding:8px;border-right:1px solid var(--border);white-space:nowrap;">${label}</div>
+      <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${evts}</div>
+    </div>`;
+  }).join('');
+  return staffHtml+noTimeHtml+`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>`;
+}
+
+function renderShowCalendar(){
+  const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const isMonth=CAL_VIEW==='month';
+  // Day nav helpers
+  const [dy,dm,dd]=CAL_DAY.split('-').map(Number);
+  const mkDateStr=dt=>`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  const prevD=mkDateStr(new Date(dy,dm-1,dd-1)), nextD=mkDateStr(new Date(dy,dm-1,dd+1));
+  const navL=isMonth?`<button class="btn-small" onclick="calSetMonth(${CAL_YEAR},${CAL_MONTH-1})">◀</button>`:`<button class="btn-small" onclick="calGoDay('${prevD}')">◀</button>`;
+  const navR=isMonth?`<button class="btn-small" onclick="calSetMonth(${CAL_YEAR},${CAL_MONTH+1})">▶</button>`:`<button class="btn-small" onclick="calGoDay('${nextD}')">▶</button>`;
+  const titleStr=isMonth?`${MONTH_NAMES[CAL_MONTH]} ${CAL_YEAR}`:new Date(dy,dm-1,dd).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  return `<div style="padding:16px;max-width:1100px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      ${navL}
+      <strong style="font-size:18px;flex:1;min-width:160px;">${titleStr}</strong>
+      ${navR}
+      <button class="btn-small" onclick="calGoToday()" style="margin-left:4px;">Today</button>
+      <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-left:6px;">
+        <button onclick="calSetView('month')" style="padding:5px 14px;background:${isMonth?'var(--accent)':'transparent'};color:${isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;">Month</button>
+        <button onclick="calSetView('day')" style="padding:5px 14px;background:${!isMonth?'var(--accent)':'transparent'};color:${!isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;border-left:1px solid var(--border);">Day</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:10px;">
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#1a6a1a;display:inline-block;"></span>Paid</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#c0392b;display:inline-block;"></span>Unpaid</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#d4900f;display:inline-block;"></span>Repeat client</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#2a7a2a;display:inline-block;"></span>Completed</span>
+      <span style="font-size:11px;color:#1a4a7a;">Blue text = staff names · Click event for details · Click date to switch to Day view</span>
+    </div>
+    <div id="cal-detail-panel">${renderCalDetail()}</div>
+    ${isMonth ? renderCalMonthView() : renderCalDayView()}
+  </div>`;
+}
+
 function renderShows(){
   const today = todayStr();
   const sevenDaysOut = addDays(today, 6);
