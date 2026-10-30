@@ -984,6 +984,7 @@ function normalizeData(d){
     if(s.region===undefined) s.region='';
     if(s.characters===undefined) s.characters=[];
     if(s.occasion===undefined) s.occasion='';
+    if(s.animalsTaken===undefined) s.animalsTaken=[];
   });
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
@@ -4893,6 +4894,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
       ${missingInfo && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing info: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day.</div>` : ''}
       ${isRepeat ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCount} shows booked. Review animal list before this show.</div>` : ''}
+      ${(()=>{ const prev=getPrevClientAnimals(s); if(!prev) return ''; const names=animalNamesFromIds(prev.animalsTaken); if(!names.length) return ''; return `<div class="notice" style="background:#e8f4fd;color:#1a4a7a;border:1px solid #a8d0f0;">🐾 <strong>Previous visit (${fmtShortDate(prev.date)}):</strong> ${names.join(', ')} — consider switching animals for variety.</div>`; })()}
       ${chainTooTight ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Not enough time to travel from "${prevShow.title}" (ends ${prevShow.endTime}) and still arrive ${CHAINED_SHOW_MIN_BUFFER_MIN} min early — would need to leave by ${fmtHM(chainLeaveBy)}.</div>` : ''}
       ${s.overnight ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;font-weight:700;">🌙 This is an OVERNIGHT event — staff will be staying overnight.${s.overnightNote ? ' ' + s.overnightNote : ''}</div>` : ''}
       <div class="task-tags" style="margin-bottom:10px;">
@@ -4925,6 +4927,18 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
         </div>
       </div>` : ''}
       ${arrivalHtml}
+      ${(()=>{
+        const activeAnimals = (DATA.animals||[]).filter(a=>!a.archived).sort((a,b)=>a.name.localeCompare(b.name));
+        if(!activeAnimals.length) return '';
+        const takenIds = s.animalsTaken||[];
+        return `<div class="field-block" style="background:#f4faf4;border:1px solid #b0d8b0;border-radius:8px;padding:10px;margin-top:8px;">
+          <label style="font-weight:700;color:#1a5a1a;">🐾 Animals Taken to This Show</label>
+          <div class="task-tags" style="margin-top:8px;">
+            ${activeAnimals.map(a=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${takenIds.includes(a.id)?'checked':''} onchange="toggleShowAnimal(${s.id},${a.id})"> ${esc(a.name)}</label>`).join('')}
+          </div>
+          ${takenIds.length ? `<div style="margin-top:8px;font-size:13px;color:#1a5a1a;font-weight:600;">Selected: ${animalNamesFromIds(takenIds).join(', ')}</div>` : ''}
+        </div>`;
+      })()}
       <div class="medrecord-box">
         <div class="field-block" style="margin-bottom:8px;">
           <label>Travel / shift plan</label>
@@ -6335,6 +6349,31 @@ function setShowOccasion(showId, occasion){
   s.occasion = occasion;
   saveData(); showTab(CURRENT_TAB||'shows');
 }
+function toggleShowAnimal(showId, animalId){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  if(!s.animalsTaken) s.animalsTaken=[];
+  const i = s.animalsTaken.indexOf(animalId);
+  if(i>=0) s.animalsTaken.splice(i,1); else s.animalsTaken.push(animalId);
+  saveData(); showTab(CURRENT_TAB||'shows');
+}
+function getPrevClientAnimals(show){
+  if(!show.clientName) return null;
+  const name = (show.clientName||'').trim().toLowerCase();
+  const prev = (DATA.shows||[])
+    .filter(ps => ps.id !== show.id &&
+                  (ps.clientName||'').trim().toLowerCase() === name &&
+                  ps.date <= show.date &&
+                  (ps.animalsTaken||[]).length > 0)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  return prev.length ? prev[0] : null;
+}
+function animalNamesFromIds(ids){
+  return (ids||[]).map(id => {
+    const a = (DATA.animals||[]).find(x=>x.id===id);
+    return a ? a.name : null;
+  }).filter(Boolean);
+}
 function toggleShowCharacter(showId, character){
   const s = DATA.shows.find(x=>x.id===showId);
   if(!s) return;
@@ -6556,8 +6595,9 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
     : `saveShowField(${s.id},'vehicle',this.value)`;
   const dayArrivals = isContinuation ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
   const dayDepartures = isContinuation ? getDayDepartures(s, viewDate) : (s.departures||[]);
-  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : isRepeatMgr ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
-  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : isRepeatMgr ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
+  const isCompletedMgr = st === 'completed';
+  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
   return `
     <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${mgrBorderColor}; ${mgrOutlineStyle}">
       <div class="animal-card-top">
@@ -6571,6 +6611,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${missingMgr && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day. Adjust times, travel, or arrival buffer to clear this.</div>` : ''}
       ${isRepeatMgr ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCountMgr} shows booked. Review animal list before this show.</div>` : ''}
+      ${(()=>{ const prev=getPrevClientAnimals(s); if(!prev) return ''; const names=animalNamesFromIds(prev.animalsTaken); if(!names.length) return ''; return `<div class="notice" style="background:#e8f4fd;color:#1a4a7a;border:1px solid #a8d0f0;">🐾 <strong>Previous visit (${fmtShortDate(prev.date)}):</strong> ${names.join(', ')} — consider switching animals.</div>`; })()}
       <div class="add-row" style="margin-top:0;align-items:center;">
         <span class="status-badge ${st==='completed'?'status-done':st==='cancelled'?'status-open':'status-progress'}">${st.charAt(0).toUpperCase()+st.slice(1)}</span>
         ${isPast && st!=='completed' ? `<button class="btn-small" onclick="setShowStatus(${s.id},'completed')">Mark Completed</button>` : ''}
@@ -6720,6 +6761,18 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         <textarea onchange="${notesHandler}">${notesVal}</textarea>
         ${isContinuation && s.notes ? `<div style="font-size:12px;color:var(--text-light);margin-top:4px;">Show default note: ${esc(s.notes)}</div>` : ''}
       </div>
+      ${(()=>{
+        const activeAnimals = (DATA.animals||[]).filter(a=>!a.archived).sort((a,b)=>a.name.localeCompare(b.name));
+        if(!activeAnimals.length) return '';
+        const takenIds = s.animalsTaken||[];
+        return `<div class="field-block" style="background:#f4faf4;border:1px solid #b0d8b0;border-radius:8px;padding:10px;">
+          <label style="font-weight:700;color:#1a5a1a;">🐾 Animals Taken to This Show</label>
+          <div class="task-tags" style="margin-top:8px;">
+            ${activeAnimals.map(a=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${takenIds.includes(a.id)?'checked':''} onchange="toggleShowAnimal(${s.id},${a.id})"> ${esc(a.name)}</label>`).join('')}
+          </div>
+          ${takenIds.length ? `<div style="margin-top:8px;font-size:13px;color:#1a5a1a;font-weight:600;">Selected: ${animalNamesFromIds(takenIds).join(', ')}</div>` : ''}
+        </div>`;
+      })()}
       ${isContinuation && Object.keys(ov).length ? `
       <button class="btn-ghost" style="color:var(--red);font-size:13px;" onclick="clearDayOverride(${s.id},'${viewDate}')">Clear all overrides for this day</button>
       ` : ''}
