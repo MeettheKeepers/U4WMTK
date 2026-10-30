@@ -6274,7 +6274,7 @@ function nearestRegion(lat,lon){
 let _autoRegionRunning=false;
 async function autoAssignRegions(){
   if(_autoRegionRunning){return;}
-  const shows=(DATA.shows||[]).filter(s=>s.address&&!s.region);
+  const shows=(DATA.shows||[]).filter(s=>!s.region);
   const setStatus=msg=>{const el=document.getElementById('auto-region-status');if(el)el.innerHTML=msg;};
   if(!shows.length){setStatus('<span style="color:#1a6a1a;">✓ All shows with addresses already have a region!</span>');return;}
   _autoRegionRunning=true;
@@ -6284,6 +6284,7 @@ async function autoAssignRegions(){
   for(const show of shows){
     setStatus(`<span style="color:#1a4a7a;">📍 Geocoding ${done+1} of ${total}: <em>${show.title||show.address}</em>… (${assigned} assigned so far)</span>`);
     const addr=(show.address||'').trim();
+    if(!addr){failed++;done++;if(done%5===0)saveData();continue;}
     try{
       let coords=cache[addr];
       if(!coords){
@@ -8116,15 +8117,12 @@ function renderManager(){
         ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}
         <h3 style="margin:20px 0 10px;">Shows by region</h3>
         ${regionRows || '<div style="color:#bbb;font-size:13px;">No region data yet — add regions when booking shows.</div>'}
-        ${(()=>{
-          const unassignedWithAddr = allShows.filter(s=>s.address&&!s.region).length;
-          const noAddr = allShows.filter(s=>!s.region&&!s.address).length;
-          return `<div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            ${unassignedWithAddr ? `<button class="btn-small" onclick="autoAssignRegions()" style="background:#1a5a8a;border-color:#1a5a8a;">📍 Auto-assign regions from addresses (${unassignedWithAddr} shows)</button>` : ''}
+        ${noRegionCount ? `
+          <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <button class="btn-small" onclick="autoAssignRegions()" style="background:#1a5a8a;border-color:#1a5a8a;">📍 Auto-assign regions from addresses (${noRegionCount} shows)</button>
             <div id="auto-region-status" style="font-size:13px;"></div>
           </div>
-          ${noRegionCount ? `<div style="font-size:12px;color:#bbb;margin-top:6px;">${noRegionCount} show${noRegionCount===1?'':'s'} have no region set${noAddr?' ('+noAddr+' have no address to look up)':''}.</div>` : ''}`;
-        })()}
+          <div style="font-size:12px;color:#bbb;margin-top:6px;">${noRegionCount} show${noRegionCount===1?'':'s'} have no region set.</div>` : ''}
         <h3 style="margin:20px 0 10px;">Region map</h3>
         <div style="position:relative;width:100%;max-width:660px;height:399px;overflow:hidden;border-radius:10px;border:1px solid var(--border);background:#f8f8f8;">
           <img src="region-map.png" alt="Region map"
