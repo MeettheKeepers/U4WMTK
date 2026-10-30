@@ -6236,33 +6236,37 @@ let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 let SHOW_MGR_VIEW = 'upcoming';
 function setShowMgrView(v){ SHOW_MGR_VIEW = v; showTab('manager'); }
 let SHOW_MGR_ADD_FORM = false;
-let CENTRE_COORDS_CACHE = null;
+// Hardcoded origin coords for 19799 County Road 24, Dunvegan, ON (avoids geocoding a rural road)
+const CENTRE_LAT = 45.3472;
+const CENTRE_LON = -74.7197;
 let _travelLookupTimer = null;
 
 async function lookupTravelTime(address, onResult, onStatus){
-  if(!address || address.trim().length < 6){ onStatus(''); return; }
+  if(!address || address.trim().length < 5){ onStatus(''); return; }
   onStatus('Looking up travel time…');
   try {
-    if(!CENTRE_COORDS_CACHE){
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent('19799 County Road 24, Dunvegan, Ontario, Canada')}&format=json&limit=1`);
-      const data = await res.json();
-      if(!data.length) throw new Error('origin not found');
-      CENTRE_COORDS_CACHE = {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
-    }
-    await new Promise(r=>setTimeout(r,1100)); // Nominatim rate limit: 1 req/sec
-    const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+    // Geocode destination via Nominatim
+    const destRes = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=ca&email=meetthekeepers@gmail.com`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+    if(!destRes.ok) throw new Error(`Geocoder error ${destRes.status}`);
     const destData = await destRes.json();
-    if(!destData.length) throw new Error('destination not found');
+    if(!destData.length) throw new Error(`Address not found: "${address}"`);
     const dest = {lat: parseFloat(destData[0].lat), lon: parseFloat(destData[0].lon)};
-    const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${CENTRE_COORDS_CACHE.lon},${CENTRE_COORDS_CACHE.lat};${dest.lon},${dest.lat}?overview=false`);
+    // Route via OSRM
+    const routeRes = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${CENTRE_LON},${CENTRE_LAT};${dest.lon},${dest.lat}?overview=false`
+    );
+    if(!routeRes.ok) throw new Error(`Routing error ${routeRes.status}`);
     const routeData = await routeRes.json();
-    if(routeData.code !== 'Ok' || !routeData.routes.length) throw new Error('no route');
+    if(routeData.code !== 'Ok' || !routeData.routes.length) throw new Error('No route found');
     const mins = Math.ceil(routeData.routes[0].duration / 60);
     const km = (routeData.routes[0].distance / 1000).toFixed(1);
-    onResult(mins);
+    onResult(mins, km);
     onStatus(`✓ ${km} km · ${mins} min drive`);
   } catch(e) {
-    onStatus('Could not look up address — enter travel time manually');
+    onStatus(`⚠ ${e.message} — enter travel time manually`);
   }
 }
 function autoFillTravelTimeNewShow(){
@@ -6274,16 +6278,22 @@ function autoFillTravelTimeNewShow(){
       mins => { const el=document.getElementById('new-show-travel'); if(el){ el.value=mins; updateNewShowPlanPreview(); } },
       msg  => { const el=document.getElementById('travel-lookup-status'); if(el) el.textContent=msg; }
     );
-  }, 800);
+  }, 900);
 }
 async function lookupTravelTimeMgr(showId){
   const s = DATA.shows.find(x=>x.id===showId);
-  if(!s||!s.address) return;
+  if(!s||!s.address){ alert('No address on this show yet — add an address first.'); return; }
   const statusEl = document.getElementById(`travel-status-${showId}`);
   await lookupTravelTime(
     s.address,
-    mins => { s.travelMinutes=mins; saveData(); showTab('manager'); },
-    msg  => { if(statusEl) statusEl.textContent=msg; }
+    (mins) => {
+      // Update the DOM input directly so we don't lose the status on re-render
+      const travelInput = document.querySelector(`#travel-input-${showId}`);
+      if(travelInput) travelInput.value = mins;
+      s.travelMinutes = mins;
+      saveData();
+    },
+    msg => { if(statusEl) statusEl.textContent = msg; }
   );
 }
 function toggleShowAddForm(){ SHOW_MGR_ADD_FORM = !SHOW_MGR_ADD_FORM; showTab('manager'); }
@@ -6724,8 +6734,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         </div>
         <div class="field-block" style="flex:1; min-width:160px;">
           <label>Travel time (min)${isContinuation?' (this day)':''}</label>
-          <input type="number" min="0" value="${travelVal}" onchange="${travelHandler}">
-          ${!isContinuation ? `<button class="btn-ghost" style="font-size:12px;margin-top:4px;padding:2px 8px;" onclick="lookupTravelTimeMgr(${s.id})">Look up from address</button><div id="travel-status-${s.id}" style="font-size:12px;color:#1a6a1a;margin-top:2px;"></div>` : ''}
+          <input type="number" min="0" value="${travelVal}" id="travel-input-${s.id}" onchange="${travelHandler}">
+          ${!isContinuation ? `<button class="btn-ghost" style="font-size:12px;margin-top:4px;padding:2px 8px;" onclick="lookupTravelTimeMgr(${s.id})">Look up from address</button><div id="travel-status-${s.id}" style="font-size:12px;color:var(--green-dark);margin-top:2px;"></div>` : ''}
         </div>
         <div class="field-block" style="flex:1; min-width:200px;">
           <label>Arrival buffer (minutes before show)</label>
