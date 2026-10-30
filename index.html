@@ -3270,7 +3270,7 @@ function renderPayStubs(){
         <div class="add-row" style="flex-wrap:wrap;gap:10px;">
           <select id="paystub-staff">
             <option value="">Select staff member…</option>
-            ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
+            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
           </select>
           <input type="date" id="paystub-date">
           <div id="paystub-drop"
@@ -3695,10 +3695,17 @@ function renderTaskCard(t, num){
         </div>
       </div>
       <div class="task-row" style="margin-top:8px;gap:8px;flex-wrap:wrap;">
-        <select id="task-person-${t.id}" style="flex:1;min-width:140px;">
-          <option value="">Who completed this?</option>
-          ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
-        </select>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px;">
+          <span style="font-size:13px;color:#888;white-space:nowrap;">Completed by:</span>
+          <span id="task-person-chip-${t.id}" onclick="toggleTaskPersonPicker(${t.id})"
+            style="cursor:pointer;background:var(--accent);color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap;">
+            ${CURRENT_LOGIN ? CURRENT_LOGIN.name : '—'}
+          </span>
+          <select id="task-person-${t.id}" onchange="document.getElementById('task-person-chip-${t.id}').textContent=this.value;this.style.display='none';"
+            style="display:none;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
+            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${CURRENT_LOGIN&&m.name===CURRENT_LOGIN.name?' selected':''}>${m.name}</option>`).join('')}
+          </select>
+        </div>
         <input type="text" id="task-notes-${t.id}" placeholder="Notes (optional)" style="flex:2;min-width:120px;">
         <button class="btn-small" onclick="submitTask(${t.id})">Submit Task</button>
       </div>
@@ -3842,13 +3849,24 @@ function renderTasks(){
   `;
 }
 
+function toggleTaskPersonPicker(id){
+  const sel = document.getElementById('task-person-'+id);
+  if(!sel) return;
+  const showing = sel.style.display !== 'none';
+  sel.style.display = showing ? 'none' : 'inline-block';
+  if(!showing) sel.focus();
+}
 function submitTask(id){
   const t = DATA.tasks.find(x=>x.id===id);
   if(!t) return;
+  const chip = document.getElementById('task-person-chip-'+id);
   const personSel = document.getElementById('task-person-'+id);
   const notesInput = document.getElementById('task-notes-'+id);
-  const person = personSel ? personSel.value : '';
-  if(!person){ alert('Please select who completed this task.'); return; }
+  // Use chip text if dropdown is hidden, otherwise use dropdown value
+  const person = (personSel && personSel.style.display !== 'none')
+    ? personSel.value
+    : (chip ? chip.textContent.trim() : '');
+  if(!person || person === '—'){ alert('No name set — tap the name chip to pick someone.'); return; }
   t.done = true;
   t.completedBy = person;
   t.notes = notesInput ? notesInput.value.trim() : '';
@@ -6022,7 +6040,7 @@ function renderRepairs(){
       <div class="add-row">
         <select id="sup-staff">
           <option value="">Who's asking?</option>
-          ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
+          ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
         </select>
         <input type="text" id="sup-note" placeholder="What do you need?" style="flex:1;">
         <button class="btn-small" onclick="addSupplyRequest()">Request</button>
@@ -7474,7 +7492,7 @@ function renderManager(){
         <div class="add-row" id="new-task-assign-row">
           <select id="new-task-assignedto">
             <option value="">Assign to (optional — leave blank for everyone)</option>
-            ${DATA.team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
+            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
           </select>
           <select id="new-task-visibility">
             <option value="all">Visible to all staff</option>
