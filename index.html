@@ -4847,7 +4847,7 @@ function showDateGroupStatus(instances){
   if(shows.some(s=>(s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length))
     return {border:'#e67e22', bg:'#fff5ec', label:'🎭 No character selected', text:'#a84400'};
   if(isPastGroup && shows.some(s=>{
-    const needsOcc=(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t))||(s.showTypes||[]).includes('Fairs/Festivals');
+    const needsOcc=(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t));
     return needsOcc && (!s.occasion||s.occasion==='Unknown');
   }))
     return {border:'#e6a817', bg:'#fffbea', label:'❓ Missing occasion', text:'#7a5000'};
@@ -7058,7 +7058,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const dayArrivals = isContinuation ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
   const dayDepartures = isContinuation ? getDayDepartures(s, viewDate) : (s.departures||[]);
   const isCompletedMgr = st === 'completed';
-  const needsOccasion = (s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)) || (s.showTypes||[]).includes('Fairs/Festivals');
+  const needsOccasion = (s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t));
   const missingOccasion = isPast && needsOccasion && (!s.occasion || s.occasion==='Unknown');
   const missingCharacter = (s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length;
   const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : missingCharacter ? '#e67e22' : missingOccasion ? '#e6a817' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
