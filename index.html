@@ -3699,11 +3699,11 @@ function renderTaskCard(t, num){
           <span style="font-size:13px;color:#888;white-space:nowrap;">Completed by:</span>
           <span id="task-person-chip-${t.id}" onclick="toggleTaskPersonPicker(${t.id})"
             style="cursor:pointer;background:#1a5a8a;color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap;border:2px solid #1a5a8a;">
-            ${CURRENT_LOGIN ? CURRENT_LOGIN.name : '—'}
+            ${TASK_SUBMIT_AS || (CURRENT_LOGIN ? CURRENT_LOGIN.name : '—')}
           </span>
           <select id="task-person-${t.id}" onchange="document.getElementById('task-person-chip-${t.id}').textContent=this.value;this.style.display='none';"
             style="display:none;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
-            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${CURRENT_LOGIN&&m.name===CURRENT_LOGIN.name?' selected':''}>${m.name}</option>`).join('')}
+            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${(TASK_SUBMIT_AS||(CURRENT_LOGIN&&CURRENT_LOGIN.name))===m.name?' selected':''}>${m.name}</option>`).join('')}
           </select>
         </div>
         <button class="btn-small" onclick="submitTask(${t.id})">Submit Task</button>
@@ -3737,6 +3737,22 @@ function refreshTaskCard(id){
 }
 
 let TASK_GROUPS_OPEN = {};
+let TASK_SUBMIT_AS = ''; // empty = use logged-in user; managers can override
+function setTaskSubmitAs(name){
+  TASK_SUBMIT_AS = name;
+  // Update all visible name chips without a full re-render
+  document.querySelectorAll('[id^="task-person-chip-"]').forEach(chip=>{
+    chip.textContent = name || (CURRENT_LOGIN ? CURRENT_LOGIN.name : '—');
+  });
+  // Also sync hidden dropdowns so submitTask reads the right value
+  document.querySelectorAll('[id^="task-person-"]').forEach(sel=>{
+    if(sel.tagName === 'SELECT') sel.value = name || (CURRENT_LOGIN ? CURRENT_LOGIN.name : '');
+  });
+}
+function toggleTaskNamePicker(){
+  const picker = document.getElementById('task-name-override-picker');
+  if(picker) picker.style.display = picker.style.display==='none' ? 'inline-block' : 'none';
+}
 function toggleTaskGroup(gid){
   TASK_GROUPS_OPEN[gid] = !TASK_GROUPS_OPEN[gid];
   showTab('tasks');
@@ -3839,9 +3855,20 @@ function renderTasks(){
   return `
     <div class="card">
       <h2>Tasks</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
         <button class="btn-ghost" onclick="setAllTaskGroups(true)">Expand All</button>
         <button class="btn-ghost" onclick="setAllTaskGroups(false)">Collapse All</button>
+        ${isManagerLogin() ? `
+        <div style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+          <span style="font-size:13px;color:#888;">Submitting as:</span>
+          <span onclick="toggleTaskNamePicker()" style="cursor:pointer;background:#1a5a8a;color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;">
+            ${TASK_SUBMIT_AS || (CURRENT_LOGIN ? CURRENT_LOGIN.name : '—')}
+          </span>
+          <select id="task-name-override-picker" style="display:none;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;"
+            onchange="setTaskSubmitAs(this.value);this.style.display='none';">
+            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${(TASK_SUBMIT_AS||CURRENT_LOGIN?.name)===m.name?' selected':''}>${m.name}</option>`).join('')}
+          </select>
+        </div>` : ''}
       </div>
     </div>
     ${renderMyRoadTasksCard()}
