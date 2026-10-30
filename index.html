@@ -3698,7 +3698,7 @@ function renderTaskCard(t, num){
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px;">
           <span style="font-size:13px;color:#888;white-space:nowrap;">Completed by:</span>
           <span id="task-person-chip-${t.id}" onclick="toggleTaskPersonPicker(${t.id})"
-            style="cursor:pointer;background:var(--accent);color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap;">
+            style="cursor:pointer;background:#1a5a8a;color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap;border:2px solid #1a5a8a;">
             ${CURRENT_LOGIN ? CURRENT_LOGIN.name : '—'}
           </span>
           <select id="task-person-${t.id}" onchange="document.getElementById('task-person-chip-${t.id}').textContent=this.value;this.style.display='none';"
@@ -3706,8 +3706,8 @@ function renderTaskCard(t, num){
             ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${CURRENT_LOGIN&&m.name===CURRENT_LOGIN.name?' selected':''}>${m.name}</option>`).join('')}
           </select>
         </div>
-        <input type="text" id="task-notes-${t.id}" placeholder="Notes (optional)" style="flex:2;min-width:120px;">
         <button class="btn-small" onclick="submitTask(${t.id})">Submit Task</button>
+        <input type="text" id="task-notes-${t.id}" placeholder="Notes (optional)" style="flex:2;min-width:120px;">
       </div>
     </div>
   `;
