@@ -1604,7 +1604,6 @@ const TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'dashboard', label:'Dashboard'},
   {id:'tasks', label:'Tasks'},
-  {id:'diets', label:'Diets'},
   {id:'animals', label:'Animals'},
   {id:'shows', label:'Shows'},
   {id:'showcalendar', label:'Show Calendar'},
@@ -1613,10 +1612,8 @@ const TABS = [
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
   {id:'team', label:'Team'},
-  {id:'paystubs', label:'Pay Stubs'},
   {id:'supervisor', label:'Supervisor'},
   {id:'admin', label:'Admin'},
-  {id:'scripts', label:'Scripts'},
   {id:'nonprofit', label:'U4W Non Profit Org.'},
   {id:'foundation', label:'U4W Charity FDN'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
@@ -1732,7 +1729,19 @@ let CURRENT_TAB = 'dashboard';
 let HOURS_SECTION_OPEN = true; // collapse toggle for My Hours / Hours-Payroll
 let VIEWING_STAFF_FILE_ID = null; // manager previewing a staff member's read-only file from Team tab
 function toggleHoursSection(){ HOURS_SECTION_OPEN = !HOURS_SECTION_OPEN; showTab(CURRENT_TAB); }
+// Sub-tab state for Animals and Team
+let ANIMALS_SUBTAB = 'animals'; // 'animals' | 'diets' | 'scripts'
+let TEAM_SUBTAB    = 'team';    // 'team' | 'paystubs'
+
 function showTab(id){
+  // Diets and Scripts live inside the Animals tab
+  if(id==='diets')   { ANIMALS_SUBTAB='diets';   id='animals'; }
+  if(id==='scripts') { ANIMALS_SUBTAB='scripts';  id='animals'; }
+  // Paystubs lives inside the Team tab
+  if(id==='paystubs'){ TEAM_SUBTAB='paystubs';   id='team'; }
+  // Ensure sub-tab state is valid
+  if(id==='animals' && !['animals','diets','scripts'].includes(ANIMALS_SUBTAB)) ANIMALS_SUBTAB='animals';
+  if(id==='team'    && !['team','paystubs'].includes(TEAM_SUBTAB)) TEAM_SUBTAB='team';
   // Manager tab: redirect non-managers to supervisor if eligible, else dashboard
   if(id==='manager' && !isManagerLogin()){
     id = hasSupervisorAccess() ? 'supervisor' : 'dashboard';
@@ -3059,7 +3068,14 @@ function renderStaffFileReadOnly(m){
       ${APPROVED_ANIMALS_OPEN[m.id] ? approvedAnimalsHtml(m, false) : ''}
     </div>`;
 }
+function renderTeamSubNav(){
+  const tabs=[{id:'team',label:'Team'},{id:'paystubs',label:'Pay Stubs'}];
+  return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
+    ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  </div>`;
+}
 function renderTeam(){
+  if(TEAM_SUBTAB==='paystubs') return renderTeamSubNav() + renderPayStubs();
   if(VIEWING_STAFF_FILE_ID){
     const preview = DATA.team.find(m=>m.id===VIEWING_STAFF_FILE_ID);
     if(preview) return renderStaffFileReadOnly(preview);
@@ -3150,7 +3166,7 @@ function renderTeam(){
     </div>
   `;
 
-  return `
+  return renderTeamSubNav() + `
     ${myFileHtml}
     <div class="card">
       <h2>Team Directory</h2>
@@ -4409,7 +4425,17 @@ function renderAnimalCard(card){
     </div>
   `;
 }
+function renderAnimalsSubNav(){
+  const tabs=[{id:'animals',label:'Animals'},{id:'diets',label:'Diets'},{id:'scripts',label:'Scripts'}];
+  return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
+    ${tabs.map(t=>`<button onclick="ANIMALS_SUBTAB='${t.id}';showTab('animals')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${ANIMALS_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${ANIMALS_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  </div>`;
+}
 function renderAnimals(){
+  // Sub-tab routing
+  if(ANIMALS_SUBTAB==='diets')   return renderAnimalsSubNav() + renderDiets();
+  if(ANIMALS_SUBTAB==='scripts') return renderAnimalsSubNav() + renderScripts();
+  // Default: Animals sub-tab
   if(VIEWING_ANIMAL_ID){
     const a = DATA.animals.find(x=>x.id===VIEWING_ANIMAL_ID);
     if(a) return renderAnimalDetail(a);
@@ -4418,7 +4444,7 @@ function renderAnimals(){
   if(SHOW_ANIMAL_ARCHIVE){
     const archivedAnimals = DATA.animals.filter(a=>a.archived);
     const cards = groupAnimalCards(archivedAnimals);
-    return `
+    return renderAnimalsSubNav() + `
       <div class="card">
         <div class="animals-header-row">
           <div><h2>Animal Archive</h2><div class="sub">Archived animals. Restore or permanently delete from the Manager tab.</div></div>
@@ -4462,7 +4488,7 @@ function renderAnimals(){
         </div>` : ''}
     </div>`;
 
-  return `
+  return renderAnimalsSubNav() + `
     <div class="card">
       <div class="animals-header-row">
         <div>
