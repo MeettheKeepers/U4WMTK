@@ -644,6 +644,8 @@ const STORAGE_KEY = "ufw_app_data_v8";
 function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.name); }
 const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
 const CHARACTERS_LIST = ["Bee","Dino","Trixie","Spiderman","Spider Gwen","Mario","Ironman","Gorilla","Rescue Pup","Felix The Fox","Snowman"];
+const OCCASION_SHOW_TYPES = ["Country","Continent","Battle Match","Science","Archeology"];
+const OCCASIONS_LIST = ["Birthday","School","Daycare","Retirement Home","Special Needs Program","Other","Unknown"];
 const SHOW_REGIONS = [
   {id:'O1',  label:'O1 – Alfred / Vankleek Hill'},
   {id:'O2',  label:'O2 – Plantagenet / Rockland'},
@@ -981,6 +983,7 @@ function normalizeData(d){
     if(s.clientEmail===undefined) s.clientEmail='';
     if(s.region===undefined) s.region='';
     if(s.characters===undefined) s.characters=[];
+    if(s.occasion===undefined) s.occasion='';
   });
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
@@ -4910,8 +4913,17 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
         <strong>Address:</strong> ${s.address||'—'}<br>
         ${s.region ? `<strong>Region:</strong> ${esc(s.region)}<br>` : ''}
         <strong>Show type(s):</strong> ${s.showTypes.join(', ')||'—'}
+        ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `<br><strong>Occasion:</strong> ${s.occasion||'<span style="color:#c08000;">Unknown</span>'}` : ''}
+        ${(s.characters||[]).length ? `<br><strong>Characters:</strong> ${s.characters.join(', ')}` : ''}
         ${es.notes ? `<br><strong>Notes:</strong> ${es.notes}` : ''}
       </div>
+      ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t))&&(!s.occasion||s.occasion==='Unknown') ? `
+      <div class="field-block" style="background:#fffbe6; border:1px solid #f0d060; border-radius:8px; padding:10px; margin-top:8px;">
+        <div style="font-weight:700; color:#7a5a00; margin-bottom:8px;">❓ What is the occasion for this show? (tap to update)</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          ${OCCASIONS_LIST.filter(o=>o!=='Unknown').map(o=>`<button class="pill-btn" style="background:#f0faf0;color:#1a6a1a;border:1px solid #a0d4a0;" onclick="setShowOccasion(${s.id},'${o}')">${o}</button>`).join('')}
+        </div>
+      </div>` : ''}
       ${arrivalHtml}
       <div class="medrecord-box">
         <div class="field-block" style="margin-bottom:8px;">
@@ -6312,6 +6324,17 @@ function updateCharacterFields(){
   const block = document.getElementById('new-show-character-extra');
   if(block) block.style.display = isChar ? '' : 'none';
 }
+function updateOccasionFields(){
+  const isOccasion = Array.from(document.querySelectorAll('.add-show-type:checked')).some(el=>OCCASION_SHOW_TYPES.includes(el.value));
+  const block = document.getElementById('new-show-occasion-extra');
+  if(block) block.style.display = isOccasion ? '' : 'none';
+}
+function setShowOccasion(showId, occasion){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  s.occasion = occasion;
+  saveData(); showTab(CURRENT_TAB||'shows');
+}
 function toggleShowCharacter(showId, character){
   const s = DATA.shows.find(x=>x.id===showId);
   if(!s) return;
@@ -6363,6 +6386,8 @@ function addShowManager(){
   const staffNames = Array.from(document.querySelectorAll('.add-show-staff:checked')).map(el=>el.value);
   const showTypes = Array.from(document.querySelectorAll('.add-show-type:checked')).map(el=>el.value);
   const characters = Array.from(document.querySelectorAll('.add-show-character:checked')).map(el=>el.value);
+  const occasionEl = document.querySelector('.add-show-occasion:checked');
+  const occasion = occasionEl ? occasionEl.value : '';
   const vehicle = val('new-show-vehicle');
   const travelMinutes = Number(val('new-show-travel'))||0;
   const arrivalBufferMinutes = Number(val('new-show-buffer'))||SHOW_DEFAULT_ARRIVAL_BUFFER_MIN;
@@ -6392,7 +6417,7 @@ function addShowManager(){
       if(!confirm(`${vIssue} Book ${vehicle} for this show anyway? It will be flagged in red until fixed.`)) return;
     }
   }
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, notes, paid, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, paid, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -6455,7 +6480,7 @@ function renderShowForm(){
     <div class="field-block">
       <label>Show type(s)</label>
       <div class="task-tags">
-        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields();updateCharacterFields()"> ${t}</label>`).join('')}
+        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields();updateCharacterFields();updateOccasionFields()"> ${t}</label>`).join('')}
       </div>
     </div>
     <div class="field-block" id="new-show-fair-extra" style="display:none; background:#fdf4ff; border:1px solid #d4c5f9; border-radius:8px; padding:12px;">
@@ -6477,6 +6502,12 @@ function renderShowForm(){
       <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
       <div class="task-tags" style="margin-top:8px;">
         ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-character" value="${c}"> ${c}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field-block" id="new-show-occasion-extra" style="display:none; background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:12px;">
+      <label style="color:#1a6a1a; font-weight:700;">🎉 What is the occasion?</label>
+      <div class="task-tags" style="margin-top:8px;">
+        ${OCCASIONS_LIST.map(o=>`<label class="checkbox-line" style="margin-right:4px;"><input type="radio" name="new-show-occasion" class="add-show-occasion" value="${o}"> ${o}</label>`).join('')}
       </div>
     </div>
     <div class="field-block">
@@ -6675,6 +6706,13 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
         <div class="task-tags" style="margin-top:8px;">
           ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${(s.characters||[]).includes(c)?'checked':''} onchange="toggleShowCharacter(${s.id},'${c}')"> ${c}</label>`).join('')}
+        </div>
+      </div>` : ''}
+      ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
+      <div class="field-block" style="background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:10px;">
+        <label style="color:#1a6a1a; font-weight:700;">🎉 Occasion</label>
+        <div class="task-tags" style="margin-top:8px;">
+          ${OCCASIONS_LIST.map(o=>`<label class="checkbox-line" style="margin-right:4px;"><input type="radio" name="occasion-${s.id}" ${s.occasion===o?'checked':''} onchange="setShowOccasion(${s.id},'${o}')"> ${o}</label>`).join('')}
         </div>
       </div>` : ''}
       <div class="field-block">
@@ -7925,10 +7963,10 @@ function renderManager(){
           const charRows = CHARACTERS_LIST.map(c => {
             const count = charCounts[c];
             const pct = Math.round((count / maxChar) * 100);
-            return `<div style="margin-bottom:10px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-                <span style="font-weight:600;font-size:13px;">${c}</span>
-                <span style="font-size:13px;color:var(--text-light);">${count}</span>
+            return `<div style="margin-bottom:10px;max-width:400px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                <span style="font-weight:600;font-size:13px;min-width:120px;">${c}</span>
+                <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count}</span>
               </div>
               <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
                 <div style="background:#1a8ad4;height:8px;width:${pct}%;border-radius:5px;"></div>
@@ -7938,6 +7976,33 @@ function renderManager(){
           return `<h3 style="margin:20px 0 10px;">🎭 Character Walkarounds</h3>
             <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${totalCharShows} Character Walkaround show${totalCharShows===1?'':'s'} total</div>
             ${charRows}`;
+        })()}
+        ${(()=>{
+          const occasionShows = allShows.filter(s=>(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)));
+          if(!occasionShows.length) return '';
+          const occCounts = {};
+          OCCASIONS_LIST.forEach(o => { occCounts[o] = 0; });
+          occasionShows.forEach(s => { const o = s.occasion||'Unknown'; if(occCounts[o]!==undefined) occCounts[o]++; else occCounts['Unknown']++; });
+          const maxOcc = Math.max(1, ...Object.values(occCounts));
+          const occRows = OCCASIONS_LIST.map(o => {
+            const count = occCounts[o];
+            if(!count) return '';
+            const pct = Math.round((count / maxOcc) * 100);
+            const color = o==='Unknown' ? '#e6a817' : '#2da84a';
+            return `<div style="margin-bottom:10px;max-width:400px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                <span style="font-weight:600;font-size:13px;min-width:160px;">${o}</span>
+                <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count}</span>
+              </div>
+              <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
+                <div style="background:${color};height:8px;width:${pct}%;border-radius:5px;"></div>
+              </div>
+            </div>`;
+          }).join('');
+          const unknownCount = occCounts['Unknown']||0;
+          return `<h3 style="margin:20px 0 10px;">🎉 Show Occasions</h3>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${occasionShows.length} show${occasionShows.length===1?'':'s'} with occasion tracking${unknownCount ? ` · <span style="color:#c08000;">${unknownCount} Unknown</span>` : ''}</div>
+            ${occRows}`;
         })()}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
