@@ -646,7 +646,7 @@ function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.
 const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
 const CHARACTERS_LIST = ["Bee","Dino","Trixie","Spiderman","Spider Gwen","Mario","Ironman","Gorilla","Rescue Pup","Felix The Fox","Snowman"];
 const OCCASION_SHOW_TYPES = ["Country","Continent","Battle Match","Science","Archeology"];
-const OCCASIONS_LIST = ["Birthday","School","Daycare","Retirement Home","Special Needs Program","Other","Unknown"];
+const OCCASIONS_LIST = ["Birthday","School","Daycare","Retirement Home","Special Needs Program","Fairs/Festivals","Other","Unknown"];
 const SHOW_REGIONS = [
   {id:'O1',  label:'O1 – Alfred / Vankleek Hill'},
   {id:'O2',  label:'O2 – Plantagenet / Rockland'},
@@ -8499,17 +8499,27 @@ function renderManager(){
             ${charRows}`;
         })()}
         ${(()=>{
-          const occasionShows = allShows.filter(s=>(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)));
+          // Include shows that have OCCASION_SHOW_TYPES, plus any show with Fairs/Festivals show type
+          const occasionShows = allShows.filter(s=>{
+            const types = s.showTypes||[];
+            return types.some(t=>OCCASION_SHOW_TYPES.includes(t)) || types.includes('Fairs/Festivals');
+          });
           if(!occasionShows.length) return '';
           const occCounts = {};
           OCCASIONS_LIST.forEach(o => { occCounts[o] = 0; });
-          occasionShows.forEach(s => { const o = s.occasion||'Unknown'; if(occCounts[o]!==undefined) occCounts[o]++; else occCounts['Unknown']++; });
+          occasionShows.forEach(s => {
+            const types = s.showTypes||[];
+            // If no occasion set but has Fairs/Festivals show type, count as Fairs/Festivals
+            let o = s.occasion||'Unknown';
+            if((o==='Unknown'||!o) && types.includes('Fairs/Festivals')) o='Fairs/Festivals';
+            if(occCounts[o]!==undefined) occCounts[o]++; else occCounts['Unknown']++;
+          });
           const maxOcc = Math.max(1, ...Object.values(occCounts));
           const occRows = OCCASIONS_LIST.map(o => {
             const count = occCounts[o];
             if(!count) return '';
             const pct = Math.round((count / maxOcc) * 100);
-            const color = o==='Unknown' ? '#e6a817' : '#2da84a';
+            const color = o==='Unknown' ? '#e6a817' : o==='Fairs/Festivals' ? '#1a7a8a' : '#2da84a';
             return `<div style="margin-bottom:10px;max-width:400px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
                 <span style="font-weight:600;font-size:13px;min-width:160px;">${o}</span>
