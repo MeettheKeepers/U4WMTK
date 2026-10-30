@@ -1784,11 +1784,15 @@ function showTab(id){
     if(el) scrollSave[elId] = { left: el.scrollLeft, top: el.scrollTop };
   });
   document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
-  // Restore scroll positions after re-render
-  Object.entries(scrollSave).forEach(([elId, pos]) => {
-    const el = document.getElementById(elId);
-    if(el){ el.scrollLeft = pos.left; el.scrollTop = pos.top; }
-  });
+  // Restore scroll positions after re-render — deferred so the browser has laid out the new content first
+  if(Object.keys(scrollSave).length){
+    requestAnimationFrame(()=>{
+      Object.entries(scrollSave).forEach(([elId, pos]) => {
+        const el = document.getElementById(elId);
+        if(el){ el.scrollLeft = pos.left; el.scrollTop = pos.top; }
+      });
+    });
+  }
   if(id === 'manager' && HABITAT_MGR_OPEN) wireHabitatDrag();
   if(id === 'manager' && MGR_TASK_GROUP_SECTION_OPEN) wireTaskGroupDrag();
 }
