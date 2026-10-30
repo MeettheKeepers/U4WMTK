@@ -643,6 +643,7 @@
 const STORAGE_KEY = "ufw_app_data_v8";
 function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.name); }
 const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
+const CHARACTERS_LIST = ["Bee","Dino","Trixie","Spiderman","Spider Gwen","Mario","Ironman","Gorilla","Rescue Pup","Felix The Fox","Snowman"];
 const SHOW_REGIONS = [
   {id:'O1',  label:'O1 – Alfred / Vankleek Hill'},
   {id:'O2',  label:'O2 – Plantagenet / Rockland'},
@@ -979,6 +980,7 @@ function normalizeData(d){
     if(s.overnightNote===undefined) s.overnightNote='';
     if(s.clientEmail===undefined) s.clientEmail='';
     if(s.region===undefined) s.region='';
+    if(s.characters===undefined) s.characters=[];
   });
   (d.repairs||[]).forEach(r=>{ if(r.archived===undefined) r.archived=false; });
   (d.incidents||[]).forEach(i=>{ if(i.archived===undefined) i.archived=false; });
@@ -6305,6 +6307,19 @@ function updateFairFields(){
   const block = document.getElementById('new-show-fair-extra');
   if(block) block.style.display = isFair ? '' : 'none';
 }
+function updateCharacterFields(){
+  const isChar = Array.from(document.querySelectorAll('.add-show-type:checked')).some(el=>el.value==='Character Walkaround');
+  const block = document.getElementById('new-show-character-extra');
+  if(block) block.style.display = isChar ? '' : 'none';
+}
+function toggleShowCharacter(showId, character){
+  const s = DATA.shows.find(x=>x.id===showId);
+  if(!s) return;
+  if(!s.characters) s.characters=[];
+  const i = s.characters.indexOf(character);
+  if(i>=0) s.characters.splice(i,1); else s.characters.push(character);
+  saveData(); showTab('manager');
+}
 function updateOvernightNote(){
   const cb = document.getElementById('new-show-overnight');
   const block = document.getElementById('new-show-overnight-note-block');
@@ -6347,6 +6362,7 @@ function addShowManager(){
   const endTime = val('new-show-end');
   const staffNames = Array.from(document.querySelectorAll('.add-show-staff:checked')).map(el=>el.value);
   const showTypes = Array.from(document.querySelectorAll('.add-show-type:checked')).map(el=>el.value);
+  const characters = Array.from(document.querySelectorAll('.add-show-character:checked')).map(el=>el.value);
   const vehicle = val('new-show-vehicle');
   const travelMinutes = Number(val('new-show-travel'))||0;
   const arrivalBufferMinutes = Number(val('new-show-buffer'))||SHOW_DEFAULT_ARRIVAL_BUFFER_MIN;
@@ -6376,7 +6392,7 @@ function addShowManager(){
       if(!confirm(`${vIssue} Book ${vehicle} for this show anyway? It will be flagged in red until fixed.`)) return;
     }
   }
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, notes, paid, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, notes, paid, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -6439,7 +6455,7 @@ function renderShowForm(){
     <div class="field-block">
       <label>Show type(s)</label>
       <div class="task-tags">
-        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields()"> ${t}</label>`).join('')}
+        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields();updateCharacterFields()"> ${t}</label>`).join('')}
       </div>
     </div>
     <div class="field-block" id="new-show-fair-extra" style="display:none; background:#fdf4ff; border:1px solid #d4c5f9; border-radius:8px; padding:12px;">
@@ -6455,6 +6471,12 @@ function renderShowForm(){
         <div id="new-show-overnight-note-block" style="display:none; margin-top:8px;">
           <input type="text" id="new-show-overnightnote" placeholder="Note for staff (e.g. Hotel booked, bring overnight bag)">
         </div>
+      </div>
+    </div>
+    <div class="field-block" id="new-show-character-extra" style="display:none; background:#e8f4fd; border:1px solid #a8d0f0; border-radius:8px; padding:12px;">
+      <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
+      <div class="task-tags" style="margin-top:8px;">
+        ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-character" value="${c}"> ${c}</label>`).join('')}
       </div>
     </div>
     <div class="field-block">
@@ -6648,6 +6670,13 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
           ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${s.showTypes.includes(t)?'checked':''} onchange="toggleShowTypeAssign(${s.id},'${t}')"> ${t}</label>`).join('')}
         </div>
       </div>
+      ${s.showTypes&&s.showTypes.includes('Character Walkaround') ? `
+      <div class="field-block" style="background:#e8f4fd; border:1px solid #a8d0f0; border-radius:8px; padding:10px;">
+        <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
+        <div class="task-tags" style="margin-top:8px;">
+          ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${(s.characters||[]).includes(c)?'checked':''} onchange="toggleShowCharacter(${s.id},'${c}')"> ${c}</label>`).join('')}
+        </div>
+      </div>` : ''}
       <div class="field-block">
         <label>Notes${isContinuation?' (this day — leave blank to use show default)':''}</label>
         <textarea onchange="${notesHandler}">${notesVal}</textarea>
@@ -7886,7 +7915,30 @@ function renderManager(){
           <img src="region-map.png" alt="Region map"
                style="position:absolute;top:50%;left:50%;width:399px;height:660px;transform:translate(-50%,-50%) rotate(90deg);"
                onerror="this.parentElement.innerHTML='<div style=\'padding:16px;color:#bbb;font-size:13px;\'>Map not found — make sure region-map.png is committed to the repo alongside index.html.</div>'">
-        </div>`;
+        </div>
+        ${(()=>{
+          const charCounts = {};
+          CHARACTERS_LIST.forEach(c => { charCounts[c] = 0; });
+          allShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; }); });
+          const totalCharShows = allShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
+          const maxChar = Math.max(1, ...Object.values(charCounts));
+          const charRows = CHARACTERS_LIST.map(c => {
+            const count = charCounts[c];
+            const pct = Math.round((count / maxChar) * 100);
+            return `<div style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                <span style="font-weight:600;font-size:13px;">${c}</span>
+                <span style="font-size:13px;color:var(--text-light);">${count}</span>
+              </div>
+              <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
+                <div style="background:#1a8ad4;height:8px;width:${pct}%;border-radius:5px;"></div>
+              </div>
+            </div>`;
+          }).join('');
+          return `<h3 style="margin:20px 0 10px;">🎭 Character Walkarounds</h3>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${totalCharShows} Character Walkaround show${totalCharShows===1?'':'s'} total</div>
+            ${charRows}`;
+        })()}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
       const clientMap = {};
