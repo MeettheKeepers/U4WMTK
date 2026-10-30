@@ -1063,6 +1063,9 @@ function saveData(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
   localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
   if(!sb) return;
+  // Suppress realtime echoes immediately — not just inside pushCloudData — so that
+  // an incoming event in the debounce window can't overwrite data we just saved.
+  SUPPRESS_NEXT_REALTIME = true;
   clearTimeout(SAVE_DEBOUNCE_TIMER);
   SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 150); // 150ms — fast enough to catch tab-close, slow enough to batch keystrokes
 }
@@ -1188,7 +1191,14 @@ function mergeShowArrivals(incomingShows, localShows){
   let changed = false;
   localShows.forEach(localS => {
     const idx = result.findIndex(s => s.id === localS.id);
-    if(idx === -1) return;
+    if(idx === -1){
+      // Show exists locally but not in incoming cloud data — preserve it so it isn't lost
+      // (happens when a realtime event arrives in the brief window between saving locally
+      // and the cloud push completing — without this the new show disappears)
+      result.push(Object.assign({}, localS));
+      changed = true;
+      return;
+    }
     // Merge arrivals whose date matches today (single-day shows use show.date, multi-day use arrival.date)
     (localS.arrivals||[]).forEach(localArr => {
       const arrDate = localArr.date || localS.date;
@@ -6240,69 +6250,6 @@ let SHOW_MGR_ADD_FORM = false;
 const CENTRE_LAT = 45.3472;
 const CENTRE_LON = -74.7197;
 
-// Approximate centre point for each show region (used to auto-assign regions from geocoded addresses)
-const REGION_CENTRES = {
-  'O1':  {lat:45.540, lon:-74.770},  // Alfred / Vankleek Hill
-  'O2':  {lat:45.530, lon:-75.150},  // Plantagenet / Rockland
-  'O3':  {lat:45.490, lon:-75.450},  // Cumberland / Orleans
-  'O4':  {lat:45.400, lon:-75.670},  // Ottawa / Nepean / Gloucester
-  'O5':  {lat:45.290, lon:-75.250},  // Casselman / Embrun / Russell
-  'O6':  {lat:45.080, lon:-74.620},  // Lancaster / Cornwall
-  'O7':  {lat:45.310, lon:-75.950},  // Kanata / Carp / Stittsville
-  'O8':  {lat:45.060, lon:-75.500},  // Winchester / Kemptville
-  'O9':  {lat:45.350, lon:-76.440},  // Renfrew / Almonte
-  'O10': {lat:44.690, lon:-76.320},  // Carleton Place / Kingston
-  'O11': {lat:43.700, lon:-79.420},  // Toronto / Southern Ontario
-  'Q1':  {lat:45.580, lon:-76.140},  // Shawville / Wakefield / Luskville
-  'Q2':  {lat:45.530, lon:-75.620},  // Gatineau / Buckingham / Chelsea
-  'Q3':  {lat:45.950, lon:-74.300},  // Mont-Tremblant / St-Jérôme
-  'Q4':  {lat:45.540, lon:-73.630},  // Laval / Montréal
-};
-function haversineKm(lat1,lon1,lat2,lon2){
-  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
-  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-function nearestRegion(lat,lon){
-  let best=null,bestDist=Infinity;
-  for(const [id,c] of Object.entries(REGION_CENTRES)){
-    const d=haversineKm(lat,lon,c.lat,c.lon);
-    if(d<bestDist){bestDist=d;best=id;}
-  }
-  return best;
-}
-let _autoRegionRunning=false;
-async function autoAssignRegions(){
-  if(_autoRegionRunning){return;}
-  const shows=(DATA.shows||[]).filter(s=>!s.region);
-  const setStatus=msg=>{const el=document.getElementById('auto-region-status');if(el)el.innerHTML=msg;};
-  if(!shows.length){setStatus('<span style="color:#1a6a1a;">✓ All shows with addresses already have a region!</span>');return;}
-  _autoRegionRunning=true;
-  const cache={};
-  let done=0,assigned=0,failed=0;
-  const total=shows.length;
-  for(const show of shows){
-    setStatus(`<span style="color:#1a4a7a;">📍 Geocoding ${done+1} of ${total}: <em>${show.title||show.address}</em>… (${assigned} assigned so far)</span>`);
-    const addr=(show.address||'').trim();
-    if(!addr){failed++;done++;if(done%5===0)saveData();continue;}
-    try{
-      let coords=cache[addr];
-      if(!coords){
-        await new Promise(r=>setTimeout(r,1200));
-        const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1&email=meetthekeepers@gmail.com`,{headers:{'Accept':'application/json'}});
-        const data=await res.json();
-        if(data.length){coords={lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon)};cache[addr]=coords;}
-      }
-      if(coords){show.region=nearestRegion(coords.lat,coords.lon);assigned++;}
-      else failed++;
-    }catch(e){failed++;}
-    done++;
-    if(done%5===0)saveData();
-  }
-  saveData();
-  _autoRegionRunning=false;
-  showTab('manager');
-}
 let _travelLookupTimer = null;
 
 async function lookupTravelTime(address, onResult, onStatus){
@@ -8105,7 +8052,6 @@ function renderManager(){
           </div>
         </div>`;
       }).join('');
-      const noRegionCount = allShows.filter(s=>!s.region).length;
       analyticsBody = `
         <div class="stat-row" style="margin-bottom:20px;">
           <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
@@ -8117,12 +8063,6 @@ function renderManager(){
         ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}
         <h3 style="margin:20px 0 10px;">Shows by region</h3>
         ${regionRows || '<div style="color:#bbb;font-size:13px;">No region data yet — add regions when booking shows.</div>'}
-        ${noRegionCount ? `
-          <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <button class="btn-small" onclick="autoAssignRegions()" style="background:#1a5a8a;border-color:#1a5a8a;">📍 Auto-assign regions from addresses (${noRegionCount} shows)</button>
-            <div id="auto-region-status" style="font-size:13px;"></div>
-          </div>
-          <div style="font-size:12px;color:#bbb;margin-top:6px;">${noRegionCount} show${noRegionCount===1?'':'s'} have no region set.</div>` : ''}
         <h3 style="margin:20px 0 10px;">Region map</h3>
         <div style="position:relative;width:100%;max-width:660px;height:399px;overflow:hidden;border-radius:10px;border:1px solid var(--border);background:#f8f8f8;">
           <img src="region-map.png" alt="Region map"
