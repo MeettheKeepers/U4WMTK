@@ -7050,8 +7050,11 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const dayArrivals = isContinuation ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
   const dayDepartures = isContinuation ? getDayDepartures(s, viewDate) : (s.departures||[]);
   const isCompletedMgr = st === 'completed';
-  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
-  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : langMismatch ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
+  const needsOccasion = (s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)) || (s.showTypes||[]).includes('Fairs/Festivals');
+  const missingOccasion = isPast && needsOccasion && (!s.occasion || s.occasion==='Unknown');
+  const missingCharacter = (s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length;
+  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : missingCharacter ? '#e67e22' : missingOccasion ? '#e6a817' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : langMismatch ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : missingCharacter ? 'outline:2px solid #e67e22; background:#fff5ec;' : missingOccasion ? 'outline:2px solid #e6a817; background:#fffbea;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
   return `
     <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${mgrBorderColor}; ${mgrOutlineStyle}">
       <div class="animal-card-top">
@@ -7065,6 +7068,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${missingMgr && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day. Adjust times, travel, or arrival buffer to clear this.</div>` : ''}
       ${langMismatch ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">🇫🇷 Language mismatch — this is a French show but none of the assigned staff speak French or Bilingual.</div>` : ''}
+      ${missingCharacter ? `<div class="notice" style="background:#fff5ec;color:#a84400;">🎭 No character selected — please choose which character(s) are doing the walkaround.</div>` : ''}
+      ${missingOccasion ? `<div class="notice" style="background:#fffbe6;color:#7a5000;">❓ Missing occasion — please select what type of event this was.</div>` : ''}
       ${isRepeatMgr ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCountMgr} shows booked. Review animal list before this show.</div>` : ''}
       ${(()=>{ const prev=getPrevClientAnimals(s); if(!prev) return ''; const names=animalNamesFromIds(prev.animalsTaken); if(!names.length) return ''; return `<div class="notice" style="background:#e8f4fd;color:#1a4a7a;border:1px solid #a8d0f0;">🐾 <strong>Previous visit (${fmtShortDate(prev.date)}):</strong> ${names.join(', ')} — consider switching animals.</div>`; })()}
       <div class="add-row" style="margin-top:0;align-items:center;">
