@@ -4798,6 +4798,18 @@ function vehicleDayConflictShowIds(vehicle, date){
   }
   return conflictIds;
 }
+function isLangMismatch(show){
+  // Flag if show is French but no assigned staff speaks French or Bilingual
+  if(!show) return false;
+  const lang = (show.language||'').toLowerCase();
+  if(lang !== 'french') return false;
+  const names = show.staffNames || [];
+  if(!names.length) return false; // no staff yet — missingMgr handles that
+  return !names.some(n => {
+    const m = DATA.team.find(x=>x.name===n);
+    return m && (m.language==='french' || m.language==='bilingual');
+  });
+}
 function clientShowCount(show){
   // Match on name, email, or phone — any one of them linking two shows means same client
   if(!show) return 0;
@@ -5144,6 +5156,7 @@ function staffOnDate(dateStr){
 }
 function calEventColor(s){
   if(s.status==='completed') return {bg:'#2a7a2a',text:'#fff'};
+  if(isLangMismatch(s))      return {bg:'#7c3fad',text:'#fff'}; // French show, no French/bilingual staff
   if(!s.paid)                return {bg:'#c0392b',text:'#fff'};
   if(clientShowCount(s)>1)   return {bg:'#d4900f',text:'#fff'};
   return {bg:'#1a5a8a',text:'#fff'}; // paid, not yet completed → blue
@@ -5327,6 +5340,7 @@ function renderShowCalendar(){
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#c0392b;display:inline-block;"></span>Unpaid</span>
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#d4900f;display:inline-block;"></span>Repeat client</span>
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#2a7a2a;display:inline-block;"></span>Completed</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#7c3fad;display:inline-block;"></span>🇫🇷 No French speaker</span>
       <span style="font-size:11px;color:#1a4a7a;">Blue text = staff names · Click event for details · Click date to switch to Day view</span>
     </div>
     <div id="cal-detail-panel">${renderCalDetail()}</div>
@@ -7008,6 +7022,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const st = showStatus(s);
   const isPast = s.date < todayStr();
   const missingMgr = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
+  const langMismatch = isLangMismatch(s);
   const repeatCountMgr = clientShowCount(s);
   const isRepeatMgr = repeatCountMgr > 1;
   // Time/notes handlers — per-day for continuation days, base show for day 1
@@ -7035,8 +7050,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const dayArrivals = isContinuation ? getDayArrivals(s, viewDate) : (s.arrivals||[]);
   const dayDepartures = isContinuation ? getDayDepartures(s, viewDate) : (s.departures||[]);
   const isCompletedMgr = st === 'completed';
-  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
-  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
+  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : langMismatch ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
   return `
     <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${mgrBorderColor}; ${mgrOutlineStyle}">
       <div class="animal-card-top">
@@ -7049,6 +7064,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${isContinuation ? `<div class="notice" style="background:#e8f4ff;color:#1a5fa8;font-size:13px;">Changing times or notes here only affects Day ${dayNum}. Staff, client, vehicle and other details are shared across all days.</div>` : ''}
       ${missingMgr && !conflictInfo.hasConflict ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">⚠ Missing: ${[!s.staffNames.length?'no staff assigned':null,!s.showTypes.length?'no package/show type':null,!s.vehicle?'no vehicle':null].filter(Boolean).join(', ')}.</div>` : ''}
       ${conflictInfo.hasConflict ? `<div class="notice" style="background:#fde2e2;color:#a33;">⚠ Scheduling conflict for ${conflictInfo.names.join(', ')} — overlapping or not enough travel time with another show that day. Adjust times, travel, or arrival buffer to clear this.</div>` : ''}
+      ${langMismatch ? `<div class="notice" style="background:#f0e0ff;color:#5a1a8a;">🇫🇷 Language mismatch — this is a French show but none of the assigned staff speak French or Bilingual.</div>` : ''}
       ${isRepeatMgr ? `<div class="notice" style="background:#fff3cd;color:#7a5000;">🔄 Repeat client — ${repeatCountMgr} shows booked. Review animal list before this show.</div>` : ''}
       ${(()=>{ const prev=getPrevClientAnimals(s); if(!prev) return ''; const names=animalNamesFromIds(prev.animalsTaken); if(!names.length) return ''; return `<div class="notice" style="background:#e8f4fd;color:#1a4a7a;border:1px solid #a8d0f0;">🐾 <strong>Previous visit (${fmtShortDate(prev.date)}):</strong> ${names.join(', ')} — consider switching animals.</div>`; })()}
       <div class="add-row" style="margin-top:0;align-items:center;">
@@ -7978,7 +7994,7 @@ function renderManager(){
           <div class="sub">Mark a staff member "photo optional" to exempt them from photo-required tasks. Open a staff member's Employee File to see their Welcome acknowledgments, contact info, write-ups, incidents, and emergency contact.</div>
           <div class="sub" style="margin-bottom:6px;">Work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong></div>
           <table>
-            <tr><th>Name</th><th>Role</th><th>Job Title</th><th>Photo Optional</th><th style="text-align:center;">Hours This Period</th><th></th></tr>
+            <tr><th>Name</th><th>Role</th><th>Job Title</th><th>Language</th><th>Photo Optional</th><th style="text-align:center;">Hours This Period</th><th></th></tr>
             ${DATA.team.filter(m=>!m.archived).map(m=>{
               const hrs = currentPayPeriodHoursFor(m.name);
               const hrsDisplay = hrs > 0
@@ -7989,6 +8005,13 @@ function renderManager(){
                 <td>${m.name}</td>
                 <td><input type="text" value="${m.role||''}" onchange="updateTeamField(${m.id},'role',this.value)" style="width:130px;"></td>
                 <td><input type="text" value="${m.biz||''}" onchange="updateTeamField(${m.id},'biz',this.value)" style="width:160px;"></td>
+                <td>
+                  <select onchange="updateTeamField(${m.id},'language',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
+                    <option value="english"  ${(m.language||'english')==='english'  ?'selected':''}>English</option>
+                    <option value="french"   ${m.language==='french'  ?'selected':''}>French</option>
+                    <option value="bilingual"${m.language==='bilingual'?'selected':''}>Bilingual</option>
+                  </select>
+                </td>
                 <td><input type="checkbox" ${m.photoOptional?'checked':''} onchange="togglePhotoOptional(${m.id})"></td>
                 <td style="text-align:center;">${hrsDisplay}</td>
                 <td style="white-space:nowrap;">
