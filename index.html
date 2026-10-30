@@ -3737,7 +3737,8 @@ function refreshTaskCard(id){
 }
 
 let TASK_GROUPS_OPEN = {};
-let TASK_SUBMIT_AS = ''; // empty = use logged-in user; managers can override
+let TASK_SUBMIT_AS = '';
+let COMPLETE_ALL_UNDO = null; // snapshot for undo // empty = use logged-in user; managers can override
 function setTaskSubmitAs(name){
   TASK_SUBMIT_AS = name;
   // Update all visible name chips without a full re-render
@@ -3868,7 +3869,13 @@ function renderTasks(){
             onchange="setTaskSubmitAs(this.value);this.style.display='none';">
             ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}"${(TASK_SUBMIT_AS||CURRENT_LOGIN?.name)===m.name?' selected':''}>${m.name}</option>`).join('')}
           </select>
-        </div>` : ''}
+        </div>
+        <button class="btn-small" onclick="completeAllTasks()"
+          style="background:#2a7a2a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          Complete All Tasks
+        </button>
+        ${COMPLETE_ALL_UNDO ? `<button class="btn-ghost" onclick="undoCompleteAll()" style="white-space:nowrap;">↩ Undo</button>` : ''}
+        ` : ''}
       </div>
     </div>
     ${renderMyRoadTasksCard()}
@@ -3876,6 +3883,34 @@ function renderTasks(){
   `;
 }
 
+function completeAllTasks(){
+  const person = TASK_SUBMIT_AS || (CURRENT_LOGIN ? CURRENT_LOGIN.name : '');
+  if(!person){ alert('No name set — use "Submitting as" to pick someone first.'); return; }
+  const pending = (DATA.tasks||[]).filter(t => !t.done);
+  if(!pending.length){ alert('No pending tasks to complete.'); return; }
+  // Save snapshot for undo
+  COMPLETE_ALL_UNDO = JSON.parse(JSON.stringify(DATA.tasks));
+  const now = new Date().toISOString();
+  const today = todayStr();
+  pending.forEach(t => {
+    t.done = true;
+    t.completedBy = person;
+    t.notes = t.notes || '';
+    t.completedAt = now;
+    t.completedDate = today;
+    t.missedDate = null;
+    t.critical = false;
+  });
+  saveData();
+  showTab('tasks');
+}
+function undoCompleteAll(){
+  if(!COMPLETE_ALL_UNDO){ alert('Nothing to undo.'); return; }
+  DATA.tasks = COMPLETE_ALL_UNDO;
+  COMPLETE_ALL_UNDO = null;
+  saveData();
+  showTab('tasks');
+}
 function toggleTaskPersonPicker(id){
   const sel = document.getElementById('task-person-'+id);
   if(!sel) return;
