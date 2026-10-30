@@ -1766,7 +1766,18 @@ function showTab(id){
     'wildlife-show': renderWildlifeShow,
     manager: renderManager
   }[id];
+  // Save scroll positions of named scrollable containers before wiping innerHTML
+  const scrollSave = {};
+  ['schedule-scroll-container'].forEach(elId => {
+    const el = document.getElementById(elId);
+    if(el) scrollSave[elId] = { left: el.scrollLeft, top: el.scrollTop };
+  });
   document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
+  // Restore scroll positions after re-render
+  Object.entries(scrollSave).forEach(([elId, pos]) => {
+    const el = document.getElementById(elId);
+    if(el){ el.scrollLeft = pos.left; el.scrollTop = pos.top; }
+  });
   if(id === 'manager' && HABITAT_MGR_OPEN) wireHabitatDrag();
   if(id === 'manager' && MGR_TASK_GROUP_SECTION_OPEN) wireTaskGroupDrag();
 }
@@ -5511,7 +5522,7 @@ function scheduleTableHtml(periodStart, editable){
     }
     return `<tr><td style="position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 6px rgba(0,0,0,0.07);white-space:nowrap;font-weight:700;min-width:140px;">${m.name}</td>${cells}</tr>`;
   }).join('');
-  return `<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:0;"><tr><th style="position:sticky;left:0;z-index:3;background:#fff;box-shadow:2px 0 6px rgba(0,0,0,0.07);min-width:140px;">Keeper</th>${header}</tr>${rows}</table></div>`;
+  return `<div id="schedule-scroll-container" style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:0;"><tr><th style="position:sticky;left:0;z-index:3;background:#fff;box-shadow:2px 0 6px rgba(0,0,0,0.07);min-width:140px;">Keeper</th>${header}</tr>${rows}</table></div>`;
 }
 function renderSchedule(){
   const cur = currentPeriodStart();
