@@ -4607,10 +4607,11 @@ function addAnimalManager(){
   const name = val('an-name');
   if(!name) return;
   const species = val('an-species') || 'Unknown';
+  const sex = val('an-sex') || 'unknown';
   const cardTitle = val('an-card') || species;
   const biz = val('an-biz');
   const cardId = 'manual-' + cardTitle.toLowerCase().replace(/[^a-z0-9]+/g,'-');
-  DATA.animals.push({id:nextId(DATA.animals), name, species, cardId, cardTitle, biz, archived:false});
+  DATA.animals.push({id:nextId(DATA.animals), name, species, sex, cardId, cardTitle, biz, archived:false});
   saveData();
   showTab('manager');
 }
@@ -6341,6 +6342,8 @@ function saveAnimalCard(id){
   if(newName) a.name = newName;
   const newSpecies = val(`m-species-${id}`);
   if(newSpecies) a.species = newSpecies;
+  const sexEl = document.getElementById(`m-sex-${id}`);
+  if(sexEl) a.sex = sexEl.value;
   a.approvedCrate = val(`m-crate-${id}`);
   a.scientificName = val(`m-sci-${id}`);
   a.birthday = val(`m-bday-${id}`);
@@ -6470,6 +6473,14 @@ function renderAnimalManagerCard(a){
       <div class="field-block">
         <label>Species</label>
         <input type="text" id="m-species-${a.id}" value="${esc(a.species||'')}" placeholder="e.g. Ball Python, Ferret" oninput="saveAnimalCard(${a.id})">
+      </div>
+      <div class="field-block">
+        <label>Sex</label>
+        <select id="m-sex-${a.id}" onchange="saveAnimalCard(${a.id})">
+          <option value="unknown" ${(a.sex||'unknown')==='unknown'?'selected':''}>Unknown</option>
+          <option value="male"    ${a.sex==='male'   ?'selected':''}>Male</option>
+          <option value="female"  ${a.sex==='female' ?'selected':''}>Female</option>
+        </select>
       </div>
       <div class="field-block">
         <label>Habitat Card</label>
@@ -7882,6 +7893,11 @@ function renderManager(){
         <div class="add-row">
           <input type="text" id="an-name" placeholder="Animal name">
           <input type="text" id="an-species" placeholder="Species e.g. Leopard Gecko">
+          <select id="an-sex">
+            <option value="unknown">Sex: Unknown</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
           <input type="text" id="an-card" placeholder="Card title (optional, defaults to species)">
           <select id="an-biz">
             <option value="animal">Animal</option>
