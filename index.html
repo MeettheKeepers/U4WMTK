@@ -6504,18 +6504,7 @@ function addShowManager(){
   const endDate = isFair ? (val('new-show-enddate')||'') : '';
   const overnight = isFair ? !!(document.getElementById('new-show-overnight')&&document.getElementById('new-show-overnight').checked) : false;
   const overnightNote = overnight ? (val('new-show-overnightnote')||'') : '';
-  for(const name of staffNames){
-    const issue = staffSchedulingIssue(name, date, startTime, endTime, null, travelMinutes, arrivalBufferMinutes);
-    if(issue){
-      if(!confirm(`${issue} Assign ${name} to this show anyway? It will be flagged in red until fixed.`)) return;
-    }
-  }
-  if(vehicle){
-    const vIssue = vehicleSchedulingIssue(vehicle, date, startTime, endTime, null, travelMinutes, arrivalBufferMinutes);
-    if(vIssue){
-      if(!confirm(`${vIssue} Book ${vehicle} for this show anyway? It will be flagged in red until fixed.`)) return;
-    }
-  }
+  // Always save — conflicts are visible as red cards in the manager view
   DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, paid, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
