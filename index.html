@@ -1082,11 +1082,17 @@ async function pushCloudData(retries){
     if(retries > 0) setTimeout(()=>pushCloudData(retries-1), 3000);
   }
 }
+let LAST_INPUT_TIME = 0;
+document.addEventListener('input', () => { LAST_INPUT_TIME = Date.now(); }, true);
 function rerenderCurrentView(){
   if(!CURRENT_LOGIN) return;
   // Don't re-render while the user is actively typing — it would wipe their input
   const focused = document.activeElement;
   if(focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) return;
+  // Don't re-render for 60 seconds after the last keystroke (covers multi-field forms like Add Show)
+  if(Date.now() - LAST_INPUT_TIME < 60000) return;
+  // Don't re-render if an add-show form is open
+  if(typeof SHOW_MGR_ADD_FORM !== 'undefined' && SHOW_MGR_ADD_FORM) return;
   buildTabs();
   showTab(CURRENT_TAB || 'dashboard');
 }
