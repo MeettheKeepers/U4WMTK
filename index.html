@@ -4838,11 +4838,19 @@ function showConflictInfo(s){
   return {hasConflict: names.length>0, names};
 }
 // Returns colour info for a date group header in Show Management.
-// Priority: Purple (missing info / conflict) → Red (unpaid) → Green (paid, not all done) → none (all done)
+// Priority: Purple (missing info / conflict / lang) → Orange (no character) → Yellow (missing occasion) → Red (unpaid) → Green (paid, not all done) → none (all done)
 function showDateGroupStatus(instances){
   const shows = instances.map(i=>i.s);
-  if(shows.some(s=> (!s.staffNames.length||!s.showTypes.length||!s.vehicle) || showConflictInfo(s).hasConflict))
+  const isPastGroup = instances.every(i=>i.date < todayStr());
+  if(shows.some(s=> (!s.staffNames.length||!s.showTypes.length||!s.vehicle) || showConflictInfo(s).hasConflict || isLangMismatch(s)))
     return {border:'#7c3fad', bg:'#f7f0ff', label:'⚠ Missing info / conflict', text:'#5a1a8a'};
+  if(shows.some(s=>(s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length))
+    return {border:'#e67e22', bg:'#fff5ec', label:'🎭 No character selected', text:'#a84400'};
+  if(isPastGroup && shows.some(s=>{
+    const needsOcc=(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t))||(s.showTypes||[]).includes('Fairs/Festivals');
+    return needsOcc && (!s.occasion||s.occasion==='Unknown');
+  }))
+    return {border:'#e6a817', bg:'#fffbea', label:'❓ Missing occasion', text:'#7a5000'};
   if(shows.some(s=>!s.paid))
     return {border:'#c0453a', bg:'#fff5f5', label:'Unpaid', text:'#a33'};
   if(shows.every(s=>s.status==='completed'||s.status==='cancelled'))
