@@ -1621,7 +1621,7 @@ const TABS = [
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
-const STAFF_SPECIALTIES = ['Animal Care','Wildlife Educator','MTK Racing','Character Walk arounds','Maintenance','Support'];
+const STAFF_SPECIALTIES = ['Animal Care','Wildlife Educator','MTK Racing','Character Walk arounds','Maintenance','Support','Manager','Non Profit','Office'];
 function getLoginLevel(){
   if(!CURRENT_LOGIN) return 'keeper';
   const r = (CURRENT_LOGIN.role||'').toLowerCase();
@@ -3189,49 +3189,45 @@ function renderTeam(){
     </div>
   `;
 
-  // Build staff shows chart data (manager/owner only)
+  // Build staff show stats (manager/owner only)
   const staffChartHtml = (() => {
     if (!isManagerLogin()) return '';
     const level = getLoginLevel();
     if (level !== 'owner' && level !== 'manager') return '';
     const activeStaff = DATA.team.filter(m => !m.archived);
     if (!activeStaff.length) return '';
-    const stats = activeStaff.map(m => {
-      const s = computeStaffStats(m.name);
-      return { name: m.name, completed: s.showsCount, upcoming: s.upcomingShowsCount };
+    const roleOrder = {'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
+    const sorted = activeStaff.slice().sort((a,b)=>{
+      const aKyle = a.name.toLowerCase().startsWith('kyle') ? 0 : 1;
+      const bKyle = b.name.toLowerCase().startsWith('kyle') ? 0 : 1;
+      if(aKyle !== bKyle) return aKyle - bKyle;
+      const aRole = JOB_ROLES.includes(a.role) ? a.role : 'Keeper';
+      const bRole = JOB_ROLES.includes(b.role) ? b.role : 'Keeper';
+      const rd = (roleOrder[aRole]||3) - (roleOrder[bRole]||3);
+      if(rd !== 0) return rd;
+      return a.name.localeCompare(b.name);
     });
-    const maxVal = Math.max(1, ...stats.map(s => s.completed + s.upcoming));
-    const rows = stats.map(s => {
-      const completedPct = (s.completed / maxVal * 100).toFixed(1);
-      const upcomingPct = (s.upcoming / maxVal * 100).toFixed(1);
+    const rows = sorted.map(m => {
+      const s = computeStaffStats(m.name);
       return `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="width:120px;font-size:13px;font-weight:600;text-align:right;color:var(--text);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.name)}">${esc(s.name)}</div>
-          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="flex:1;background:var(--card);border-radius:4px;height:14px;overflow:hidden;">
-                <div style="width:${completedPct}%;background:#27ae60;height:100%;border-radius:4px;transition:width 0.3s;"></div>
-              </div>
-              <span style="font-size:12px;color:var(--gray);min-width:24px;">${s.completed}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="flex:1;background:var(--card);border-radius:4px;height:14px;overflow:hidden;">
-                <div style="width:${upcomingPct}%;background:#3498db;height:100%;border-radius:4px;transition:width 0.3s;"></div>
-              </div>
-              <span style="font-size:12px;color:var(--gray);min-width:24px;">${s.upcoming}</span>
-            </div>
-          </div>
-        </div>`;
+        <tr>
+          <td style="font-weight:600;font-size:13px;padding:7px 10px 7px 0;">${esc(m.name)}</td>
+          <td style="padding:7px 16px 7px 0;"><span style="color:#27ae60;font-weight:700;font-size:14px;">${s.showsCount}</span> <span style="font-size:12px;color:var(--gray);">completed</span></td>
+          <td style="padding:7px 0;"><span style="color:#3498db;font-weight:700;font-size:14px;">${s.upcomingShowsCount}</span> <span style="font-size:12px;color:var(--gray);">upcoming</span></td>
+        </tr>`;
     }).join('');
     return `
     <div class="card">
       <h2>Staff Show Stats</h2>
-      <div class="sub" style="margin-bottom:14px;">Completed and upcoming shows per team member.</div>
-      <div style="display:flex;gap:16px;margin-bottom:12px;">
-        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);"><span style="display:inline-block;width:12px;height:12px;background:#27ae60;border-radius:2px;"></span>Completed</span>
-        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);"><span style="display:inline-block;width:12px;height:12px;background:#3498db;border-radius:2px;"></span>Upcoming</span>
-      </div>
-      ${rows}
+      <div class="sub" style="margin-bottom:12px;">Completed and upcoming shows per team member.</div>
+      <table style="width:auto;">
+        <tr>
+          <th style="text-align:left;padding:4px 16px 4px 0;font-size:12px;color:var(--gray);font-weight:600;border-bottom:1px solid var(--border);">Name</th>
+          <th style="text-align:left;padding:4px 16px 4px 0;font-size:12px;color:var(--gray);font-weight:600;border-bottom:1px solid var(--border);">Completed</th>
+          <th style="text-align:left;padding:4px 0;font-size:12px;color:var(--gray);font-weight:600;border-bottom:1px solid var(--border);">Upcoming</th>
+        </tr>
+        ${rows}
+      </table>
     </div>`;
   })();
 
@@ -8312,13 +8308,8 @@ function renderManager(){
                     ${JOB_ROLES.map(r=>`<option value="${r}" ${(m.role||'')=== r?'selected':''}>${r}</option>`).join('')}
                   </select>
                 </td>
-                <td style="position:relative;">
-                  <details style="display:inline-block;">
-                    <summary id="staff-spec-summary-${m.id}" style="cursor:pointer;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;list-style:none;background:var(--bg);color:var(--text);min-width:140px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${summaryText}</summary>
-                    <div style="position:absolute;z-index:200;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:180px;left:0;top:100%;">
-                      ${STAFF_SPECIALTIES.map(sp=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;"><input type="checkbox" ${specs.includes(sp)?'checked':''} onchange="updateTeamSpecialty(${m.id},'${sp.replace(/'/g,"\\'")}',this.checked)">${esc(sp)}</label>`).join('')}
-                    </div>
-                  </details>
+                <td>
+                  <button id="staff-spec-summary-${m.id}" onclick="openSpecialtyDropdown(${m.id}, this)" style="cursor:pointer;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);min-width:140px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${summaryText}</button>
                 </td>
                 <td>
                   <select onchange="updateTeamField(${m.id},'language',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
@@ -9631,6 +9622,42 @@ function togglePhotoOptional(id){
   saveData();
   showTab('manager');
 }
+let _specDropdownId = null;
+function openSpecialtyDropdown(id, btn){
+  const dd = document.getElementById('specialty-dropdown');
+  if(_specDropdownId === id && dd.style.display !== 'none'){ closeSpecialtyDropdown(); return; }
+  _specDropdownId = id;
+  const m = DATA.team.find(x=>x.id===id);
+  if(!m) return;
+  const specs = m.specialties || [];
+  dd.innerHTML = STAFF_SPECIALTIES.map(sp=>`
+    <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;">
+      <input type="checkbox" ${specs.includes(sp)?'checked':''} style="width:15px;height:15px;cursor:pointer;" onchange="updateTeamSpecialty(${id},this.dataset.sp,this.checked)" data-sp="${sp.replace(/"/g,'&quot;')}">
+      <span>${sp}</span>
+    </label>`).join('');
+  const r = btn.getBoundingClientRect();
+  dd.style.display = 'block';
+  dd.style.left = r.left + 'px';
+  dd.style.top = (r.bottom + 4) + 'px';
+  // keep on screen
+  setTimeout(()=>{
+    const ddr = dd.getBoundingClientRect();
+    if(ddr.right > window.innerWidth) dd.style.left = (window.innerWidth - ddr.width - 8) + 'px';
+    if(ddr.bottom > window.innerHeight) dd.style.top = (r.top - ddr.height - 4) + 'px';
+  }, 0);
+}
+function closeSpecialtyDropdown(){
+  const dd = document.getElementById('specialty-dropdown');
+  if(dd) dd.style.display = 'none';
+  _specDropdownId = null;
+}
+document.addEventListener('click', function(e){
+  const dd = document.getElementById('specialty-dropdown');
+  if(!dd || dd.style.display==='none') return;
+  if(dd.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('[id^="staff-spec-summary-"]')) return;
+  closeSpecialtyDropdown();
+});
 function updateTeamSpecialty(id, specialty, checked){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
@@ -11836,5 +11863,6 @@ function createGroupChat(){
 <div id="wi-overlay"></div>
 <div id="pc-overlay"></div>
 <div id="fi-overlay"></div>
+<div id="specialty-dropdown" style="display:none;position:fixed;z-index:99999;background:#ffffff;border:1px solid #d0d0d0;border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,0.22);min-width:210px;max-height:320px;overflow-y:auto;"></div>
 </body>
 </html>
