@@ -1620,7 +1620,7 @@ const TABS = [
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
 ];
-const JOB_ROLES = ['Owner','Manager','Supervisor','Keeper'];
+const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
 function getLoginLevel(){
   if(!CURRENT_LOGIN) return 'keeper';
   const r = (CURRENT_LOGIN.role||'').toLowerCase();
@@ -9566,7 +9566,7 @@ function togglePhotoOptional(id){
   showTab('manager');
 }
 function addTeamMember(){
-  const name=val('team-name'), role=val('team-role'), biz=val('team-biz');
+  const name=val('team-name'), role=val('team-role')||'Keeper', biz=val('team-biz');
   if(!name) return;
   DATA.team.push({id:nextId(DATA.team), name, role, biz, photoOptional:false, welcomeAck:blankWelcomeAck(), ...blankStaffExtras()});
   saveData(); showTab('manager');
