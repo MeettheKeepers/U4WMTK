@@ -3197,8 +3197,9 @@ function renderTeam(){
         <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
         ${DATA.team.filter(m=>!m.archived).map(m=>{
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
-          const rCol = roleColors[m.role]||'#888';
-          return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${esc(m.role||'Keeper')}</span></td><td>${m.phone || '—'}</td></tr>`;
+          const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
+          const rCol = roleColors[displayRole];
+          return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td></tr>`;
         }).join('')}
       </table>
     </div>
