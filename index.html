@@ -8785,7 +8785,7 @@ function renderManager(){
 
     } else if(ANALYTICS_TAB === 'financials'){
       const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'}];
-      const finSubTabsHtml = finSubTabs.map(t=>`<button class="detail-tab${FINANCIALS_SUB_TAB===t.id?' active':''}" onclick="setFinancialsSubTab('${t.id}')">${t.label}</button>`).join('');
+      const finSubTabsHtml = `<div style="display:flex;gap:4px;background:var(--hover);border-radius:12px;padding:5px;">${finSubTabs.map(t=>{const active=FINANCIALS_SUB_TAB===t.id;return`<button onclick="setFinancialsSubTab('${t.id}')" style="flex:1;padding:10px 20px;font-size:15px;font-weight:700;border:none;border-radius:9px;cursor:pointer;transition:all .15s;${active?'background:#1a5a8a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);':'background:transparent;color:var(--text-light);'}">${t.label}</button>`;}).join('')}</div>`;
 
       if(FINANCIALS_SUB_TAB === 'assets'){
         // ---- ASSETS TAB ----
@@ -8864,7 +8864,7 @@ function renderManager(){
             </td>
           </tr>`).join('');
         analyticsBody = `
-          <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
+          <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
           <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
             <div class="stat-box" style="border-left:4px solid #1a5a8a;flex:1;min-width:160px;">
               <div class="num" style="color:#1a5a8a;">${fmtA(groupTotals['Company Assets']||0)}</div>
@@ -8962,7 +8962,7 @@ function renderManager(){
             </td>
           </tr>`).join('');
         analyticsBody = `
-          <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
+          <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
           <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
             <div class="stat-box" style="border-left:4px solid #c0392b;">
               <div class="num" style="color:#c0392b;">${fmtE(totalMonthly)}</div>
@@ -9099,7 +9099,7 @@ function renderManager(){
         .sort((a,b)=>b.rev-a.rev).slice(0,5);
 
       analyticsBody = `
-        <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
+        <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
         <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div class="stat-box" style="border-left:4px solid #1a6b35;">
             <div class="num" style="color:#1a6b35;">${fmt(totalReceived)}</div>
