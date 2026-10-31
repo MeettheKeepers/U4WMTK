@@ -8420,7 +8420,7 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'analytics'){
-    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'💰 Financials'}];
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'}];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
     let analyticsBody = '';
 
