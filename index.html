@@ -3194,20 +3194,8 @@ function renderTeam(){
     if (!isManagerLogin()) return '';
     const level = getLoginLevel();
     if (level !== 'owner' && level !== 'manager') return '';
-    const activeStaff = DATA.team.filter(m => !m.archived);
-    if (!activeStaff.length) return '';
-    const roleOrder = {'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
-    const sorted = activeStaff.slice().sort((a,b)=>{
-      const aKyle = a.name.toLowerCase().startsWith('kyle') ? 0 : 1;
-      const bKyle = b.name.toLowerCase().startsWith('kyle') ? 0 : 1;
-      if(aKyle !== bKyle) return aKyle - bKyle;
-      const aRole = JOB_ROLES.includes(a.role) ? a.role : 'Keeper';
-      const bRole = JOB_ROLES.includes(b.role) ? b.role : 'Keeper';
-      const rd = (roleOrder[aRole]||3) - (roleOrder[bRole]||3);
-      if(rd !== 0) return rd;
-      return a.name.localeCompare(b.name);
-    });
-    const rows = sorted.map(m => {
+    if (!DATA.team.filter(m=>!m.archived).length) return '';
+    const rows = sortedTeamMembers().map(m => {
       const s = computeStaffStats(m.name);
       return `
         <tr>
@@ -3239,19 +3227,9 @@ function renderTeam(){
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
         <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
-        ${(() => {
-          const roleOrder={'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
+        ${(()=>{
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
-          return DATA.team.filter(m=>!m.archived).slice().sort((a,b)=>{
-            const aKyle = a.name.toLowerCase().startsWith('kyle') ? 0 : 1;
-            const bKyle = b.name.toLowerCase().startsWith('kyle') ? 0 : 1;
-            if(aKyle !== bKyle) return aKyle - bKyle;
-            const aRole = JOB_ROLES.includes(a.role) ? a.role : 'Keeper';
-            const bRole = JOB_ROLES.includes(b.role) ? b.role : 'Keeper';
-            const roleDiff = (roleOrder[aRole]||3) - (roleOrder[bRole]||3);
-            if(roleDiff !== 0) return roleDiff;
-            return a.name.localeCompare(b.name);
-          }).map(m=>{
+          return sortedTeamMembers().map(m=>{
             const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
             const rCol = roleColors[displayRole];
             return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td></tr>`;
@@ -3260,6 +3238,17 @@ function renderTeam(){
       </table>
     </div>
   `;
+}
+function sortedTeamMembers(){
+  const order={'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
+  return DATA.team.filter(m=>!m.archived).slice().sort((a,b)=>{
+    if(a.name.toLowerCase().startsWith('kyle')) return -1;
+    if(b.name.toLowerCase().startsWith('kyle')) return 1;
+    const aR=order[JOB_ROLES.includes(a.role)?a.role:'Keeper']??3;
+    const bR=order[JOB_ROLES.includes(b.role)?b.role:'Keeper']??3;
+    if(aR!==bR) return aR-bR;
+    return a.name.localeCompare(b.name);
+  });
 }
 function computeStaffStats(name){
   const mine = DATA.shows.filter(s=> (s.staffNames||[]).includes(name));
