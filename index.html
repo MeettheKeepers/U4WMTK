@@ -1753,6 +1753,7 @@ let ANIMALS_SUBTAB = 'animals'; // 'animals' | 'diets' | 'scripts'
 let TEAM_SUBTAB    = 'team';    // 'team' | 'paystubs'
 
 function showTab(id){
+  if(typeof closeSpecialtyDropdown==='function') closeSpecialtyDropdown();
   // Diets and Scripts live inside the Animals tab
   if(id==='diets')   { ANIMALS_SUBTAB='diets';   id='animals'; }
   if(id==='scripts') { ANIMALS_SUBTAB='scripts';  id='animals'; }
