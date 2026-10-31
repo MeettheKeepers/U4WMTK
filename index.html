@@ -6646,6 +6646,7 @@ function renderAnimalManagerCard(a){
 /* ---------- MANAGER ---------- */
 let MANAGER_TAB = 'overview';
 let ANALYTICS_TAB = 'shows';
+let FINANCIALS_SUB_TAB = 'income';
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
 let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
@@ -6851,6 +6852,61 @@ function toggleShowAnimalSpecies(showId, species){
   }
   saveData(); showTab(CURRENT_TAB||'shows');
 }
+// ---- Expenses helpers ----
+const DEFAULT_EXPENSES = [
+  {id:1,  company:'Intact Insurance (Car)',    amount:577.83,  account:'RBC (Auto)',           dueDate:'First of the Month',      category:'Insurance'},
+  {id:2,  company:'First Insurance (Company)', amount:347.08,  account:'RBC (Auto)',           dueDate:'4th of the Month',        category:'Insurance'},
+  {id:3,  company:'Mitch Insurance (House)',   amount:417.35,  account:'Simplii Visa (Auto)',  dueDate:'Monthly',                 category:'Insurance'},
+  {id:4,  company:'K of C Life Insurance',     amount:16.77,   account:'RBC (Auto)',           dueDate:'14th of the Month',       category:'Insurance'},
+  {id:5,  company:'HighClere Mortgage',        amount:1585.95, account:'Simplii Joint (Auto)', dueDate:'Bi Weekly',               category:'Mortgage'},
+  {id:6,  company:'HighClere Mortgage',        amount:1585.95, account:'Simplii Joint (Auto)', dueDate:'Bi Weekly',               category:'Mortgage'},
+  {id:7,  company:'Verdun Windows',            amount:515.71,  account:'Simplii Joint (Auto)', dueDate:'Monthly',                 category:'Mortgage'},
+  {id:8,  company:'Hydro One',                 amount:370.00,  account:'Amex',                 dueDate:'Monthly',                 category:'Utilities'},
+  {id:9,  company:'Levac Propane',             amount:500.00,  account:'Credit',               dueDate:'Every 3 Months',          category:'Utilities'},
+  {id:10, company:'CRA',                       amount:1112.51, account:'RBC (Auto)',           dueDate:'Bi Weekly (Mondays)',     category:'CRA'},
+  {id:11, company:'CRA',                       amount:1112.51, account:'RBC (Auto)',           dueDate:'Bi Weekly (Mondays)',     category:'CRA'},
+  {id:12, company:'Fuel',                      amount:1500.00, account:'Credit',               dueDate:'Average Monthly',         category:'Fuel'},
+  {id:13, company:'Groceries',                 amount:350.00,  account:'Cash or Credit',       dueDate:'Weekly',                  category:'Groceries/Meds (Human)'},
+  {id:14, company:'Groceries',                 amount:350.00,  account:'Cash or Credit',       dueDate:'Weekly',                  category:'Groceries/Meds (Human)'},
+  {id:15, company:'Groceries',                 amount:350.00,  account:'Cash or Credit',       dueDate:'Weekly',                  category:'Groceries/Meds (Human)'},
+  {id:16, company:'Groceries',                 amount:350.00,  account:'Cash or Credit',       dueDate:'Weekly',                  category:'Groceries/Meds (Human)'},
+  {id:17, company:'Lynx Meds',                 amount:53.00,   account:'Credit',               dueDate:'Monthly',                 category:'Groceries/Meds (Human)'},
+  {id:18, company:'Animal Veggies',            amount:188.00,  account:'Credit',               dueDate:'Weekly',                  category:'Animals Food'},
+  {id:19, company:'Animal Veggies',            amount:188.00,  account:'Credit',               dueDate:'Weekly',                  category:'Animals Food'},
+  {id:20, company:'Animal Veggies',            amount:188.00,  account:'Credit',               dueDate:'Weekly',                  category:'Animals Food'},
+  {id:21, company:'Animal Veggies',            amount:188.00,  account:'Credit',               dueDate:'Weekly',                  category:'Animals Food'},
+  {id:22, company:'Animal Meat',               amount:100.00,  account:'Credit',               dueDate:'Monthly',                 category:'Animals Food'},
+  {id:23, company:'Netflix',                   amount:27.11,   account:'Amex (Auto)',          dueDate:'15th of the Month',       category:'Entertainment'},
+  {id:24, company:'Paramount Plus',            amount:10.41,   account:'Amex (Auto)',          dueDate:'Yearly (Nov 26)',         category:'Entertainment'},
+  {id:25, company:'Disney Plus',               amount:15.07,   account:'Amex (Auto)',          dueDate:'Yearly (Nov 26)',         category:'Entertainment'},
+  {id:26, company:'CAA',                       amount:28.96,   account:'Amex Auto',            dueDate:'Yearly',                  category:'Entertainment'},
+  {id:27, company:'Telus',                     amount:230.87,  account:'Simplii Visa (Auto)',  dueDate:'14th of the Month',       category:'Phone/Internet'},
+  {id:28, company:'Starlink',                  amount:211.88,  account:'Amex (Auto)',          dueDate:'Monthly',                 category:'Phone/Internet'},
+  {id:29, company:'Van Payment',               amount:236.06,  account:'RBC (Auto)',           dueDate:'Bi Weekly',               category:'Vehicles'},
+  {id:30, company:'Van Payment',               amount:236.06,  account:'RBC (Auto)',           dueDate:'Bi Weekly',               category:'Vehicles'},
+  {id:31, company:'Kubota Canada (Tractor)',   amount:610.48,  account:'RBC (Auto)',           dueDate:'Monthly',                 category:'Vehicles'},
+];
+const EXPENSE_CATEGORIES = ['Insurance','Mortgage','Utilities','Fuel','Vehicles','Phone/Internet','Groceries/Meds (Human)','Animals Food','CRA','Entertainment','Other'];
+function getExpenses(){ if(!DATA.expenses){ DATA.expenses=JSON.parse(JSON.stringify(DEFAULT_EXPENSES)); } return DATA.expenses; }
+function addExpenseRow(){
+  const expenses = getExpenses();
+  const newId = expenses.length ? Math.max(...expenses.map(e=>e.id))+1 : 1;
+  expenses.push({id:newId, company:'', amount:0, account:'', dueDate:'', category:'Other'});
+  saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function removeExpenseRow(id){
+  DATA.expenses = getExpenses().filter(e=>e.id!==id);
+  saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function updateExpenseField(id, field, val){
+  const e = getExpenses().find(x=>x.id===id);
+  if(!e) return;
+  if(field==='amount') e.amount = parseFloat(val)||0; else e[field] = val;
+  saveData();
+}
+function setFinancialsSubTab(t){ FINANCIALS_SUB_TAB=t; showTab(CURRENT_TAB||'analytics'); }
+// ---- End expenses helpers ----
+
 function getPrevClientAnimals(show){
   if(!show.clientName) return null;
   const name = (show.clientName||'').trim().toLowerCase();
@@ -8658,6 +8714,130 @@ function renderManager(){
         ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
 
     } else if(ANALYTICS_TAB === 'financials'){
+      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'}];
+      const finSubTabsHtml = finSubTabs.map(t=>`<button class="detail-tab${FINANCIALS_SUB_TAB===t.id?' active':''}" onclick="setFinancialsSubTab('${t.id}')">${t.label}</button>`).join('');
+
+      if(FINANCIALS_SUB_TAB === 'expenses'){
+        // ---- EXPENSES TAB ----
+        const expenses = getExpenses();
+        // Category totals
+        const catTotals = {};
+        EXPENSE_CATEGORIES.forEach(c=>{ catTotals[c]=0; });
+        expenses.forEach(e=>{ catTotals[e.category||'Other']=(catTotals[e.category||'Other']||0)+parseFloat(e.amount||0); });
+        const totalMonthly = expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
+        const totalYearly  = totalMonthly * 12;
+        const fmtE = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+        // Category summary cards (sorted by amount)
+        const sortedCats = EXPENSE_CATEGORIES.filter(c=>catTotals[c]>0).sort((a,b)=>catTotals[b]-catTotals[a]);
+        const catCards = sortedCats.map(c=>`
+          <div class="stat-box" style="min-width:160px;">
+            <div class="num" style="font-size:17px;">${fmtE(catTotals[c])}</div>
+            <div class="lbl">${c}</div>
+          </div>`).join('');
+        // Bar chart data
+        const maxCat = Math.max(1,...sortedCats.map(c=>catTotals[c]));
+        const catColors = {
+          'Insurance':'#1a5a8a','Mortgage':'#7c3fad','Utilities':'#2a7a8a',
+          'Fuel':'#c0392b','Vehicles':'#e67e22','Phone/Internet':'#16a085',
+          'Groceries/Meds (Human)':'#27ae60','Animals Food':'#2980b9',
+          'CRA':'#8e44ad','Entertainment':'#d4900f','Other':'#7f8c8d'
+        };
+        const barRows = sortedCats.map(c=>{
+          const pct = Math.round((catTotals[c]/maxCat)*100);
+          const color = catColors[c]||'#7f8c8d';
+          return `<div style="margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="min-width:190px;font-weight:600;font-size:13px;">${c}</span>
+              <span style="font-size:13px;font-weight:700;color:${color};">${fmtE(catTotals[c])}/mo</span>
+              <span style="font-size:12px;color:var(--text-light);margin-left:4px;">${fmtE(catTotals[c]*12)}/yr</span>
+            </div>
+            <div style="background:var(--hover);border-radius:5px;height:10px;overflow:hidden;">
+              <div style="background:${color};height:10px;width:${pct}%;border-radius:5px;transition:width .3s;"></div>
+            </div>
+          </div>`;
+        }).join('');
+        // Rows table (view mode)
+        const tableRows = expenses.map(e=>`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:7px 10px;">${esc(e.company||'')}</td>
+            <td style="padding:7px 10px;font-weight:600;">${fmtE(parseFloat(e.amount)||0)}</td>
+            <td style="padding:7px 10px;color:var(--text-light);font-size:13px;">${esc(e.account||'')}</td>
+            <td style="padding:7px 10px;color:var(--text-light);font-size:13px;">${esc(e.dueDate||'')}</td>
+            <td style="padding:7px 10px;"><span style="background:${catColors[e.category]||'#eee'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">${e.category||'Other'}</span></td>
+          </tr>`).join('');
+        // Edit rows table
+        const editRows = expenses.map(e=>`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:5px 6px;"><input type="text" value="${esc(e.company||'')}" placeholder="Company" onchange="updateExpenseField(${e.id},'company',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="number" value="${e.amount||0}" step="0.01" onchange="updateExpenseField(${e.id},'amount',this.value)" style="width:90px;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="text" value="${esc(e.account||'')}" placeholder="Account" onchange="updateExpenseField(${e.id},'account',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="text" value="${esc(e.dueDate||'')}" placeholder="Due date" onchange="updateExpenseField(${e.id},'dueDate',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;">
+              <select onchange="updateExpenseField(${e.id},'category',this.value)" style="font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;">
+                ${EXPENSE_CATEGORIES.map(c=>`<option value="${c}"${(e.category||'Other')===c?' selected':''}>${c}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:5px 6px;">
+              <button onclick="removeExpenseRow(${e.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button>
+            </td>
+          </tr>`).join('');
+        analyticsBody = `
+          <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
+          <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+            <div class="stat-box" style="border-left:4px solid #c0392b;">
+              <div class="num" style="color:#c0392b;">${fmtE(totalMonthly)}</div>
+              <div class="lbl">Total Monthly Expenses</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #7c3fad;">
+              <div class="num" style="color:#7c3fad;">${fmtE(totalYearly)}</div>
+              <div class="lbl">Total Yearly Expenses</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;">
+            <h3 style="margin:0;flex:1;">Monthly Expenses by Category</h3>
+            <button class="btn-small" onclick="document.getElementById('exp-edit-section').style.display=document.getElementById('exp-edit-section').style.display==='none'?'block':'none';this.textContent=this.textContent.trim()==='Edit Rows'?'Hide Editor':'Edit Rows'">Edit Rows</button>
+          </div>
+          <div class="stat-row" style="flex-wrap:wrap;gap:10px;margin-bottom:24px;">${catCards}</div>
+          <h3 style="margin:0 0 14px;">Expenses by Category</h3>
+          ${barRows}
+          <hr style="margin:24px 0;">
+          <h3 style="margin:0 0 14px;">All Rows</h3>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead><tr style="border-bottom:2px solid var(--border);text-align:left;background:var(--hover);">
+                <th style="padding:8px 10px;">Company</th>
+                <th style="padding:8px 10px;">Amount/mo</th>
+                <th style="padding:8px 10px;">Account</th>
+                <th style="padding:8px 10px;">Due</th>
+                <th style="padding:8px 10px;">Category</th>
+              </tr></thead>
+              <tbody>${tableRows}</tbody>
+              <tfoot><tr style="border-top:2px solid var(--border);background:var(--hover);">
+                <td style="padding:9px 10px;font-weight:700;">Total</td>
+                <td style="padding:9px 10px;font-weight:700;">${fmtE(totalMonthly)}</td>
+                <td colspan="3"></td>
+              </tr></tfoot>
+            </table>
+          </div>
+          <div id="exp-edit-section" style="display:none;margin-top:24px;">
+            <h3 style="margin:0 0 12px;">Edit Rows</h3>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="border-bottom:2px solid var(--border);background:var(--hover);">
+                  <th style="padding:7px 6px;text-align:left;">Company</th>
+                  <th style="padding:7px 6px;text-align:left;">Amount/mo</th>
+                  <th style="padding:7px 6px;text-align:left;">Account</th>
+                  <th style="padding:7px 6px;text-align:left;">Due Date</th>
+                  <th style="padding:7px 6px;text-align:left;">Category</th>
+                  <th style="padding:7px 6px;"></th>
+                </tr></thead>
+                <tbody>${editRows}</tbody>
+              </table>
+            </div>
+            <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExpenseRow()">+ Add Row</button>
+          </div>`;
+      } else {
+      // ---- INCOME TAB (existing content wrapped) ----
       // Pricing table
       const SHOW_PRICES = {
         'Country':            { rate: 350,  perDay: false },
@@ -8739,6 +8919,7 @@ function renderManager(){
         .sort((a,b)=>b.rev-a.rev).slice(0,5);
 
       analyticsBody = `
+        <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
         <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div class="stat-box" style="border-left:4px solid #1a6b35;">
             <div class="num" style="color:#1a6b35;">${fmt(totalReceived)}</div>
@@ -8800,6 +8981,7 @@ function renderManager(){
         <div style="margin-top:20px;padding:12px 16px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-light);">
           💡 Pricing: Country $350 · Continent $475 · Archeology/Science $299 · Battle Match $350 · Display $2,500/day · MTK Racing $2,000/day · Fairs/Festivals $1,400/day · Character Walkaround $1,200 (1 char) / $1,500 (2) / $1,800 (3+) per day
         </div>`;
+      } // end else income
     }
 
     body = `
