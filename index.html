@@ -6886,7 +6886,7 @@ const DEFAULT_EXPENSES = [
   {id:30, company:'Van Payment',               amount:236.06,  account:'RBC (Auto)',           dueDate:'Bi Weekly',               category:'Vehicles'},
   {id:31, company:'Kubota Canada (Tractor)',   amount:610.48,  account:'RBC (Auto)',           dueDate:'Monthly',                 category:'Vehicles'},
 ];
-const EXPENSE_CATEGORIES = ['Insurance','Mortgage','Utilities','Fuel','Vehicles','Phone/Internet','Groceries/Meds (Human)','Animals Food','CRA','Entertainment','Personal','Other'];
+const EXPENSE_CATEGORIES = ['Insurance','Mortgage','Utilities','Fuel','Vehicles','Phone/Internet','Groceries/Meds (Human)','Animals Food','CRA','Payroll','Entertainment','Personal','Other'];
 function getExpenses(){ if(!DATA.expenses){ DATA.expenses=JSON.parse(JSON.stringify(DEFAULT_EXPENSES)); } return DATA.expenses; }
 function addExpenseRow(){
   const expenses = getExpenses();
@@ -6906,6 +6906,76 @@ function updateExpenseField(id, field, val){
 }
 function setFinancialsSubTab(t){ FINANCIALS_SUB_TAB=t; showTab(CURRENT_TAB||'analytics'); }
 // ---- End expenses helpers ----
+
+// ---- Assets helpers ----
+const DEFAULT_ASSETS = [
+  // Company Assets — Vehicles
+  {id:1,  item:'2010 Chevy Express',    value:10000, group:'Company Assets', category:'Vehicles'},
+  {id:2,  item:'2010 Nissan Cube',      value:2000,  group:'Company Assets', category:'Vehicles'},
+  {id:3,  item:'2005 Honda CRV',        value:3000,  group:'Company Assets', category:'Vehicles'},
+  {id:4,  item:'2019 Dodge Caravan',    value:20000, group:'Company Assets', category:'Vehicles'},
+  {id:5,  item:'2023 Kubota LX3310',    value:37000, group:'Company Assets', category:'Vehicles'},
+  // Company Assets — Trailers
+  {id:6,  item:'2018 Legend Trailer',   value:8000,  group:'Company Assets', category:'Trailers'},
+  {id:7,  item:'2005 Black Trailer',    value:1000,  group:'Company Assets', category:'Trailers'},
+  {id:8,  item:'2001 Hawk Trailer',     value:4500,  group:'Company Assets', category:'Trailers'},
+  // Company Assets — Animals
+  {id:9,  item:'Animals',               value:12000, group:'Company Assets', category:'Animals'},
+  // Insured Assets — Equipment
+  {id:10, item:'Tools',                        value:2000,  group:'Insured Assets', category:'Equipment'},
+  {id:11, item:'Generators',                   value:2000,  group:'Insured Assets', category:'Equipment'},
+  {id:12, item:'Nascar Track, Cars and Parts', value:20000, group:'Insured Assets', category:'Equipment'},
+  {id:13, item:'Nerf Equipment',               value:1000,  group:'Insured Assets', category:'Equipment'},
+  {id:14, item:'Equipment (Tents, Backdrops, Tables)', value:2700, group:'Insured Assets', category:'Equipment'},
+  {id:15, item:'Sound System and Microphones', value:2000,  group:'Insured Assets', category:'Equipment'},
+  {id:16, item:'Office Supplies',              value:2500,  group:'Insured Assets', category:'Equipment'},
+  // Insured Assets — Show Equipment
+  {id:17, item:'Archeology Show Equipment',       value:1000, group:'Insured Assets', category:'Show Equipment'},
+  {id:18, item:'Super Silly Science Show Equipment', value:1000, group:'Insured Assets', category:'Show Equipment'},
+  {id:19, item:'Habitats',                        value:5000, group:'Insured Assets', category:'Show Equipment'},
+  {id:20, item:'Display',                         value:7000, group:'Insured Assets', category:'Show Equipment'},
+  // Insured Assets — Mascots & Characters
+  {id:21, item:'Iron Man Mascot',                 value:3000, group:'Insured Assets', category:'Mascots & Characters'},
+  {id:22, item:'Spiderman X2 + Spider Gwen Mascot', value:400, group:'Insured Assets', category:'Mascots & Characters'},
+  {id:23, item:'Bumblebee Mascot',                value:3000, group:'Insured Assets', category:'Mascots & Characters'},
+  {id:24, item:'Dinosaur (Duke)',                 value:2000, group:'Insured Assets', category:'Mascots & Characters'},
+  {id:25, item:'Dinosaur (Dinomite)',             value:2000, group:'Insured Assets', category:'Mascots & Characters'},
+  {id:26, item:'Dinosaur (Trixie)',               value:500,  group:'Insured Assets', category:'Mascots & Characters'},
+  {id:27, item:'Rescue Pup Mascot',               value:200,  group:'Insured Assets', category:'Mascots & Characters'},
+  {id:28, item:'Snow Man Costume',                value:400,  group:'Insured Assets', category:'Mascots & Characters'},
+  {id:29, item:'Gorilla Mascot',                  value:400,  group:'Insured Assets', category:'Mascots & Characters'},
+  {id:30, item:'Mario Mascot',                    value:400,  group:'Insured Assets', category:'Mascots & Characters'},
+  {id:31, item:'Dora Mascot',                     value:50,   group:'Insured Assets', category:'Mascots & Characters'},
+  {id:32, item:'Mickey Mascot',                   value:50,   group:'Insured Assets', category:'Mascots & Characters'},
+  // Insured Assets — Coverage
+  {id:33, item:'Liability Coverage (5,000,000)',  value:0,    group:'Insured Assets', category:'Coverage'},
+];
+const ASSET_GROUPS = ['Company Assets','Insured Assets'];
+const ASSET_CATEGORIES = ['Vehicles','Trailers','Animals','Equipment','Show Equipment','Mascots & Characters','Coverage','Other'];
+const ASSET_GROUP_COLORS = {'Company Assets':'#1a5a8a','Insured Assets':'#7c3fad'};
+const ASSET_CAT_COLORS = {
+  'Vehicles':'#1a5a8a','Trailers':'#2a7a8a','Animals':'#27ae60',
+  'Equipment':'#e67e22','Show Equipment':'#16a085',
+  'Mascots & Characters':'#8e44ad','Coverage':'#95a5a6','Other':'#7f8c8d'
+};
+function getAssets(){ if(!DATA.assets){ DATA.assets=JSON.parse(JSON.stringify(DEFAULT_ASSETS)); } return DATA.assets; }
+function addAssetRow(){
+  const assets = getAssets();
+  const newId = assets.length ? Math.max(...assets.map(a=>a.id))+1 : 1;
+  assets.push({id:newId, item:'', value:0, group:'Company Assets', category:'Other'});
+  saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function removeAssetRow(id){
+  DATA.assets = getAssets().filter(a=>a.id!==id);
+  saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function updateAssetField(id, field, val){
+  const a = getAssets().find(x=>x.id===id);
+  if(!a) return;
+  if(field==='value') a.value = parseFloat(val)||0; else a[field] = val;
+  saveData();
+}
+// ---- End assets helpers ----
 
 function getPrevClientAnimals(show){
   if(!show.clientName) return null;
@@ -8714,10 +8784,120 @@ function renderManager(){
         ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
 
     } else if(ANALYTICS_TAB === 'financials'){
-      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'}];
+      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'}];
       const finSubTabsHtml = finSubTabs.map(t=>`<button class="detail-tab${FINANCIALS_SUB_TAB===t.id?' active':''}" onclick="setFinancialsSubTab('${t.id}')">${t.label}</button>`).join('');
 
-      if(FINANCIALS_SUB_TAB === 'expenses'){
+      if(FINANCIALS_SUB_TAB === 'assets'){
+        // ---- ASSETS TAB ----
+        const assets = getAssets();
+        const fmtA = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+        const totalAll = assets.reduce((s,a)=>s+parseFloat(a.value||0),0);
+        // Per-group totals
+        const groupTotals = {};
+        ASSET_GROUPS.forEach(g=>{ groupTotals[g]=0; });
+        assets.forEach(a=>{ groupTotals[a.group||'Company Assets']=(groupTotals[a.group||'Company Assets']||0)+parseFloat(a.value||0); });
+        // Per-category totals (within groups)
+        // Render each group as a card section
+        const groupSections = ASSET_GROUPS.map(g=>{
+          const groupAssets = assets.filter(a=>a.group===g).sort((a,b)=>b.value-a.value);
+          if(!groupAssets.length) return '';
+          const gTotal = groupTotals[g]||0;
+          const gColor = ASSET_GROUP_COLORS[g]||'#1a5a8a';
+          // Category breakdown within this group
+          const catMap = {};
+          groupAssets.forEach(a=>{ const c=a.category||'Other'; if(!catMap[c]) catMap[c]={items:[],total:0}; catMap[c].items.push(a); catMap[c].total+=parseFloat(a.value||0); });
+          const sortedCats = Object.entries(catMap).sort((a,b)=>b[1].total-a[1].total);
+          const catChips = sortedCats.map(([c,{total}])=>{
+            const col = ASSET_CAT_COLORS[c]||'#7f8c8d';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${col}18;border:1px solid ${col}44;border-radius:8px;min-width:150px;">
+              <div style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:12px;color:${col};font-weight:700;">${c}</div>
+                <div style="font-size:14px;font-weight:700;">${fmtA(total)}</div>
+              </div>
+            </div>`;
+          }).join('');
+          // Item list sorted by value
+          const itemRows = groupAssets.map(a=>{
+            const col = ASSET_CAT_COLORS[a.category||'Other']||'#7f8c8d';
+            const pct = gTotal>0 ? Math.round((parseFloat(a.value||0)/gTotal)*100) : 0;
+            return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+              <div style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0;"></div>
+              <div style="flex:1;font-size:13px;font-weight:500;">${esc(a.item||'—')}</div>
+              <div style="font-size:11px;color:var(--text-light);background:${col}18;padding:2px 7px;border-radius:10px;">${a.category||'Other'}</div>
+              <div style="font-size:13px;font-weight:700;min-width:80px;text-align:right;">${fmtA(parseFloat(a.value||0))}</div>
+            </div>`;
+          }).join('');
+          return `<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+              <div style="width:4px;height:36px;background:${gColor};border-radius:4px;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:17px;font-weight:700;">${g}</div>
+                <div style="font-size:13px;color:var(--text-light);">${groupAssets.length} items</div>
+              </div>
+              <div style="margin-left:auto;text-align:right;">
+                <div style="font-size:22px;font-weight:800;color:${gColor};">${fmtA(gTotal)}</div>
+                <div style="font-size:12px;color:var(--text-light);">total value</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">${catChips}</div>
+            <div>${itemRows}</div>
+          </div>`;
+        }).join('');
+        // Edit rows
+        const editRows = assets.map(a=>`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:5px 6px;">
+              <select onchange="updateAssetField(${a.id},'group',this.value)" style="font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;width:100%;">
+                ${ASSET_GROUPS.map(g=>`<option value="${g}"${(a.group||'Company Assets')===g?' selected':''}>${g}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:5px 6px;"><input type="text" value="${esc(a.item||'')}" placeholder="Item name" onchange="updateAssetField(${a.id},'item',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="number" value="${a.value||0}" step="0.01" onchange="updateAssetField(${a.id},'value',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;">
+              <select onchange="updateAssetField(${a.id},'category',this.value)" style="font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;width:100%;">
+                ${ASSET_CATEGORIES.map(c=>`<option value="${c}"${(a.category||'Other')===c?' selected':''}>${c}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:5px 6px;">
+              <button onclick="removeAssetRow(${a.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button>
+            </td>
+          </tr>`).join('');
+        analyticsBody = `
+          <div class="detail-tabs" style="margin-bottom:16px;">${finSubTabsHtml}</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+            <div class="stat-box" style="border-left:4px solid #1a5a8a;flex:1;min-width:160px;">
+              <div class="num" style="color:#1a5a8a;">${fmtA(groupTotals['Company Assets']||0)}</div>
+              <div class="lbl">Company Assets</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #7c3fad;flex:1;min-width:160px;">
+              <div class="num" style="color:#7c3fad;">${fmtA(groupTotals['Insured Assets']||0)}</div>
+              <div class="lbl">Insured Assets</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #1a6b35;flex:1;min-width:160px;">
+              <div class="num" style="color:#1a6b35;">${fmtA(totalAll)}</div>
+              <div class="lbl">Total All Assets</div>
+            </div>
+            <button class="btn-small" style="white-space:nowrap;" onclick="document.getElementById('asset-edit-section').style.display=document.getElementById('asset-edit-section').style.display==='none'?'block':'none';this.textContent=this.textContent.trim()==='Edit Assets'?'Hide Editor':'Edit Assets'">Edit Assets</button>
+          </div>
+          ${groupSections}
+          <div id="asset-edit-section" style="display:none;margin-top:8px;">
+            <h3 style="margin:0 0 12px;">Edit Assets</h3>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="border-bottom:2px solid var(--border);background:var(--hover);">
+                  <th style="padding:7px 6px;text-align:left;">Group</th>
+                  <th style="padding:7px 6px;text-align:left;">Item</th>
+                  <th style="padding:7px 6px;text-align:left;">Value ($)</th>
+                  <th style="padding:7px 6px;text-align:left;">Category</th>
+                  <th style="padding:7px 6px;"></th>
+                </tr></thead>
+                <tbody>${editRows}</tbody>
+              </table>
+            </div>
+            <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addAssetRow()">+ Add Row</button>
+          </div>`;
+      } else if(FINANCIALS_SUB_TAB === 'expenses'){
         // ---- EXPENSES TAB ----
         const expenses = getExpenses();
         // Category totals
