@@ -6647,6 +6647,8 @@ function renderAnimalManagerCard(a){
 let MANAGER_TAB = 'overview';
 let ANALYTICS_TAB = 'shows';
 let FINANCIALS_SUB_TAB = 'income';
+let EXPENSES_EDIT_OPEN = false;
+let ASSETS_EDIT_OPEN = false;
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
 let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
@@ -6892,10 +6894,12 @@ function addExpenseRow(){
   const expenses = getExpenses();
   const newId = expenses.length ? Math.max(...expenses.map(e=>e.id))+1 : 1;
   expenses.push({id:newId, company:'', amount:0, account:'', dueDate:'', category:'Other'});
+  EXPENSES_EDIT_OPEN = true;
   saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function removeExpenseRow(id){
   DATA.expenses = getExpenses().filter(e=>e.id!==id);
+  EXPENSES_EDIT_OPEN = true;
   saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function updateExpenseField(id, field, val){
@@ -6963,10 +6967,12 @@ function addAssetRow(){
   const assets = getAssets();
   const newId = assets.length ? Math.max(...assets.map(a=>a.id))+1 : 1;
   assets.push({id:newId, item:'', value:0, group:'Company Assets', category:'Other'});
+  ASSETS_EDIT_OPEN = true;
   saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function removeAssetRow(id){
   DATA.assets = getAssets().filter(a=>a.id!==id);
+  ASSETS_EDIT_OPEN = true;
   saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function updateAssetField(id, field, val){
@@ -8878,10 +8884,10 @@ function renderManager(){
               <div class="num" style="color:#1a6b35;">${fmtA(totalAll)}</div>
               <div class="lbl">Total All Assets</div>
             </div>
-            <button class="btn-small" style="white-space:nowrap;" onclick="document.getElementById('asset-edit-section').style.display=document.getElementById('asset-edit-section').style.display==='none'?'block':'none';this.textContent=this.textContent.trim()==='Edit Assets'?'Hide Editor':'Edit Assets'">Edit Assets</button>
+            <button class="btn-small" style="white-space:nowrap;" onclick="ASSETS_EDIT_OPEN=!ASSETS_EDIT_OPEN;showTab(CURRENT_TAB||'analytics')">${ASSETS_EDIT_OPEN?'Hide Editor':'Edit Assets'}</button>
           </div>
           ${groupSections}
-          <div id="asset-edit-section" style="display:none;margin-top:8px;">
+          <div id="asset-edit-section" style="display:${ASSETS_EDIT_OPEN?'block':'none'};margin-top:8px;">
             <h3 style="margin:0 0 12px;">Edit Assets</h3>
             <div style="overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -8975,7 +8981,7 @@ function renderManager(){
           </div>
           <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;">
             <h3 style="margin:0;flex:1;">Monthly Expenses by Category</h3>
-            <button class="btn-small" onclick="document.getElementById('exp-edit-section').style.display=document.getElementById('exp-edit-section').style.display==='none'?'block':'none';this.textContent=this.textContent.trim()==='Edit Rows'?'Hide Editor':'Edit Rows'">Edit Rows</button>
+            <button class="btn-small" onclick="EXPENSES_EDIT_OPEN=!EXPENSES_EDIT_OPEN;showTab(CURRENT_TAB||'analytics')">${EXPENSES_EDIT_OPEN?'Hide Editor':'Edit Rows'}</button>
           </div>
           <div class="stat-row" style="flex-wrap:wrap;gap:10px;margin-bottom:24px;">${catCards}</div>
           <h3 style="margin:0 0 14px;">Expenses by Category</h3>
@@ -8999,7 +9005,7 @@ function renderManager(){
               </tr></tfoot>
             </table>
           </div>
-          <div id="exp-edit-section" style="display:none;margin-top:24px;">
+          <div id="exp-edit-section" style="display:${EXPENSES_EDIT_OPEN?'block':'none'};margin-top:24px;">
             <h3 style="margin:0 0 12px;">Edit Rows</h3>
             <div style="overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
