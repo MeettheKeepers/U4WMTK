@@ -3188,19 +3188,78 @@ function renderTeam(){
     </div>
   `;
 
+  // Build staff shows chart data (manager/owner only)
+  const staffChartHtml = (() => {
+    if (!isManagerLogin()) return '';
+    const level = getLoginLevel();
+    if (level !== 'owner' && level !== 'manager') return '';
+    const activeStaff = DATA.team.filter(m => !m.archived);
+    if (!activeStaff.length) return '';
+    const stats = activeStaff.map(m => {
+      const s = computeStaffStats(m.name);
+      return { name: m.name, completed: s.showsCount, upcoming: s.upcomingShowsCount };
+    });
+    const maxVal = Math.max(1, ...stats.map(s => s.completed + s.upcoming));
+    const rows = stats.map(s => {
+      const completedPct = (s.completed / maxVal * 100).toFixed(1);
+      const upcomingPct = (s.upcoming / maxVal * 100).toFixed(1);
+      return `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:120px;font-size:13px;font-weight:600;text-align:right;color:var(--text);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.name)}">${esc(s.name)}</div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="flex:1;background:var(--card);border-radius:4px;height:14px;overflow:hidden;">
+                <div style="width:${completedPct}%;background:#27ae60;height:100%;border-radius:4px;transition:width 0.3s;"></div>
+              </div>
+              <span style="font-size:12px;color:var(--gray);min-width:24px;">${s.completed}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="flex:1;background:var(--card);border-radius:4px;height:14px;overflow:hidden;">
+                <div style="width:${upcomingPct}%;background:#3498db;height:100%;border-radius:4px;transition:width 0.3s;"></div>
+              </div>
+              <span style="font-size:12px;color:var(--gray);min-width:24px;">${s.upcoming}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+    <div class="card">
+      <h2>Staff Show Stats</h2>
+      <div class="sub" style="margin-bottom:14px;">Completed and upcoming shows per team member.</div>
+      <div style="display:flex;gap:16px;margin-bottom:12px;">
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);"><span style="display:inline-block;width:12px;height:12px;background:#27ae60;border-radius:2px;"></span>Completed</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);"><span style="display:inline-block;width:12px;height:12px;background:#3498db;border-radius:2px;"></span>Upcoming</span>
+      </div>
+      ${rows}
+    </div>`;
+  })();
+
   return renderTeamSubNav() + `
     ${myFileHtml}
+    ${staffChartHtml}
     <div class="card">
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
         <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
-        ${DATA.team.filter(m=>!m.archived).map(m=>{
+        ${(() => {
+          const roleOrder = {'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
-          const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
-          const rCol = roleColors[displayRole];
-          return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td></tr>`;
-        }).join('')}
+          return DATA.team.filter(m=>!m.archived).slice().sort((a,b)=>{
+            const aKyle = a.name.toLowerCase().startsWith('kyle') ? 0 : 1;
+            const bKyle = b.name.toLowerCase().startsWith('kyle') ? 0 : 1;
+            if(aKyle !== bKyle) return aKyle - bKyle;
+            const aRole = JOB_ROLES.includes(a.role) ? a.role : 'Keeper';
+            const bRole = JOB_ROLES.includes(b.role) ? b.role : 'Keeper';
+            const roleDiff = (roleOrder[aRole]||3) - (roleOrder[bRole]||3);
+            if(roleDiff !== 0) return roleDiff;
+            return a.name.localeCompare(b.name);
+          }).map(m=>{
+            const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
+            const rCol = roleColors[displayRole];
+            return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td></tr>`;
+          }).join('');
+        })()}
       </table>
     </div>
   `;
