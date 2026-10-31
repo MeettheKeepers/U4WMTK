@@ -8529,13 +8529,8 @@ function renderManager(){
           const regionCounts = {};
           SHOW_REGIONS.forEach(r => { regionCounts[r.id] = 0; });
           allShows.forEach(s => { if(s.region && regionCounts[s.region]!==undefined) regionCounts[s.region]++; });
-          const totalRegion = Object.values(regionCounts).reduce((a,b)=>a+b,0);
-          if(!totalRegion) return '';
           const maxRegion = Math.max(1, ...Object.values(regionCounts));
-          const ontarioRegions = SHOW_REGIONS.filter(r=>r.id.startsWith('O'));
-          const quebecRegions  = SHOW_REGIONS.filter(r=>r.id.startsWith('Q'));
-          const sortedRegions  = [...SHOW_REGIONS].sort((a,b)=>regionCounts[b.id]-regionCounts[a.id]);
-          // Bar chart rows sorted by count
+          const sortedRegions = SHOW_REGIONS.slice().sort((a,b) => regionCounts[b.id] - regionCounts[a.id]);
           const regionRows = sortedRegions.map(r => {
             const count = regionCounts[r.id];
             if(!count) return '';
@@ -8553,40 +8548,14 @@ function renderManager(){
               </div>
             </div>`;
           }).join('');
-          // Region map — simple grid layout showing relative geography
-          function regionCell(r){
-            const count = regionCounts[r.id];
-            const intensity = count ? Math.max(30, Math.round((count/maxRegion)*100)) : 0;
-            const isQ = r.id.startsWith('Q');
-            const bg = count
-              ? (isQ ? `rgba(124,63,173,${intensity/100})` : `rgba(42,122,138,${intensity/100})`)
-              : 'var(--hover)';
-            const textColor = intensity > 55 ? '#fff' : 'var(--text)';
-            return `<div style="background:${bg};border:1px solid var(--border);border-radius:6px;padding:6px 4px;text-align:center;min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:2px;">
-              <div style="font-size:11px;font-weight:700;color:${textColor};">${r.id}</div>
-              <div style="font-size:10px;color:${textColor};opacity:0.85;line-height:1.2;">${r.label.split('–')[1]?.trim().split('/')[0].trim()||''}</div>
-              ${count ? `<div style="font-size:12px;font-weight:700;color:${textColor};">${count}</div>` : ''}
+          return `<h3 style="margin:20px 0 10px;">Shows by region</h3>
+            ${regionRows || '<div style="color:#bbb;font-size:13px;">No region data yet.</div>'}
+            <h3 style="margin:20px 0 10px;">Region map</h3>
+            <div style="position:relative;width:100%;max-width:660px;height:399px;overflow:hidden;border-radius:10px;border:1px solid var(--border);background:#f8f8f8;">
+              <img src="region-map.png" alt="Region map"
+                   style="position:absolute;top:50%;left:50%;width:399px;height:660px;transform:translate(-50%,-50%) rotate(90deg);"
+                   onerror="this.parentElement.innerHTML='<div style=\'padding:16px;color:#bbb;font-size:13px;\'>Map not found — make sure region-map.png is committed to the repo alongside index.html.</div>'">
             </div>`;
-          }
-          // Ontario grid: 2 cols × 6 rows roughly
-          const onGrid = ontarioRegions.map(r=>regionCell(r)).join('');
-          const qGrid  = quebecRegions.map(r=>regionCell(r)).join('');
-          return `<h3 style="margin:20px 0 10px;">Shows by Region</h3>
-            <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${totalRegion} show${totalRegion===1?'':'s'} with region data
-              <span style="margin-left:12px;display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#2a7a8a;display:inline-block;"></span> Ontario</span>
-              <span style="margin-left:8px;display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#7c3fad;display:inline-block;"></span> Québec</span>
-            </div>
-            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;">
-              <div style="flex:1;min-width:220px;">
-                <div style="font-size:12px;font-weight:700;color:#2a7a8a;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Ontario</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${onGrid}</div>
-              </div>
-              <div style="min-width:180px;">
-                <div style="font-size:12px;font-weight:700;color:#7c3fad;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Québec</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${qGrid}</div>
-              </div>
-            </div>
-            ${regionRows}`;
         })()}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
