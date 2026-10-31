@@ -8420,7 +8420,7 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'analytics'){
-    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'}];
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'💰 Financials'}];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
     let analyticsBody = '';
 
@@ -8655,6 +8655,150 @@ function renderManager(){
         ${adopted.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#1a5a2a;margin-bottom:6px;">🏠 Adopted Out (${adopted.length})</div>${makeList(adopted)}</div>` : ''}
         ${unknown.length ? `<div style="margin-bottom:16px;"><div style="font-weight:700;color:#999;margin-bottom:6px;">Unknown reason (${unknown.length})</div>${makeList(unknown)}</div>` : ''}
         ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
+
+    } else if(ANALYTICS_TAB === 'financials'){
+      // Pricing table
+      const SHOW_PRICES = {
+        'Country':            { rate: 350,  perDay: false },
+        'Continent':          { rate: 475,  perDay: false },
+        'Display':            { rate: 2500, perDay: true  },
+        'MTK Racing':         { rate: 2000, perDay: true  },
+        'Archeology':         { rate: 299,  perDay: false },
+        'Battle Match':       { rate: 350,  perDay: false },
+        'Science':            { rate: 299,  perDay: false },
+        'Fairs/Festivals':    { rate: 1400, perDay: true  },
+        'Character Walkaround': { rate: null, perDay: true }, // dynamic based on # chars
+      };
+      function showTypeRevenue(s) {
+        const types = s.showTypes || [];
+        const days  = getShowDays(s).length;
+        let total = 0;
+        const breakdown = {};
+        types.forEach(t => {
+          const p = SHOW_PRICES[t];
+          if(!p) return;
+          let price = 0;
+          if(t === 'Character Walkaround'){
+            const nc = (s.characters||[]).length;
+            const rate = nc >= 3 ? 1800 : nc === 2 ? 1500 : 1200;
+            price = rate * days;
+          } else {
+            price = p.perDay ? p.rate * days : p.rate;
+          }
+          breakdown[t] = (breakdown[t]||0) + price;
+          total += price;
+        });
+        return { total, days, breakdown };
+      }
+
+      const allS = DATA.shows || [];
+      const completedS  = allS.filter(s=>showStatus(s)==='completed');
+      const paidDoneS   = completedS.filter(s=>s.paid);
+      const unpaidDoneS = completedS.filter(s=>!s.paid);
+      const upcomingS   = allS.filter(s=>isShowUpcoming(s) && showStatus(s)!=='cancelled');
+      const paidUpcoming= upcomingS.filter(s=>s.paid);
+      const unpaidUpcoming=upcomingS.filter(s=>!s.paid);
+
+      const sumRevenue = arr => arr.reduce((acc,s)=>acc+showTypeRevenue(s).total,0);
+      const totalEarned       = sumRevenue(completedS);
+      const totalReceived     = sumRevenue(paidDoneS);
+      const totalOwed         = sumRevenue(unpaidDoneS);
+      const totalUpcoming     = sumRevenue(upcomingS);
+      const totalUnpaidUpcoming = sumRevenue(unpaidUpcoming);
+
+      // Per-type totals across all shows
+      const typeTotals = {};
+      SHOW_TYPES_LIST.forEach(t=>{ typeTotals[t]={earned:0,upcoming:0,count:0}; });
+      allS.forEach(s=>{
+        const {breakdown} = showTypeRevenue(s);
+        const isComp = showStatus(s)==='completed';
+        const isUp   = isShowUpcoming(s) && showStatus(s)!=='cancelled';
+        Object.entries(breakdown).forEach(([t,v])=>{
+          if(!typeTotals[t]) typeTotals[t]={earned:0,upcoming:0,count:0};
+          if(isComp){ typeTotals[t].earned+=v; typeTotals[t].count++; }
+          else if(isUp){ typeTotals[t].upcoming+=v; }
+        });
+      });
+      const sortedTypeList = Object.entries(typeTotals)
+        .filter(([,v])=>v.earned+v.upcoming>0)
+        .sort(([,a],[,b])=>(b.earned+b.upcoming)-(a.earned+a.upcoming));
+
+      const fmt = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+      const typeRows = sortedTypeList.map(([t,v])=>`
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:9px 12px;font-weight:600;">${t}</td>
+          <td style="padding:9px 12px;color:#1a6b35;font-weight:700;">${v.earned?fmt(v.earned):'—'}</td>
+          <td style="padding:9px 12px;color:#1a5a8a;">${v.upcoming?fmt(v.upcoming):'—'}</td>
+          <td style="padding:9px 12px;font-weight:700;">${fmt(v.earned+v.upcoming)}</td>
+        </tr>`).join('');
+
+      // Top 5 shows by value
+      const topShows = [...completedS]
+        .map(s=>({s, rev:showTypeRevenue(s).total}))
+        .sort((a,b)=>b.rev-a.rev).slice(0,5);
+
+      analyticsBody = `
+        <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+          <div class="stat-box" style="border-left:4px solid #1a6b35;">
+            <div class="num" style="color:#1a6b35;">${fmt(totalReceived)}</div>
+            <div class="lbl">Received (paid &amp; completed)</div>
+          </div>
+          <div class="stat-box" style="border-left:4px solid #c0392b;">
+            <div class="num" style="color:#c0392b;">${fmt(totalOwed)}</div>
+            <div class="lbl">Earned — awaiting payment</div>
+          </div>
+          <div class="stat-box" style="border-left:4px solid #1a5a8a;">
+            <div class="num" style="color:#1a5a8a;">${fmt(totalUnpaidUpcoming)}</div>
+            <div class="lbl">Upcoming — not yet paid</div>
+          </div>
+          <div class="stat-box" style="border-left:4px solid #e6a817;">
+            <div class="num" style="color:#e6a817;">${fmt(totalEarned+totalUpcoming)}</div>
+            <div class="lbl">Total projected (all time)</div>
+          </div>
+        </div>
+        <h3 style="margin:0 0 12px;">Revenue by show type</h3>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border);text-align:left;">
+                <th style="padding:8px 12px 8px 0;">Show Type</th>
+                <th style="padding:8px 12px;color:#1a6b35;">Earned</th>
+                <th style="padding:8px 12px;color:#1a5a8a;">Upcoming</th>
+                <th style="padding:8px 12px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${typeRows}</tbody>
+            <tfoot>
+              <tr style="border-top:2px solid var(--border);background:var(--hover);">
+                <td style="padding:10px 12px;font-weight:700;">Total</td>
+                <td style="padding:10px 12px;font-weight:700;color:#1a6b35;">${fmt(totalEarned)}</td>
+                <td style="padding:10px 12px;font-weight:700;color:#1a5a8a;">${fmt(totalUpcoming)}</td>
+                <td style="padding:10px 12px;font-weight:700;">${fmt(totalEarned+totalUpcoming)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        ${topShows.length ? `
+        <h3 style="margin:24px 0 12px;">Top shows by value (completed)</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
+            <th style="padding:8px 12px 8px 0;">Show</th>
+            <th style="padding:8px 12px;">Date</th>
+            <th style="padding:8px 12px;">Types</th>
+            <th style="padding:8px 12px;">Revenue</th>
+          </tr></thead>
+          <tbody>${topShows.map(({s,rev})=>`
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:9px 12px;font-weight:600;">${esc(s.title||'Untitled')}</td>
+              <td style="padding:9px 12px;color:var(--text-light);">${fmtShortDate(s.date)}</td>
+              <td style="padding:9px 12px;color:var(--text-light);font-size:13px;">${(s.showTypes||[]).join(', ')||'—'}</td>
+              <td style="padding:9px 12px;font-weight:700;color:#1a6b35;">${fmt(rev)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : ''}
+        <div style="margin-top:20px;padding:12px 16px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-light);">
+          💡 Pricing: Country $350 · Continent $475 · Archeology/Science $299 · Battle Match $350 · Display $2,500/day · MTK Racing $2,000/day · Fairs/Festivals $1,400/day · Character Walkaround $1,200 (1 char) / $1,500 (2) / $1,800 (3+) per day
+        </div>`;
     }
 
     body = `
