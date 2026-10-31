@@ -6649,6 +6649,8 @@ let ANALYTICS_TAB = 'shows';
 let FINANCIALS_SUB_TAB = 'income';
 let EXPENSES_EDIT_OPEN = false;
 let ASSETS_EDIT_OPEN = false;
+let NONPROFIT_EDIT_OPEN = false;
+let INCOME_EDIT_OPEN = false;
 let EDITING_TASK_ID = null;
 let MGR_TASK_GROUPS_OPEN = {}; // tracks which groups are expanded in Manager > Tasks
 let MGR_TASK_GROUP_SECTION_OPEN = false; // Task Groups card collapsed by default
@@ -6982,6 +6984,49 @@ function updateAssetField(id, field, val){
   saveData();
 }
 // ---- End assets helpers ----
+
+// ---- Non-profit income helpers ----
+const DEFAULT_NONPROFIT = [
+  {id:1, source:'Government Grants',    amount:15000, notes:'Provincial/federal grant funding'},
+  {id:2, source:'Fundraising Events',   amount:12000, notes:'Events, campaigns, drives'},
+  {id:3, source:'Private Donations',    amount:5000,  notes:'Individual donor contributions'},
+  {id:4, source:'Corporate Sponsorship',amount:3000,  notes:'Business partnerships'},
+];
+const DEFAULT_EXTRA_INCOME = [
+  {id:1, source:'Merchandise / Book Sales', amount:0, notes:''},
+  {id:2, source:'Cash Shows (untracked)',    amount:0, notes:''},
+];
+function getNonProfit(){ if(!DATA.nonprofit){ DATA.nonprofit=JSON.parse(JSON.stringify(DEFAULT_NONPROFIT)); } return DATA.nonprofit; }
+function getExtraIncome(){ if(!DATA.extraIncome){ DATA.extraIncome=JSON.parse(JSON.stringify(DEFAULT_EXTRA_INCOME)); } return DATA.extraIncome; }
+function addNonProfitRow(){
+  const rows=getNonProfit(); const newId=rows.length?Math.max(...rows.map(r=>r.id))+1:1;
+  rows.push({id:newId,source:'',amount:0,notes:''});
+  NONPROFIT_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function removeNonProfitRow(id){
+  DATA.nonprofit=getNonProfit().filter(r=>r.id!==id);
+  NONPROFIT_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function updateNonProfitField(id,field,val){
+  const r=getNonProfit().find(x=>x.id===id); if(!r) return;
+  if(field==='amount') r.amount=parseFloat(val)||0; else r[field]=val;
+  saveData();
+}
+function addExtraIncomeRow(){
+  const rows=getExtraIncome(); const newId=rows.length?Math.max(...rows.map(r=>r.id))+1:1;
+  rows.push({id:newId,source:'',amount:0,notes:''});
+  INCOME_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function removeExtraIncomeRow(id){
+  DATA.extraIncome=getExtraIncome().filter(r=>r.id!==id);
+  INCOME_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
+}
+function updateExtraIncomeField(id,field,val){
+  const r=getExtraIncome().find(x=>x.id===id); if(!r) return;
+  if(field==='amount') r.amount=parseFloat(val)||0; else r[field]=val;
+  saveData();
+}
+// ---- End non-profit income helpers ----
 
 function getPrevClientAnimals(show){
   if(!show.clientName) return null;
@@ -8790,10 +8835,68 @@ function renderManager(){
         ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
 
     } else if(ANALYTICS_TAB === 'financials'){
-      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'}];
+      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'},{id:'nonprofit',label:'Non-Profit'}];
       const finSubTabsHtml = `<div style="display:flex;gap:4px;background:var(--hover);border-radius:12px;padding:5px;">${finSubTabs.map(t=>{const active=FINANCIALS_SUB_TAB===t.id;return`<button onclick="setFinancialsSubTab('${t.id}')" style="flex:1;padding:10px 20px;font-size:15px;font-weight:700;border:none;border-radius:9px;cursor:pointer;transition:all .15s;${active?'background:#1a5a8a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);':'background:transparent;color:var(--text-light);'}">${t.label}</button>`;}).join('')}</div>`;
 
-      if(FINANCIALS_SUB_TAB === 'assets'){
+      if(FINANCIALS_SUB_TAB === 'nonprofit'){
+        // ---- NON-PROFIT TAB ----
+        const npRows = getNonProfit();
+        const fmtN = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+        const npTotal = npRows.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+        const maxNp = Math.max(1,...npRows.map(r=>parseFloat(r.amount||0)));
+        const npColors = ['#1a5a8a','#27ae60','#7c3fad','#e67e22','#16a085','#d4900f','#c0392b'];
+        const npBars = npRows.filter(r=>r.amount>0).sort((a,b)=>b.amount-a.amount).map((r,i)=>{
+          const pct = Math.round((parseFloat(r.amount)/maxNp)*100);
+          const col = npColors[i%npColors.length];
+          return `<div style="margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;flex:1;">${esc(r.source||'—')}</span>
+              <span style="font-size:13px;font-weight:700;color:${col};">${fmtN(parseFloat(r.amount||0))}</span>
+            </div>
+            ${r.notes?`<div style="font-size:12px;color:var(--text-light);margin-bottom:4px;">${esc(r.notes)}</div>`:''}
+            <div style="background:var(--hover);border-radius:5px;height:10px;overflow:hidden;">
+              <div style="background:${col};height:10px;width:${pct}%;border-radius:5px;"></div>
+            </div>
+          </div>`;
+        }).join('');
+        const npEditRows = npRows.map(r=>`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:5px 6px;"><input type="text" value="${esc(r.source||'')}" placeholder="Source" onchange="updateNonProfitField(${r.id},'source',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="number" value="${r.amount||0}" step="100" onchange="updateNonProfitField(${r.id},'amount',this.value)" style="width:110px;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><input type="text" value="${esc(r.notes||'')}" placeholder="Notes" onchange="updateNonProfitField(${r.id},'notes',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+            <td style="padding:5px 6px;"><button onclick="removeNonProfitRow(${r.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+          </tr>`).join('');
+        analyticsBody = `
+          <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+            <div class="stat-box" style="border-left:4px solid #27ae60;flex:1;">
+              <div class="num" style="color:#27ae60;">${fmtN(npTotal)}</div>
+              <div class="lbl">Total Non-Profit Income (Annual)</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #1a5a8a;flex:1;">
+              <div class="num" style="color:#1a5a8a;">${fmtN(Math.round(npTotal/12))}</div>
+              <div class="lbl">Monthly Average</div>
+            </div>
+            <button class="btn-small" style="white-space:nowrap;" onclick="NONPROFIT_EDIT_OPEN=!NONPROFIT_EDIT_OPEN;showTab(CURRENT_TAB||'analytics')">${NONPROFIT_EDIT_OPEN?'Hide Editor':'Edit Sources'}</button>
+          </div>
+          <h3 style="margin:0 0 14px;">Income Sources</h3>
+          ${npBars || '<div style="color:#bbb;font-size:13px;">No income sources added yet.</div>'}
+          <div style="display:${NONPROFIT_EDIT_OPEN?'block':'none'};margin-top:24px;">
+            <h3 style="margin:0 0 12px;">Edit Income Sources</h3>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="border-bottom:2px solid var(--border);background:var(--hover);">
+                  <th style="padding:7px 6px;text-align:left;">Source</th>
+                  <th style="padding:7px 6px;text-align:left;">Annual Amount ($)</th>
+                  <th style="padding:7px 6px;text-align:left;">Notes</th>
+                  <th style="padding:7px 6px;"></th>
+                </tr></thead>
+                <tbody>${npEditRows}</tbody>
+              </table>
+            </div>
+            <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addNonProfitRow()">+ Add Source</button>
+          </div>`;
+      } else if(FINANCIALS_SUB_TAB === 'assets'){
         // ---- ASSETS TAB ----
         const assets = getAssets();
         const fmtA = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -9166,7 +9269,43 @@ function renderManager(){
         </table>` : ''}
         <div style="margin-top:20px;padding:12px 16px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-light);">
           💡 Pricing: Country $350 · Continent $475 · Archeology/Science $299 · Battle Match $350 · Display $2,500/day · MTK Racing $2,000/day · Fairs/Festivals $1,400/day · Character Walkaround $1,200 (1 char) / $1,500 (2) / $1,800 (3+) per day
-        </div>`;
+        </div>
+        ${(()=>{
+          const extra = getExtraIncome();
+          const extraTotal = extra.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+          const extraEditRows = extra.map(r=>`
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:5px 6px;"><input type="text" value="${esc(r.source||'')}" placeholder="Source" onchange="updateExtraIncomeField(${r.id},'source',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+              <td style="padding:5px 6px;"><input type="number" value="${r.amount||0}" step="100" onchange="updateExtraIncomeField(${r.id},'amount',this.value)" style="width:110px;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+              <td style="padding:5px 6px;"><input type="text" value="${esc(r.notes||'')}" placeholder="Notes" onchange="updateExtraIncomeField(${r.id},'notes',this.value)" style="width:100%;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:4px 7px;"></td>
+              <td style="padding:5px 6px;"><button onclick="removeExtraIncomeRow(${r.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+            </tr>`).join('');
+          return `<hr style="margin:24px 0;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+              <h3 style="margin:0;flex:1;">Additional Income</h3>
+              <div style="font-size:14px;font-weight:700;color:#1a6b35;">${fmt(extraTotal)} total</div>
+              <button class="btn-small" onclick="INCOME_EDIT_OPEN=!INCOME_EDIT_OPEN;showTab(CURRENT_TAB||'analytics')">${INCOME_EDIT_OPEN?'Hide Editor':'Edit'}</button>
+            </div>
+            ${extra.filter(r=>r.amount>0).map(r=>`
+              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                <span>${esc(r.source||'—')}${r.notes?` <span style="color:var(--text-light);">— ${esc(r.notes)}</span>`:''}</span>
+                <span style="font-weight:700;color:#1a6b35;">${fmt(parseFloat(r.amount||0))}</span>
+              </div>`).join('') || '<div style="color:#bbb;font-size:13px;padding:8px 0;">No additional income added.</div>'}
+            <div style="display:${INCOME_EDIT_OPEN?'block':'none'};margin-top:16px;">
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                  <thead><tr style="border-bottom:2px solid var(--border);background:var(--hover);">
+                    <th style="padding:7px 6px;text-align:left;">Source</th>
+                    <th style="padding:7px 6px;text-align:left;">Annual Amount ($)</th>
+                    <th style="padding:7px 6px;text-align:left;">Notes</th>
+                    <th style="padding:7px 6px;"></th>
+                  </tr></thead>
+                  <tbody>${extraEditRows}</tbody>
+                </table>
+              </div>
+              <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExtraIncomeRow()">+ Add Row</button>
+            </div>`;
+        })()}`;
       } // end else income
     }
 
