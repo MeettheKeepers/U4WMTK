@@ -6886,7 +6886,7 @@ const DEFAULT_EXPENSES = [
   {id:30, company:'Van Payment',               amount:236.06,  account:'RBC (Auto)',           dueDate:'Bi Weekly',               category:'Vehicles'},
   {id:31, company:'Kubota Canada (Tractor)',   amount:610.48,  account:'RBC (Auto)',           dueDate:'Monthly',                 category:'Vehicles'},
 ];
-const EXPENSE_CATEGORIES = ['Insurance','Mortgage','Utilities','Fuel','Vehicles','Phone/Internet','Groceries/Meds (Human)','Animals Food','CRA','Entertainment','Other'];
+const EXPENSE_CATEGORIES = ['Insurance','Mortgage','Utilities','Fuel','Vehicles','Phone/Internet','Groceries/Meds (Human)','Animals Food','CRA','Entertainment','Personal','Other'];
 function getExpenses(){ if(!DATA.expenses){ DATA.expenses=JSON.parse(JSON.stringify(DEFAULT_EXPENSES)); } return DATA.expenses; }
 function addExpenseRow(){
   const expenses = getExpenses();
