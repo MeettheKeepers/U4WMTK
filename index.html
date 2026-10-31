@@ -1621,6 +1621,7 @@ const TABS = [
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
+const STAFF_SPECIALTIES = ['Animal Care','Wildlife Educator','MTK Racing','Character Walk arounds','Maintenance','Support'];
 function getLoginLevel(){
   if(!CURRENT_LOGIN) return 'keeper';
   const r = (CURRENT_LOGIN.role||'').toLowerCase();
@@ -8291,16 +8292,18 @@ function renderManager(){
     } else {
       body = `
         <div class="card">
-          <h2>Staff &amp; Photo Settings</h2>
-          <div class="sub">Mark a staff member "photo optional" to exempt them from photo-required tasks. Open a staff member's Employee File to see their Welcome acknowledgments, contact info, write-ups, incidents, and emergency contact.</div>
+          <h2>Staff Settings</h2>
+          <div class="sub">Open a staff member's Employee File to see their Welcome acknowledgments, contact info, write-ups, incidents, and emergency contact.</div>
           <div class="sub" style="margin-bottom:6px;">Work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong></div>
           <table>
-            <tr><th>Name</th><th>Role</th><th>Job Title</th><th>Language</th><th>Photo Optional</th><th style="text-align:center;">Hours This Period</th><th></th></tr>
+            <tr><th>Name</th><th>Role</th><th>Main Roles</th><th>Language</th><th style="text-align:center;">Hours This Period</th><th></th></tr>
             ${DATA.team.filter(m=>!m.archived).map(m=>{
               const hrs = currentPayPeriodHoursFor(m.name);
               const hrsDisplay = hrs > 0
                 ? `<span style="font-weight:700;color:var(--green-dark);">${hrs}</span>`
                 : `<span style="color:var(--text-light);">—</span>`;
+              const specs = m.specialties || [];
+              const summaryText = specs.length ? specs.join(', ') : 'None selected';
               return `
               <tr>
                 <td>${m.name}</td>
@@ -8309,7 +8312,14 @@ function renderManager(){
                     ${JOB_ROLES.map(r=>`<option value="${r}" ${(m.role||'')=== r?'selected':''}>${r}</option>`).join('')}
                   </select>
                 </td>
-                <td><input type="text" value="${m.biz||''}" onchange="updateTeamField(${m.id},'biz',this.value)" style="width:160px;"></td>
+                <td style="position:relative;">
+                  <details style="display:inline-block;">
+                    <summary id="staff-spec-summary-${m.id}" style="cursor:pointer;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;list-style:none;background:var(--bg);color:var(--text);min-width:140px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${summaryText}</summary>
+                    <div style="position:absolute;z-index:200;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:180px;left:0;top:100%;">
+                      ${STAFF_SPECIALTIES.map(sp=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;"><input type="checkbox" ${specs.includes(sp)?'checked':''} onchange="updateTeamSpecialty(${m.id},'${sp.replace(/'/g,"\\'")}',this.checked)">${esc(sp)}</label>`).join('')}
+                    </div>
+                  </details>
+                </td>
                 <td>
                   <select onchange="updateTeamField(${m.id},'language',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
                     <option value="english"  ${(m.language||'english')==='english'  ?'selected':''}>English</option>
@@ -8317,7 +8327,6 @@ function renderManager(){
                     <option value="bilingual"${m.language==='bilingual'?'selected':''}>Bilingual</option>
                   </select>
                 </td>
-                <td><input type="checkbox" ${m.photoOptional?'checked':''} onchange="togglePhotoOptional(${m.id})"></td>
                 <td style="text-align:center;">${hrsDisplay}</td>
                 <td style="white-space:nowrap;">
                   <button class="btn-ghost" onclick="openEmployeeFile(${m.id})">View Employee File</button>
@@ -8332,12 +8341,12 @@ function renderManager(){
             <div style="font-weight:700;font-size:14px;color:var(--text-light);margin-bottom:8px;">📦 Archived Staff</div>
             <div class="sub" style="margin-bottom:10px;">Archived staff cannot log in and are hidden everywhere in the app. Their data is preserved.</div>
             <table>
-              <tr><th>Name</th><th>Role</th><th>Job Title</th><th></th></tr>
+              <tr><th>Name</th><th>Role</th><th>Main Roles</th><th></th></tr>
               ${DATA.team.filter(m=>m.archived).map(m=>`
               <tr style="opacity:0.7;">
                 <td>${esc(m.name)}</td>
                 <td>${esc(m.role||'')}</td>
-                <td>${esc(m.biz||'')}</td>
+                <td>${esc((m.specialties||[]).join(', ')||'—')}</td>
                 <td style="white-space:nowrap;">
                   <button class="btn-ghost" onclick="restoreTeamMember(${m.id})">Restore</button>
                   <button class="btn-ghost" style="color:var(--red);" onclick="removeTeamMember(${m.id})">Delete</button>
@@ -8348,8 +8357,6 @@ function renderManager(){
 
           <div class="add-row">
             <input type="text" id="team-name" placeholder="Name">
-            <input type="text" id="team-role" placeholder="Role">
-            <input type="text" id="team-biz" placeholder="Job Title">
             <button class="btn-small" onclick="addTeamMember()">Add Team Member</button>
           </div>
         </div>
@@ -9623,6 +9630,16 @@ function togglePhotoOptional(id){
   m.photoOptional = !m.photoOptional;
   saveData();
   showTab('manager');
+}
+function updateTeamSpecialty(id, specialty, checked){
+  const m = DATA.team.find(x=>x.id===id);
+  if(!m) return;
+  if(!m.specialties) m.specialties = [];
+  if(checked){ if(!m.specialties.includes(specialty)) m.specialties.push(specialty); }
+  else { m.specialties = m.specialties.filter(s=>s!==specialty); }
+  saveData();
+  const el = document.getElementById('staff-spec-summary-'+id);
+  if(el) el.textContent = m.specialties.length ? m.specialties.join(', ') : 'None selected';
 }
 function addTeamMember(){
   const name=val('team-name'), role=val('team-role')||'Keeper', biz=val('team-biz');
