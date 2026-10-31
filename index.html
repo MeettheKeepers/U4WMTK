@@ -1620,9 +1620,26 @@ const TABS = [
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'manager', label:'Manager'}
 ];
-function isManagerLogin(){
-  return !!(CURRENT_LOGIN && CURRENT_LOGIN.role === 'manager');
+const JOB_ROLES = ['Owner','Manager','Supervisor','Keeper'];
+function getLoginLevel(){
+  if(!CURRENT_LOGIN) return 'keeper';
+  const r = (CURRENT_LOGIN.role||'').toLowerCase();
+  if(r==='manager'||r==='owner') return 'owner'; // backward compat: old 'manager' = owner
+  if(r==='staff'||r==='keeper') return 'keeper'; // backward compat: old 'staff' = keeper
+  return r; // supervisor
 }
+function isManagerLogin(){
+  const l = getLoginLevel();
+  return l==='owner' || l==='manager' || l==='supervisor';
+}
+function isOwnerLogin(){ return getLoginLevel()==='owner'; }
+function canAccessTab(tabId){
+  const l = getLoginLevel();
+  if(l==='owner' || l==='manager') return true;
+  if(l==='supervisor') return !['analytics','staff','logins','incidents'].includes(tabId);
+  return false;
+}
+function canAccessFinancials(){ return isOwnerLogin(); }
 /* ---------- SUPERVISOR ---------- */
 // Tabs a supervisor can be granted access to manage
 const SUPERVISABLE_TABS = [
@@ -3177,9 +3194,12 @@ function renderTeam(){
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
-        <tr><th>Name</th><th>Job Title</th><th>Phone</th></tr>
-        ${DATA.team.filter(m=>!m.archived).map(m=>`
-          <tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td>${m.role}</td><td>${m.phone || '—'}</td></tr>`).join('')}
+        <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
+        ${DATA.team.filter(m=>!m.archived).map(m=>{
+          const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
+          const rCol = roleColors[m.role]||'#888';
+          return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${esc(m.role||'Keeper')}</span></td><td>${m.phone || '—'}</td></tr>`;
+        }).join('')}
       </table>
     </div>
   `;
@@ -7689,7 +7709,6 @@ const MANAGER_TABS = [
   {id:'schedule', label:'Team Schedule'},
   {id:'animals', label:'Animals'},
   {id:'staff', label:'Staff'},
-  {id:'logins', label:'Logins'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
@@ -7710,10 +7729,10 @@ const WELCOME_EDIT_SECTIONS = [
 function renderManager(){
   const openRepairs = DATA.repairs.filter(r=>r.status!=='Done').length;
   const openIncidents = DATA.incidents.filter(i=>i.status==='Open').length;
-  // In supervisor mode, only show the tabs this user has been granted access to
+  // Filter tabs based on login role
   const visibleMgrTabs = SUPERVISOR_MODE_ACTIVE
     ? MANAGER_TABS.filter(t => isSupervisorFor(t.id))
-    : MANAGER_TABS;
+    : MANAGER_TABS.filter(t => canAccessTab(t.id));
   const tabsHtml = visibleMgrTabs.map(t=>`<button class="detail-tab-btn ${MANAGER_TAB===t.id?'active':''}" onclick="setManagerTab('${t.id}')">${t.label}</button>`).join('');
 
   let body = '';
@@ -8225,7 +8244,11 @@ function renderManager(){
               return `
               <tr>
                 <td>${m.name}</td>
-                <td><input type="text" value="${m.role||''}" onchange="updateTeamField(${m.id},'role',this.value)" style="width:130px;"></td>
+                <td>
+                  <select onchange="updateTeamField(${m.id},'role',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
+                    ${JOB_ROLES.map(r=>`<option value="${r}" ${(m.role||'')=== r?'selected':''}>${r}</option>`).join('')}
+                  </select>
+                </td>
                 <td><input type="text" value="${m.biz||''}" onchange="updateTeamField(${m.id},'biz',this.value)" style="width:160px;"></td>
                 <td>
                   <select onchange="updateTeamField(${m.id},'language',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
@@ -8270,17 +8293,9 @@ function renderManager(){
             <button class="btn-small" onclick="addTeamMember()">Add Team Member</button>
           </div>
         </div>
-      `;
-    }
-  } else if(MANAGER_TAB === 'logins'){
-    const managerCount = (DATA.logins||[]).filter(l=>l.role==='manager').length;
-    body = `
-      <div class="card">
-        <h2>Logins</h2>
-        <div class="sub">Give each person their own username and password. Staff logins can use every tab except Manager; Manager logins can see everything, including this page.</div>
-        <table>
-          <tr><th>Username</th><th>Password</th><th>Name</th><th>Role</th><th>Clock In/Out</th><th>Work from Home</th><th></th></tr>
-          ${(DATA.logins||[]).filter(l=>{ const m=DATA.team.find(x=>x.name===l.name); return !m||!m.archived; }).map(l=>{
+        ${(()=>{
+          const managerCount = (DATA.logins||[]).filter(l=>l.role==='manager'||l.role==='owner').length;
+          const loginRows = (DATA.logins||[]).filter(l=>{ const m=DATA.team.find(x=>x.name===l.name); return !m||!m.archived; }).map(l=>{
             const member = DATA.team.find(m=>m.name===l.name);
             const clockEnabled = member ? member.clockEnabled!==false : true;
             const isWFH = member ? !!member.workFromHome : false;
@@ -8293,12 +8308,16 @@ function renderManager(){
                   ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}" ${l.name===m.name?'selected':''}>${m.name}</option>`).join('')}
                 </select>
               </td>
-              <td>
-                <select onchange="setLoginRole(${l.id}, this.value)" ${l.role==='manager' && managerCount<=1 ? 'disabled title="At least one Manager login is required."' : ''}>
-                  <option value="staff" ${l.role==='staff'?'selected':''}>Staff</option>
-                  <option value="manager" ${l.role==='manager'?'selected':''}>Manager</option>
-                </select>
-              </td>
+              <td>${(()=>{
+                const lr = l.role==='manager'?'owner': l.role==='staff'?'keeper': (l.role||'keeper');
+                const locked = (lr==='owner') && managerCount<=1;
+                return `<select onchange="setLoginRole(${l.id}, this.value)" ${locked?'disabled title="At least one Owner login is required."':''}>
+                  <option value="owner"      ${lr==='owner'     ?'selected':''}>Owner</option>
+                  <option value="manager"    ${lr==='manager'   ?'selected':''}>Manager</option>
+                  <option value="supervisor" ${lr==='supervisor'?'selected':''}>Supervisor</option>
+                  <option value="keeper"     ${lr==='keeper'    ?'selected':''}>Keeper</option>
+                </select>`;
+              })()}</td>
               <td style="text-align:center;">
                 ${member ? `<input type="checkbox" title="Show clock in/out on their dashboard" ${clockEnabled?'checked':''} onchange="setMemberClockEnabled('${esc(l.name)}',this.checked)">` : '—'}
               </td>
@@ -8307,27 +8326,37 @@ function renderManager(){
               </td>
               <td><button class="btn-ghost" onclick="deleteLogin(${l.id})">Delete</button></td>
             </tr>`;
-          }).join('')}
-        </table>
-      </div>
-      <div class="card">
-        <h2>Add a Login</h2>
-        <div class="add-row">
-          <input type="text" id="new-login-username" placeholder="Username">
-          <input type="text" id="new-login-password" placeholder="Password">
-          <select id="new-login-name">
-            <option value="">Not linked to a staff member</option>
-            ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
-          </select>
-          <select id="new-login-role">
-            <option value="staff">Staff</option>
-            <option value="manager">Manager</option>
-          </select>
-          <button class="btn-small" onclick="addLogin()">Add Login</button>
-        </div>
-        <div class="sub">Linking a login to a staff member auto-fills their name on the Welcome tab when they sign in.</div>
-      </div>
-    `;
+          }).join('');
+          return `<div class="card">
+            <h2>Logins</h2>
+            <div class="sub">Give each person their own username and password. <strong>Owner</strong> — full access including Financials. <strong>Manager</strong> — all tabs except Financials. <strong>Supervisor</strong> — Shows, Tasks, Animals, Supplies, Inventory, Schedule, Welcome, Quiz. <strong>Keeper</strong> — regular staff view only.</div>
+            <table>
+              <tr><th>Username</th><th>Password</th><th>Name</th><th>Role</th><th>Clock In/Out</th><th>Work from Home</th><th></th></tr>
+              ${loginRows}
+            </table>
+          </div>
+          <div class="card">
+            <h2>Add a Login</h2>
+            <div class="add-row">
+              <input type="text" id="new-login-username" placeholder="Username">
+              <input type="text" id="new-login-password" placeholder="Password">
+              <select id="new-login-name">
+                <option value="">Not linked to a staff member</option>
+                ${DATA.team.filter(m=>!m.archived).map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
+              </select>
+              <select id="new-login-role">
+                <option value="keeper">Keeper</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="manager">Manager</option>
+                <option value="owner">Owner</option>
+              </select>
+              <button class="btn-small" onclick="addLogin()">Add Login</button>
+            </div>
+            <div class="sub">Linking a login to a staff member auto-fills their name on the Welcome tab when they sign in.</div>
+          </div>`;
+        })()}
+      `;
+    }
   } else if(MANAGER_TAB === 'repairs'){
     const activeR = DATA.repairs.filter(r=>!r.archived);
     const archivedR = DATA.repairs.filter(r=>r.archived);
@@ -8835,7 +8864,7 @@ function renderManager(){
         ${archivedA.length === 0 ? '<div class="empty">No archived animals yet.</div>' : ''}`;
 
     } else if(ANALYTICS_TAB === 'financials'){
-      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'},{id:'nonprofit',label:'Non-Profit'}];
+      const finSubTabs = [{id:'income',label:'Income'},{id:'expenses',label:'Expenses'},{id:'assets',label:'Assets'},{id:'nonprofit',label:'Non-Profit'}].filter(t=> t.id!=='financials' || canAccessFinancials());
       const finSubTabsHtml = `<div style="display:flex;gap:4px;background:var(--hover);border-radius:12px;padding:5px;">${finSubTabs.map(t=>{const active=FINANCIALS_SUB_TAB===t.id;return`<button onclick="setFinancialsSubTab('${t.id}')" style="flex:1;padding:10px 20px;font-size:15px;font-weight:700;border:none;border-radius:9px;cursor:pointer;transition:all .15s;${active?'background:#1a5a8a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);':'background:transparent;color:var(--text-light);'}">${t.label}</button>`;}).join('')}</div>`;
 
       if(FINANCIALS_SUB_TAB === 'nonprofit'){
