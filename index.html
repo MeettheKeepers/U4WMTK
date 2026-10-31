@@ -3240,7 +3240,6 @@ function renderTeam(){
       <table>
         <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
         ${(() => {
-          const roleOrder = {'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
           const roleOrder={'Owner':0,'Manager':1,'Supervisor':2,'Keeper':3};
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
           return DATA.team.filter(m=>!m.archived).slice().sort((a,b)=>{
