@@ -8448,30 +8448,22 @@ function renderManager(){
       }).join('');
       const yearCounts = {};
       completedShows.forEach(s => { const yr=(s.date||'').slice(0,4); if(yr) yearCounts[yr]=(yearCounts[yr]||0)+1; });
-      const yearRows = Object.keys(yearCounts).sort().reverse().map(yr =>
-        `<tr><td style="padding:6px 12px 6px 0;font-weight:600;">${yr}</td><td style="padding:6px 0;">${yearCounts[yr]} show${yearCounts[yr]===1?'':'s'}</td></tr>`
-      ).join('');
-      // Region stats
-      const regionCounts = {};
-      SHOW_REGIONS.forEach(r => { regionCounts[r.id] = 0; });
-      allShows.forEach(s => { if(s.region && regionCounts[s.region] !== undefined) regionCounts[s.region]++; });
-      const maxRegion = Math.max(1, ...Object.values(regionCounts));
-      const sortedRegions = SHOW_REGIONS.slice().sort((a,b) => regionCounts[b.id] - regionCounts[a.id]);
-      const regionRows = sortedRegions.map(r => {
-        const count = regionCounts[r.id];
-        if(!count) return '';
-        const pct = Math.round((count / maxRegion) * 100);
-        return `<div style="margin-bottom:10px;max-width:500px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:3px;">
-            <span style="font-weight:600;font-size:13px;min-width:220px;">${r.label}</span>
-            <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count}</span>
+      const yearRows = Object.keys(yearCounts).sort().reverse().map(yr => {
+        const count = yearCounts[yr];
+        const maxYr = Math.max(1,...Object.values(yearCounts));
+        const pct = Math.round((count/maxYr)*100);
+        return `<div style="margin-bottom:10px;max-width:400px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+            <span style="font-weight:700;font-size:14px;min-width:60px;">${yr}</span>
+            <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count} show${count===1?'':'s'}</span>
           </div>
           <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
-            <div style="background:#e6a817;height:8px;width:${pct}%;border-radius:5px;"></div>
+            <div style="background:var(--green);height:8px;width:${pct}%;border-radius:5px;"></div>
           </div>
         </div>`;
       }).join('');
       analyticsBody = `
+        ${yearRows ? `<h3 style="margin:0 0 10px;">Shows by year</h3>${yearRows}<hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">` : ''}
         <div class="stat-row" style="margin-bottom:20px;">
           <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
           <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
@@ -8479,22 +8471,13 @@ function renderManager(){
         </div>
         <h3 style="margin-bottom:14px;">Completed shows by type</h3>
         ${typeRows}
-        ${yearRows ? `<h3 style="margin:20px 0 10px;">Shows by year</h3><table>${yearRows}</table>` : ''}
-        <h3 style="margin:20px 0 10px;">Shows by region</h3>
-        ${regionRows || '<div style="color:#bbb;font-size:13px;">No region data yet — add regions when booking shows.</div>'}
-        <h3 style="margin:20px 0 10px;">Region map</h3>
-        <div style="position:relative;width:100%;max-width:660px;height:399px;overflow:hidden;border-radius:10px;border:1px solid var(--border);background:#f8f8f8;">
-          <img src="region-map.png" alt="Region map"
-               style="position:absolute;top:50%;left:50%;width:399px;height:660px;transform:translate(-50%,-50%) rotate(90deg);"
-               onerror="this.parentElement.innerHTML='<div style=\'padding:16px;color:#bbb;font-size:13px;\'>Map not found — make sure region-map.png is committed to the repo alongside index.html.</div>'">
-        </div>
         ${(()=>{
           const charCounts = {};
           CHARACTERS_LIST.forEach(c => { charCounts[c] = 0; });
           allShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; }); });
           const totalCharShows = allShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
           const maxChar = Math.max(1, ...Object.values(charCounts));
-          const charRows = CHARACTERS_LIST.map(c => {
+          const charRows = [...CHARACTERS_LIST].sort((a,b)=>charCounts[b]-charCounts[a]).map(c => {
             const count = charCounts[c];
             const pct = Math.round((count / maxChar) * 100);
             return `<div style="margin-bottom:10px;max-width:400px;">
@@ -8512,23 +8495,17 @@ function renderManager(){
             ${charRows}`;
         })()}
         ${(()=>{
-          // Include shows that have OCCASION_SHOW_TYPES, plus any show with Fairs/Festivals show type
-          const occasionShows = allShows.filter(s=>{
-            const types = s.showTypes||[];
-            return types.some(t=>OCCASION_SHOW_TYPES.includes(t)) || types.includes('Fairs/Festivals');
-          });
+          // Only count shows where an occasion was explicitly selected via the occasion picker
+          const occasionShows = allShows.filter(s=>(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)));
           if(!occasionShows.length) return '';
           const occCounts = {};
           OCCASIONS_LIST.forEach(o => { occCounts[o] = 0; });
           occasionShows.forEach(s => {
-            const types = s.showTypes||[];
-            // If no occasion set but has Fairs/Festivals show type, count as Fairs/Festivals
-            let o = s.occasion||'Unknown';
-            if((o==='Unknown'||!o) && types.includes('Fairs/Festivals')) o='Fairs/Festivals';
+            const o = s.occasion||'Unknown';
             if(occCounts[o]!==undefined) occCounts[o]++; else occCounts['Unknown']++;
           });
           const maxOcc = Math.max(1, ...Object.values(occCounts));
-          const occRows = OCCASIONS_LIST.map(o => {
+          const occRows = [...OCCASIONS_LIST].sort((a,b)=>(occCounts[b]||0)-(occCounts[a]||0)).map(o => {
             const count = occCounts[o];
             if(!count) return '';
             const pct = Math.round((count / maxOcc) * 100);
@@ -8547,6 +8524,69 @@ function renderManager(){
           return `<h3 style="margin:20px 0 10px;">Show Occasions</h3>
             <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${occasionShows.length} show${occasionShows.length===1?'':'s'} with occasion tracking${unknownCount ? ` · <span style="color:#c08000;">${unknownCount} Unknown</span>` : ''}</div>
             ${occRows}`;
+        })()}
+        ${(()=>{
+          const regionCounts = {};
+          SHOW_REGIONS.forEach(r => { regionCounts[r.id] = 0; });
+          allShows.forEach(s => { if(s.region && regionCounts[s.region]!==undefined) regionCounts[s.region]++; });
+          const totalRegion = Object.values(regionCounts).reduce((a,b)=>a+b,0);
+          if(!totalRegion) return '';
+          const maxRegion = Math.max(1, ...Object.values(regionCounts));
+          const ontarioRegions = SHOW_REGIONS.filter(r=>r.id.startsWith('O'));
+          const quebecRegions  = SHOW_REGIONS.filter(r=>r.id.startsWith('Q'));
+          const sortedRegions  = [...SHOW_REGIONS].sort((a,b)=>regionCounts[b.id]-regionCounts[a.id]);
+          // Bar chart rows sorted by count
+          const regionRows = sortedRegions.map(r => {
+            const count = regionCounts[r.id];
+            if(!count) return '';
+            const pct = Math.round((count / maxRegion) * 100);
+            const isQ = r.id.startsWith('Q');
+            const color = isQ ? '#7c3fad' : '#2a7a8a';
+            return `<div style="margin-bottom:10px;max-width:500px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                <span style="font-weight:600;font-size:13px;min-width:50px;color:${color};">${r.id}</span>
+                <span style="font-size:12px;color:var(--text-light);flex:1;">${r.label.split('–')[1]?.trim()||r.label}</span>
+                <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count}</span>
+              </div>
+              <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
+                <div style="background:${color};height:8px;width:${pct}%;border-radius:5px;"></div>
+              </div>
+            </div>`;
+          }).join('');
+          // Region map — simple grid layout showing relative geography
+          function regionCell(r){
+            const count = regionCounts[r.id];
+            const intensity = count ? Math.max(30, Math.round((count/maxRegion)*100)) : 0;
+            const isQ = r.id.startsWith('Q');
+            const bg = count
+              ? (isQ ? `rgba(124,63,173,${intensity/100})` : `rgba(42,122,138,${intensity/100})`)
+              : 'var(--hover)';
+            const textColor = intensity > 55 ? '#fff' : 'var(--text)';
+            return `<div style="background:${bg};border:1px solid var(--border);border-radius:6px;padding:6px 4px;text-align:center;min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:2px;">
+              <div style="font-size:11px;font-weight:700;color:${textColor};">${r.id}</div>
+              <div style="font-size:10px;color:${textColor};opacity:0.85;line-height:1.2;">${r.label.split('–')[1]?.trim().split('/')[0].trim()||''}</div>
+              ${count ? `<div style="font-size:12px;font-weight:700;color:${textColor};">${count}</div>` : ''}
+            </div>`;
+          }
+          // Ontario grid: 2 cols × 6 rows roughly
+          const onGrid = ontarioRegions.map(r=>regionCell(r)).join('');
+          const qGrid  = quebecRegions.map(r=>regionCell(r)).join('');
+          return `<h3 style="margin:20px 0 10px;">Shows by Region</h3>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">${totalRegion} show${totalRegion===1?'':'s'} with region data
+              <span style="margin-left:12px;display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#2a7a8a;display:inline-block;"></span> Ontario</span>
+              <span style="margin-left:8px;display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#7c3fad;display:inline-block;"></span> Québec</span>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;">
+              <div style="flex:1;min-width:220px;">
+                <div style="font-size:12px;font-weight:700;color:#2a7a8a;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Ontario</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${onGrid}</div>
+              </div>
+              <div style="min-width:180px;">
+                <div style="font-size:12px;font-weight:700;color:#7c3fad;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Québec</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${qGrid}</div>
+              </div>
+            </div>
+            ${regionRows}`;
         })()}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
