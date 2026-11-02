@@ -8010,7 +8010,7 @@ function fffUpdateIncome(eventId,incId,field,val){
 
 function renderFamilyFunFest(){
   const fmt=n=>'$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
-  const canSeeFinancials = isManagerLogin();
+  const canSeeFinancials = getLoginLevel()==='owner' || getLoginLevel()==='manager';
   const events=[...fffGetEvents()].sort((a,b)=>b.year-a.year);
 
   const eventCards = events.map(ev=>{
