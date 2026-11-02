@@ -1751,6 +1751,8 @@ function visibleTabs(){
     if(t.id === 'nonprofit') return isManagerLogin() || hasNonProfitAccess();
     if(t.id === 'foundation') return isManagerLogin() || hasFoundationAccess();
     if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
+    // Supervisor: block the restricted tabs
+    if(getLoginLevel()==='supervisor') return canAccessTab(t.id);
     return true;
   });
 }
@@ -10106,6 +10108,18 @@ function updateTeamField(id, field, value){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
   m[field] = value;
+  // Keep login role in sync when team role changes
+  if(field === 'role'){
+    const login = DATA.logins.find(l=>l.name===m.name);
+    if(login){
+      // Guard: don't drop the last owner
+      if(login.role==='owner' && value!=='owner'){
+        const ownerCount = DATA.logins.filter(l=>l.role==='owner').length;
+        if(ownerCount<=1){ alert('You must keep at least one Owner login.'); return; }
+      }
+      login.role = value.toLowerCase();
+    }
+  }
   saveData();
 }
 function renameStaffMember(id, newName){
@@ -10210,6 +10224,9 @@ function setLoginRole(id, role){
     }
   }
   l.role = role;
+  // Keep team member role in sync
+  const tm = DATA.team.find(x=>x.name===l.name);
+  if(tm) tm.role = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
   saveData();
   showTab('manager');
 }
