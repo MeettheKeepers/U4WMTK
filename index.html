@@ -1025,6 +1025,7 @@ function normalizeData(d){
   if(!Array.isArray(d.wildlifeDeletedVideoIds)) d.wildlifeDeletedVideoIds = [];
   if(!d.nonprofit) d.nonprofit = { access: [] };
   if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
+  if(!Array.isArray(d.nonprofitRows)) d.nonprofitRows = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -7063,7 +7064,7 @@ const DEFAULT_EXTRA_INCOME = [
   {id:1, source:'Merchandise / Book Sales', amount:0, notes:''},
   {id:2, source:'Cash Shows (untracked)',    amount:0, notes:''},
 ];
-function getNonProfit(){ if(!DATA.nonprofit){ DATA.nonprofit=JSON.parse(JSON.stringify(DEFAULT_NONPROFIT)); } return DATA.nonprofit; }
+function getNonProfit(){ if(!Array.isArray(DATA.nonprofitRows)||!DATA.nonprofitRows.length){ DATA.nonprofitRows=JSON.parse(JSON.stringify(DEFAULT_NONPROFIT)); } return DATA.nonprofitRows; }
 function getExtraIncome(){ if(!DATA.extraIncome){ DATA.extraIncome=JSON.parse(JSON.stringify(DEFAULT_EXTRA_INCOME)); } return DATA.extraIncome; }
 function addNonProfitRow(){
   const rows=getNonProfit(); const newId=rows.length?Math.max(...rows.map(r=>r.id))+1:1;
@@ -7071,7 +7072,7 @@ function addNonProfitRow(){
   NONPROFIT_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function removeNonProfitRow(id){
-  DATA.nonprofit=getNonProfit().filter(r=>r.id!==id);
+  DATA.nonprofitRows=getNonProfit().filter(r=>r.id!==id);
   NONPROFIT_EDIT_OPEN=true; saveData(); showTab(CURRENT_TAB||'analytics');
 }
 function updateNonProfitField(id,field,val){
