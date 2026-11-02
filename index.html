@@ -5055,6 +5055,8 @@ function showDateGroupStatus(instances){
     return {border:'#e6a817', bg:'#fffbea', label:'❓ Missing occasion', text:'#7a5000'};
   if(shows.some(s=>!s.paid))
     return {border:'#c0453a', bg:'#fff5f5', label:'Unpaid', text:'#a33'};
+  if(isPastGroup && shows.some(s=> !s.clientPhone || !s.clientEmail))
+    return {border:'#b0b0b0', bg:'#f4f4f4', label:'⚠ Missing contact info', text:'#666666'};
   if(shows.every(s=>s.status==='completed'||s.status==='cancelled'))
     return {border:'transparent', bg:'', label:'', text:''};
   return {border:'#2fa84f', bg:'#f0fff5', label:'Paid', text:'#1a6b35'};
