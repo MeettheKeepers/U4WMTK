@@ -1620,8 +1620,8 @@ const TABS = [
   {id:'tasks', label:'Tasks'},
   {id:'animals', label:'Animals'},
   {id:'shows', label:'Shows'},
-  {id:'showcalendar', label:'Show Calendar'},
-  {id:'schedule', label:'Team Schedule'},
+  {id:'showcalendar', label:'Calendar'},
+  {id:'schedule', label:'Schedule'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
@@ -2908,7 +2908,7 @@ function renderU4W(){
   const subNav = `<div style="display:flex;gap:12px;padding:16px 16px 0;">
     ${subTabs.map(t=>{
       const active = U4W_SUBTAB===t.id;
-      return `<button onclick="U4W_SUBTAB='${t.id}';showTab('u4w')" style="flex:1;padding:18px 12px;background:${active?'var(--accent)':'var(--surface)'};border:2px solid ${active?'var(--accent)':'var(--border)'};border-radius:12px;cursor:pointer;font-size:16px;font-weight:700;color:${active?'#fff':'var(--text)'};text-align:center;transition:all .15s;">${t.label}</button>`;
+      return `<button onclick="U4W_SUBTAB='${t.id}';showTab('u4w')" style="flex:1;padding:18px 12px;background:${active?'#1a3a5c':'#f0f0f0'};border:2px solid ${active?'#1a3a5c':'#d0d0d0'};border-radius:12px;cursor:pointer;font-size:16px;font-weight:700;color:${active?'#ffffff':'#444444'};text-align:center;transition:all .15s;">${t.label}</button>`;
     }).join('')}
   </div>`;
   const inner = U4W_SUBTAB === 'nonprofit' ? renderNonProfit() : renderFoundation();
