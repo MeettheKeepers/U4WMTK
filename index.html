@@ -7989,7 +7989,7 @@ function renderFamilyFunFest(){
         </tr>`;
     }).join('');
 
-    const mascotList=[...(DATA.admin&&DATA.admin.mascots||[]),'Zara','Rex','Buddy','Luna','Milo'].filter((v,i,a)=>a.indexOf(v)===i);
+    const mascotList=getCharactersList();
 
     return `
     <div class="card" style="border-left:4px solid #1a5a8a;">
@@ -8105,45 +8105,14 @@ function renderFamilyFunFest(){
     </div>`;
   }).join('');
 
-  const chars = getCharactersList();
-  const charListHtml = chars.map((c,i)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
-      <span style="flex:1;font-size:14px;">${esc(c)}</span>
-      <button class="btn-ghost" style="color:#c0392b;font-size:12px;" onclick="fffRemoveCharacter(${i})">Remove</button>
-    </div>`).join('');
-
   return `
     <div class="card">
       <h2>🎪 Family Fun Fest</h2>
       <div class="sub">Track each year's event — location, venue, activities, income, and expenses.</div>
       <button class="btn-small" style="margin-top:10px;background:#1a5a8a;" onclick="fffNewEvent()">+ Add Event</button>
     </div>
-    <div class="card">
-      <h3 style="margin-bottom:10px;">🎭 Mascot / Character List</h3>
-      <div class="sub" style="margin-bottom:12px;">These characters appear as options in each event's Activities section.</div>
-      <div style="max-width:360px;">
-        ${charListHtml || '<div style="color:var(--gray);font-size:13px;">No characters yet.</div>'}
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <input type="text" id="fff-new-character" placeholder="Add a character…" style="flex:1;">
-          <button class="btn-small" onclick="fffAddCharacter()">+ Add</button>
-        </div>
-      </div>
-    </div>
-    ${events.length ? eventCards : '<div class="card"><div class="empty">No events yet — click "+ Add Year" to get started.</div></div>'}
+    ${events.length ? eventCards : '<div class="card"><div class="empty">No events yet — click "+ Add Event" to get started.</div></div>'}
   `;
-}
-function fffAddCharacter(){
-  const el = document.getElementById('fff-new-character');
-  const name = (el&&el.value||'').trim();
-  if(!name) return;
-  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
-  if(!DATA.characters.includes(name)){ DATA.characters.push(name); saveData(); }
-  showTab('familyfunfest');
-}
-function fffRemoveCharacter(idx){
-  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
-  if(idx>=0 && idx<DATA.characters.length){ DATA.characters.splice(idx,1); saveData(); }
-  showTab('familyfunfest');
 }
 
 const MANAGER_TABS = [
