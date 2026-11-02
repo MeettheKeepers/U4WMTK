@@ -643,7 +643,7 @@
    ========================================================= */
 const STORAGE_KEY = "ufw_app_data_v8";
 function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.name); }
-const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
+const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals","Family Fun Fest"];
 const CHARACTERS_LIST = ["Bee","Dino","Trixie","Spiderman","Spider Gwen","Mario","Ironman","Gorilla","Rescue Pup","Felix The Fox","Snowman"];
 function getCharactersList(){ return (DATA && Array.isArray(DATA.characters) && DATA.characters.length) ? DATA.characters : CHARACTERS_LIST; }
 const OCCASION_SHOW_TYPES = ["Country","Continent","Battle Match","Science","Archeology"];
