@@ -1031,6 +1031,8 @@ function normalizeData(d){
   if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
   if(!Array.isArray(d.nonprofitRows)) d.nonprofitRows = [];
   if(!Array.isArray(d.familyFunFest)) d.familyFunFest = [];
+  if(!d.roleDescriptions || typeof d.roleDescriptions !== 'object') d.roleDescriptions = {};
+  STAFF_SPECIALTIES.forEach(r=>{ if(d.roleDescriptions[r]===undefined) d.roleDescriptions[r]=''; });
   if(!Array.isArray(d.characters)) d.characters = CHARACTERS_LIST.slice();
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
@@ -1631,7 +1633,7 @@ const TABS = [
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
-const STAFF_SPECIALTIES = ['Animal Care','Wildlife Educator','MTK Racing','Character Walk arounds','Maintenance','Support','Manager','Non Profit','Office'];
+const STAFF_SPECIALTIES = ['Manager','Supervisor','MTK Racing','Character Walkaround','Wildlife Educator','Animal Care','Support','Maintenance'];
 function getLoginLevel(){
   if(!CURRENT_LOGIN) return 'keeper';
   const r = (CURRENT_LOGIN.role||'').toLowerCase();
@@ -2279,6 +2281,19 @@ function renderWelcome(){
     const cid = WELCOME_TAB.slice(7);
     const ct = (DATA.welcome && DATA.welcome.customTabs||[]).find(x=>x.id==cid);
     content = ct ? ct.content : '';
+  } else if(WELCOME_TAB === 'yourrole'){
+    // Dynamic: show descriptions for this staff member's assigned roles
+    const staffMember = DATA.team.find(m=>m.name===staffName);
+    const assignedRoles = staffMember ? (staffMember.specialties||[]) : [];
+    if(assignedRoles.length){
+      const rd = DATA.roleDescriptions || {};
+      content = assignedRoles.map(r=>{
+        const desc = rd[r] || '';
+        return `<strong style="font-size:15px;">${r}</strong>${desc ? '<br><br>'+desc.replace(/\n/g,'<br>') : '<br><br><em style="color:var(--gray);">No description added yet.</em>'}`;
+      }).join('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0;">');
+    } else {
+      content = '<em style="color:var(--gray);">No roles have been assigned to your profile yet. Contact a manager.</em>';
+    }
   } else {
     content = (DATA.welcome && DATA.welcome[WELCOME_TAB]) ? DATA.welcome[WELCOME_TAB] : '';
   }
@@ -7598,6 +7613,7 @@ function setManagerTab(tab){
   showTab(CURRENT_TAB === 'supervisor' ? 'supervisor' : 'manager');
 }
 let EMPLOYEE_FILE_ID = null;
+let MANAGER_STAFF_SUBTAB = 'list'; // 'list' | 'roles'
 function openEmployeeFile(id){
   EMPLOYEE_FILE_ID = id;
   showTab('manager');
@@ -8663,10 +8679,29 @@ function renderManager(){
     if(EMPLOYEE_FILE_ID && !fileMember) EMPLOYEE_FILE_ID = null;
     if(fileMember){
       body = renderEmployeeFile(fileMember);
+    } else if(MANAGER_STAFF_SUBTAB === 'roles'){
+      body = `
+        <div class="card">
+          <h2>Staff Roles</h2>
+          <div class="sub">Define what each role means at MTK. Each staff member's "Your Role" tab in Welcome will show the descriptions for the roles assigned to them.</div>
+          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
+            <button onclick="MANAGER_STAFF_SUBTAB='list';showTab('manager')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid transparent;color:#666;margin-bottom:-2px;">Staff List</button>
+            <button style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid var(--accent);color:var(--accent);margin-bottom:-2px;">Roles</button>
+          </div>
+          ${STAFF_SPECIALTIES.map(r=>`
+            <div style="margin-bottom:18px;">
+              <label style="font-weight:700;font-size:14px;display:block;margin-bottom:6px;">${esc(r)}</label>
+              <textarea rows="4" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);background:var(--bg);resize:vertical;" placeholder="Describe what this role involves…" oninput="saveRoleDescription('${r.replace(/'/g,"\\'")}',this.value)">${esc(DATA.roleDescriptions[r]||'')}</textarea>
+            </div>`).join('')}
+        </div>`;
     } else {
       body = `
         <div class="card">
           <h2>Staff Settings</h2>
+          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
+            <button style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid var(--accent);color:var(--accent);margin-bottom:-2px;">Staff List</button>
+            <button onclick="MANAGER_STAFF_SUBTAB='roles';showTab('manager')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid transparent;color:#666;margin-bottom:-2px;">Roles</button>
+          </div>
           <div class="sub">Open a staff member's Employee File to see their Welcome acknowledgments, contact info, write-ups, incidents, and emergency contact.</div>
           <div class="sub" style="margin-bottom:6px;">Work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong></div>
           <table>
@@ -10046,6 +10081,11 @@ document.addEventListener('click', function(e){
   if(e.target.closest && e.target.closest('[id^="staff-spec-summary-"]')) return;
   closeSpecialtyDropdown();
 });
+function saveRoleDescription(role, text){
+  if(!DATA.roleDescriptions) DATA.roleDescriptions = {};
+  DATA.roleDescriptions[role] = text;
+  saveData();
+}
 function updateTeamSpecialty(id, specialty, checked){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
