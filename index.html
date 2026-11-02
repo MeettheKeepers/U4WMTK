@@ -6851,6 +6851,7 @@ function renderAnimalManagerCard(a){
 let MANAGER_TAB = 'overview';
 let ANALYTICS_TAB = 'shows';
 let FINANCIALS_SUB_TAB = 'income';
+let SHOWS_YEAR_DRILL = null; // year string when drilling into a year's show types
 
 // Historical year data imported from Excel records (2021–2025)
 const HISTORICAL_YEARS = [
@@ -9244,7 +9245,7 @@ function renderManager(){
       </div>
     `;
   } else if(MANAGER_TAB === 'analytics'){
-    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'History'}];
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'}];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
     let analyticsBody = '';
 
@@ -9273,23 +9274,57 @@ function renderManager(){
         </div>`;
       }).join('');
       const yearCounts = {};
-      completedShows.forEach(s => { const yr=(s.date||'').slice(0,4); if(yr) yearCounts[yr]=(yearCounts[yr]||0)+1; });
+      const yearShowTypes = {}; // { '2026': { Country: 5, Continent: 3, ... } }
+      completedShows.forEach(s => {
+        const yr=(s.date||'').slice(0,4);
+        if(!yr) return;
+        yearCounts[yr]=(yearCounts[yr]||0)+1;
+        if(!yearShowTypes[yr]) yearShowTypes[yr]={};
+        (s.showTypes||[]).forEach(t=>{ yearShowTypes[yr][t]=(yearShowTypes[yr][t]||0)+1; });
+      });
+      // Merge in historical years (2023–2025 outreach data) for drill-down
+      HISTORICAL_YEARS.forEach(h=>{
+        if(!h.outreach) return;
+        const yr = String(h.year);
+        if(yearShowTypes[yr]) return; // live data takes priority
+        yearShowTypes[yr] = { Country: h.outreach.country, Continent: h.outreach.continent, Custom: h.outreach.custom, Free: h.outreach.free };
+        if(!yearCounts[yr]) yearCounts[yr] = h.shows || 0;
+      });
+      const maxYr = Math.max(1,...Object.values(yearCounts));
       const yearRows = Object.keys(yearCounts).sort().reverse().map(yr => {
         const count = yearCounts[yr];
-        const maxYr = Math.max(1,...Object.values(yearCounts));
         const pct = Math.round((count/maxYr)*100);
-        return `<div style="margin-bottom:10px;max-width:400px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
-            <span style="font-weight:700;font-size:14px;min-width:60px;">${yr}</span>
+        const isDrilled = SHOWS_YEAR_DRILL === yr;
+        const types = yearShowTypes[yr] || {};
+        const typeEntries = Object.entries(types).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+        const maxType = Math.max(1,...typeEntries.map(([,v])=>v));
+        const drillHtml = isDrilled ? `
+          <div style="margin-top:10px;padding:12px;background:var(--hover);border-radius:8px;">
+            ${typeEntries.map(([t,c])=>`
+              <div style="margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                  <span style="font-size:13px;font-weight:600;min-width:160px;">${t}</span>
+                  <span style="font-size:13px;color:var(--text-light);">${c} show${c===1?'':'s'}</span>
+                </div>
+                <div style="background:#d0d0d0;border-radius:4px;height:6px;overflow:hidden;">
+                  <div style="background:var(--green);height:6px;width:${Math.round((c/maxType)*100)}%;border-radius:4px;"></div>
+                </div>
+              </div>`).join('') || '<div style="font-size:13px;color:var(--text-light);">No type breakdown available.</div>'}
+          </div>` : '';
+        return `<div style="margin-bottom:10px;max-width:500px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer;" onclick="SHOWS_YEAR_DRILL=SHOWS_YEAR_DRILL==='${yr}'?null:'${yr}';showTab('manager')">
+            <span style="font-weight:700;font-size:14px;min-width:60px;color:var(--green);">${yr}</span>
             <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count} show${count===1?'':'s'}</span>
+            <span style="font-size:12px;color:var(--text-light);margin-left:auto;">${isDrilled?'▾':'▸'}</span>
           </div>
           <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
             <div style="background:var(--green);height:8px;width:${pct}%;border-radius:5px;"></div>
           </div>
+          ${drillHtml}
         </div>`;
       }).join('');
       analyticsBody = `
-        ${yearRows ? `<h3 style="margin:0 0 10px;">Shows by year</h3>${yearRows}<hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">` : ''}
+        ${yearRows ? `<h3 style="margin:0 0 4px;">Shows by year</h3><div class="sub" style="margin-bottom:12px;">Click a year to see show type breakdown.</div>${yearRows}<hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">` : ''}
         <div class="stat-row" style="margin-bottom:20px;">
           <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
           <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
@@ -9962,9 +9997,12 @@ function renderManager(){
       }).join('');
       const totalInc = HISTORICAL_YEARS.reduce((s,y)=>s+(y.income||0),0);
       const totalExp = HISTORICAL_YEARS.filter(y=>y.expenses!=null).reduce((s,y)=>s+(y.expenses||0),0);
+      // Merge 2026 live show count
+      const live2026 = (DATA.shows||[]).filter(s=>(s.date||'').startsWith('2026') && showStatus(s)==='completed').length;
+      const totalHistShows = HISTORICAL_YEARS.filter(y=>y.shows).reduce((s,y)=>s+y.shows,0) + live2026;
       analyticsBody = `
-        <h3 style="margin:0 0 4px;">Year-over-Year Overview</h3>
-        <div class="sub" style="margin-bottom:16px;">Historical data from Excel records (2021–2025). 2026 is tracked live from your Shows.</div>
+        <h3 style="margin:0 0 4px;">Year-over-Year Totals</h3>
+        <div class="sub" style="margin-bottom:16px;">Historical income & expenses from Excel records (2021–2025) + live 2026 show count.</div>
         <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div class="stat-box" style="border-left:4px solid #27ae60;">
             <div class="num" style="color:#27ae60;">${fmtH(totalInc)}</div>
@@ -9975,8 +10013,8 @@ function renderManager(){
             <div class="lbl">Total Expenses (2022–2025)</div>
           </div>
           <div class="stat-box" style="border-left:4px solid #1a5a8a;">
-            <div class="num" style="color:#1a5a8a;">${HISTORICAL_YEARS.filter(y=>y.shows).reduce((s,y)=>s+y.shows,0)}</div>
-            <div class="lbl">Total Outreach Shows (2023–2025)</div>
+            <div class="num" style="color:#1a5a8a;">${totalHistShows}</div>
+            <div class="lbl">Total Shows (2023–2026)</div>
           </div>
         </div>
         <div style="overflow-x:auto;">
@@ -9989,11 +10027,21 @@ function renderManager(){
               <th style="padding:10px 12px;">Shows</th>
               <th style="padding:10px 12px;">Package Breakdown</th>
             </tr></thead>
-            <tbody>${rows}</tbody>
+            <tbody>
+              ${rows}
+              <tr style="border-top:2px solid var(--border);background:#f5fff8;">
+                <td style="padding:10px 12px;font-weight:700;">2026 (live)</td>
+                <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">Tracked in Shows</td>
+                <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">Tracked in Financials</td>
+                <td style="padding:10px 12px;color:var(--text-light);">—</td>
+                <td style="padding:10px 12px;font-weight:700;color:#1a5a8a;">${live2026} completed</td>
+                <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">See Analytics → Shows</td>
+              </tr>
+            </tbody>
           </table>
         </div>
         <div style="margin-top:16px;padding:12px 16px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-light);">
-          📊 Income and expense figures are totals from your Excel records. Show counts and package breakdowns are from the outreach tracking sheets. 2021 expenses were not recorded in the source file.
+          📊 Income and expense figures are from your Excel records. Show counts and package breakdowns are from the outreach tracking sheets. 2021 expenses were not recorded. 2025 outreach shows reflect Jan–Mar only.
         </div>`;
     }
 
