@@ -1030,6 +1030,8 @@ function normalizeData(d){
   if(!d.nonprofit) d.nonprofit = { access: [] };
   if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
   if(!Array.isArray(d.nonprofitRows)) d.nonprofitRows = [];
+  if(!Array.isArray(d.nonprofit.boardMembers)) d.nonprofit.boardMembers = [];
+  if(d.nonprofit.bylaws===undefined) d.nonprofit.bylaws = '';
   if(!Array.isArray(d.familyFunFest)) d.familyFunFest = [];
   if(!d.roleDescriptions || typeof d.roleDescriptions !== 'object') d.roleDescriptions = {};
   STAFF_SPECIALTIES.forEach(r=>{ if(d.roleDescriptions[r]===undefined) d.roleDescriptions[r]=''; });
@@ -2624,6 +2626,7 @@ function renderManagerQuizStaffDetail(){
 /* ---------- NON PROFIT TAB ---------- */
 let GRANTS_EDITING_ID_NP = null; // separate from admin grants editing
 let GRANTS_SHOW_ARCHIVED_NP = false;
+let NONPROFIT_SUBTAB = 'admin'; // 'admin' | 'board' | 'bylaws'
 function copyClientEmail(email){
   navigator.clipboard.writeText(email).then(()=>{
     const btn = event && event.target;
@@ -2658,26 +2661,34 @@ function toggleNonProfitAccess(name, checked){
 function renderNonProfit(){
   const isMgr = isManagerLogin();
   const loggedIn = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
-  const log = (DATA.admin && DATA.admin.grantsLog) || [];
-  const sheetCollapsed = !!ADMIN_COLLAPSED['grants-sheet'];
-  const logCollapsed   = !!ADMIN_COLLAPSED['grants-log'];
-  const activeLog   = log.filter(e=>!e.archived);
-  const archivedLog = log.filter(e=>e.archived);
-  const visibleLog  = GRANTS_SHOW_ARCHIVED_NP ? archivedLog : activeLog;
   const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
   const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
-  return `
-    <div class="card">
-      <h2>U4W Non Profit Org.</h2>
+
+  const subTabs = [{id:'admin',label:'Admin'},{id:'board',label:'Board Members'},{id:'bylaws',label:'By-laws'}];
+  if(!subTabs.find(t=>t.id===NONPROFIT_SUBTAB)) NONPROFIT_SUBTAB='admin';
+  const subNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+    ${subTabs.map(t=>`<button onclick="NONPROFIT_SUBTAB='${t.id}';showTab('nonprofit')" style="padding:8px 20px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${NONPROFIT_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${NONPROFIT_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  </div>`;
+
+  let body = '';
+
+  if(NONPROFIT_SUBTAB === 'admin'){
+    const log = (DATA.admin && DATA.admin.grantsLog) || [];
+    const sheetCollapsed = ADMIN_COLLAPSED['grants-sheet']!==false;
+    const logCollapsed   = ADMIN_COLLAPSED['grants-log']!==false;
+    const activeLog   = log.filter(e=>!e.archived);
+    const archivedLog = log.filter(e=>e.archived);
+    const visibleLog  = GRANTS_SHOW_ARCHIVED_NP ? archivedLog : activeLog;
+    body = `
       <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
-        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-sheet']=!ADMIN_COLLAPSED['grants-sheet'];showTab('nonprofit')">
+        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-sheet']=ADMIN_COLLAPSED['grants-sheet']===false?true:false;showTab('nonprofit')">
           <strong>📊 Grant Pipeline Spreadsheet</strong>
           <button class="admin-toggle-btn">${sheetCollapsed?'▶':'▼'}</button>
         </div>
         ${sheetCollapsed?'':` <div style="padding:14px 16px;">${renderAdminSheets()}</div>`}
       </div>
       <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-log']=!ADMIN_COLLAPSED['grants-log'];showTab('nonprofit')">
+        <div class="admin-section-hdr" style="padding:12px 16px;background:var(--surface);" onclick="ADMIN_COLLAPSED['grants-log']=ADMIN_COLLAPSED['grants-log']===false?true:false;showTab('nonprofit')">
           <strong>📝 Notes Log ${activeLog.length?`<span style="font-size:12px;color:var(--text-light);font-weight:400;">(${activeLog.length} active${archivedLog.length?' · '+archivedLog.length+' archived':''})</span>`:''}
           </strong>
           <button class="admin-toggle-btn">${logCollapsed?'▶':'▼'}</button>
@@ -2715,11 +2726,53 @@ function renderNonProfit(){
             }).join('') : `<div class="empty">${GRANTS_SHOW_ARCHIVED_NP?'No archived notes.':'No notes yet.'}</div>`}
           </div>
         </div>`}
-      </div>
+      </div>`;
+
+  } else if(NONPROFIT_SUBTAB === 'board'){
+    const members = (DATA.nonprofit && DATA.nonprofit.boardMembers) || [];
+    body = members.length ? `
+      <table>
+        <tr><th>Name</th><th>Title</th><th>Email</th><th>Phone</th>${isMgr?'<th></th>':''}</tr>
+        ${members.map(bm=>`<tr>
+          <td style="font-weight:600;">${esc(bm.name)}</td>
+          <td>${esc(bm.title||'—')}</td>
+          <td>${esc(bm.email||'—')}</td>
+          <td>${esc(bm.phone||'—')}</td>
+          ${isMgr?`<td><button class="btn-ghost" style="color:var(--red);padding:2px 8px;font-size:12px;" onclick="removeBoardMember(${bm.id})">Remove</button></td>`:''}
+        </tr>`).join('')}
+      </table>` : '<div class="empty">No board members added yet.</div>';
+    if(isMgr) body += `
+      <div class="add-row" style="margin-top:16px;flex-wrap:wrap;">
+        <input type="text" id="bm-name" placeholder="Name" style="flex:2;min-width:120px;">
+        <input type="text" id="bm-title" placeholder="Title / Role" style="flex:2;min-width:120px;">
+        <input type="text" id="bm-email" placeholder="Email" style="flex:2;min-width:140px;">
+        <input type="text" id="bm-phone" placeholder="Phone" style="flex:1;min-width:100px;">
+        <button class="btn-small" onclick="addBoardMember()">Add Member</button>
+      </div>`;
+
+  } else if(NONPROFIT_SUBTAB === 'bylaws'){
+    const content = (DATA.nonprofit && DATA.nonprofit.bylaws) || '';
+    if(isMgr){
+      body = `
+        <div class="sub" style="margin-bottom:10px;">Edit the by-laws content below. Changes save automatically on blur.</div>
+        <div class="rich-editor-wrap">
+          ${richToolbarFull('np-bylaws-editor')}
+          <div class="welcome-editor" id="np-bylaws-editor" contenteditable="true" onblur="saveNonprofitBylaws()" style="min-height:300px;">${content||''}</div>
+        </div>`;
+    } else {
+      body = content ? `<div class="welcome-content">${content}</div>` : '<div class="empty">No by-laws posted yet.</div>';
+    }
+  }
+
+  return `
+    <div class="card">
+      <h2>U4W Non-Profit Organization</h2>
+      ${subNav}
+      ${body}
     </div>
-    ${isMgr ? `<div class="card" style="margin-top:8px;">
+    ${isMgr ? `<div class="card">
       <h3 style="margin-bottom:8px;">Who Can See This Tab</h3>
-      <div class="sub" style="margin-bottom:10px;">Select staff who can access U4W Non Profit Org.</div>
+      <div class="sub" style="margin-bottom:10px;">Select staff who can access U4W Non-Profit Organization</div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;">
         ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
           <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
@@ -2728,6 +2781,25 @@ function renderNonProfit(){
       </div>
     </div>` : ''}
   `;
+}
+function addBoardMember(){
+  const name = val('bm-name'); if(!name) return;
+  if(!DATA.nonprofit.boardMembers) DATA.nonprofit.boardMembers = [];
+  DATA.nonprofit.boardMembers.push({
+    id: nextId(DATA.nonprofit.boardMembers),
+    name, title: val('bm-title'), email: val('bm-email'), phone: val('bm-phone')
+  });
+  saveData(); showTab('nonprofit');
+}
+function removeBoardMember(id){
+  DATA.nonprofit.boardMembers = (DATA.nonprofit.boardMembers||[]).filter(b=>b.id!==id);
+  saveData(); showTab('nonprofit');
+}
+function saveNonprofitBylaws(){
+  const el = document.getElementById('np-bylaws-editor');
+  if(!el) return;
+  DATA.nonprofit.bylaws = el.innerHTML;
+  saveData();
 }
 function addGrantsNoteNP(note){
   if(!note) return;
@@ -2829,15 +2901,18 @@ function renderU4W(){
   const isMgr = isManagerLogin();
   // Determine which sub-tabs this user can see
   const subTabs = [];
-  if(isMgr || hasNonProfitAccess()) subTabs.push({id:'nonprofit', label:'U4W Non Profit Org.'});
-  if(isMgr || hasFoundationAccess()) subTabs.push({id:'foundation', label:'U4W Charity FDN'});
+  if(isMgr || hasNonProfitAccess()) subTabs.push({id:'nonprofit', label:'U4W Non-Profit Organization'});
+  if(isMgr || hasFoundationAccess()) subTabs.push({id:'foundation', label:'U4W Charity Foundation'});
   if(!subTabs.length) return `<div class="card"><div class="empty">No sections available.</div></div>`;
   if(!subTabs.find(t=>t.id===U4W_SUBTAB)) U4W_SUBTAB = subTabs[0].id;
-  const subNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;">
-    ${subTabs.map(t=>`<button onclick="U4W_SUBTAB='${t.id}';showTab('u4w')" style="padding:9px 22px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${U4W_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${U4W_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  const subNav = `<div style="display:flex;gap:12px;padding:16px 16px 0;">
+    ${subTabs.map(t=>{
+      const active = U4W_SUBTAB===t.id;
+      return `<button onclick="U4W_SUBTAB='${t.id}';showTab('u4w')" style="flex:1;padding:18px 12px;background:${active?'var(--accent)':'var(--surface)'};border:2px solid ${active?'var(--accent)':'var(--border)'};border-radius:12px;cursor:pointer;font-size:16px;font-weight:700;color:${active?'#fff':'var(--text)'};text-align:center;transition:all .15s;">${t.label}</button>`;
+    }).join('')}
   </div>`;
   const inner = U4W_SUBTAB === 'nonprofit' ? renderNonProfit() : renderFoundation();
-  return `<div class="card" style="padding-bottom:0;margin-bottom:0;">${subNav}</div>${inner}`;
+  return `<div class="card" style="padding-bottom:16px;">${subNav}</div>${inner}`;
 }
 function renderFoundation(){
   const isMgr = isManagerLogin();
@@ -2858,7 +2933,7 @@ function renderFoundation(){
   if(ct){
     body = `<div class="card">
       <h2>${esc(ct.title)}</h2>
-      ${isMgr ? `<div class="sub" style="margin-bottom:10px;">To edit this content, go to <strong>Manager → U4W Charity FDN</strong>.</div>` : ''}
+      ${isMgr ? `<div class="sub" style="margin-bottom:10px;">To edit this content, go to <strong>Manager → U4W Charity Foundation</strong>.</div>` : ''}
       ${ct.content ? `<div class="welcome-content">${ct.content}</div>` : '<div class="empty">No content yet.</div>'}
     </div>`;
   }
@@ -8187,7 +8262,7 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
-  {id:'foundation', label:'U4W Charity FDN'},
+  {id:'foundation', label:'U4W Charity Foundation'},
   {id:'data', label:'Data Tools'}
 ];
 const WELCOME_EDIT_SECTIONS = [
@@ -9915,8 +9990,8 @@ function renderManager(){
     const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
     body = `
       <div class="card">
-        <h2 style="margin-bottom:6px;">Who Can See U4W Charity FDN</h2>
-        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Charity FDN tab.</div>
+        <h2 style="margin-bottom:6px;">Who Can See U4W Charity Foundation</h2>
+        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Charity Foundation tab.</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:0;">
           ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
             <input type="checkbox" ${faccess.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
