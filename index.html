@@ -2627,6 +2627,16 @@ function renderManagerQuizStaffDetail(){
 let GRANTS_EDITING_ID_NP = null; // separate from admin grants editing
 let GRANTS_SHOW_ARCHIVED_NP = false;
 let NONPROFIT_SUBTAB = 'admin'; // 'admin' | 'board' | 'bylaws'
+function renameClient(oldName){
+  const newName = prompt(`Rename "${oldName}" to:\n\nAll shows with this client name will be updated. To merge duplicates, type the exact name you want to keep.`, oldName);
+  if(!newName || newName.trim() === oldName) return;
+  const trimmed = newName.trim();
+  let count = 0;
+  DATA.shows.forEach(s=>{ if((s.clientName||'').trim()===oldName){ s.clientName=trimmed; count++; } });
+  saveData();
+  showTab('manager');
+  alert(`Updated ${count} show${count!==1?'s':''} from "${oldName}" → "${trimmed}".`);
+}
 function copyClientEmail(email){
   navigator.clipboard.writeText(email).then(()=>{
     const btn = event && event.target;
@@ -9390,7 +9400,7 @@ function renderManager(){
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.email)||'<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.phone)||'<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${c.lastDate ? fmtShortDate(c.lastDate) : '—'}</td>
-          <td style="padding:10px 12px;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button>` : ''}</td>
+          <td style="padding:10px 12px;white-space:nowrap;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button> ` : ''}<button class="btn-ghost" style="font-size:12px;padding:3px 10px;" onclick="renameClient('${esc(c.name).replace(/'/g,"\\'")}')">Rename / Merge</button></td>
         </tr>`).join('');
       const allEmails = clients.filter(c=>c.email).map(c=>c.email);
       analyticsBody = `
