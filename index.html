@@ -9251,12 +9251,19 @@ function renderManager(){
 
     if(ANALYTICS_TAB === 'shows'){
       const allShows = DATA.shows || [];
-      const completedShows = allShows.filter(s => showStatus(s) === 'completed');
+      const allCompleted = allShows.filter(s => showStatus(s) === 'completed');
       const upcomingShows = allShows.filter(s => isShowUpcoming(s));
+      // Filter by selected year if drilled in
+      const completedShows = SHOWS_YEAR_DRILL
+        ? allCompleted.filter(s=>(s.date||'').startsWith(SHOWS_YEAR_DRILL))
+        : allCompleted;
+      const viewShows = SHOWS_YEAR_DRILL
+        ? allShows.filter(s=>(s.date||'').startsWith(SHOWS_YEAR_DRILL))
+        : allShows;
       const typeCounts = {};
       SHOW_TYPES_LIST.forEach(t => { typeCounts[t] = 0; });
       completedShows.forEach(s => { (s.showTypes||[]).forEach(t => { if(typeCounts[t] !== undefined) typeCounts[t]++; }); });
-      const fffEventCount = fffGetEvents().length;
+      const fffEventCount = SHOWS_YEAR_DRILL ? 0 : fffGetEvents().length;
       if(fffEventCount > 0) typeCounts['Family Fun Fest'] = fffEventCount;
       const maxCount = Math.max(1, ...Object.values(typeCounts));
       const sortedTypes = Object.keys(typeCounts).sort((a,b) => typeCounts[b] - typeCounts[a]);
@@ -9294,49 +9301,42 @@ function renderManager(){
       const yearRows = Object.keys(yearCounts).sort().reverse().map(yr => {
         const count = yearCounts[yr];
         const pct = Math.round((count/maxYr)*100);
-        const isDrilled = SHOWS_YEAR_DRILL === yr;
-        const types = yearShowTypes[yr] || {};
-        const typeEntries = Object.entries(types).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
-        const maxType = Math.max(1,...typeEntries.map(([,v])=>v));
-        const drillHtml = isDrilled ? `
-          <div style="margin-top:10px;padding:12px;background:var(--hover);border-radius:8px;">
-            ${typeEntries.map(([t,c])=>`
-              <div style="margin-bottom:8px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
-                  <span style="font-size:13px;font-weight:600;min-width:160px;">${t}</span>
-                  <span style="font-size:13px;color:var(--text-light);">${c} show${c===1?'':'s'}</span>
-                </div>
-                <div style="background:#d0d0d0;border-radius:4px;height:6px;overflow:hidden;">
-                  <div style="background:var(--green);height:6px;width:${Math.round((c/maxType)*100)}%;border-radius:4px;"></div>
-                </div>
-              </div>`).join('') || '<div style="font-size:13px;color:var(--text-light);">No type breakdown available.</div>'}
-          </div>` : '';
-        return `<div style="margin-bottom:10px;max-width:500px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer;" onclick="SHOWS_YEAR_DRILL=SHOWS_YEAR_DRILL==='${yr}'?null:'${yr}';showTab('manager')">
-            <span style="font-weight:700;font-size:14px;min-width:60px;color:var(--green);">${yr}</span>
+        const isSelected = SHOWS_YEAR_DRILL === yr;
+        return `<div style="margin-bottom:8px;max-width:500px;cursor:pointer;" onclick="SHOWS_YEAR_DRILL=SHOWS_YEAR_DRILL==='${yr}'?null:'${yr}';showTab('manager')">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;padding:6px 10px;border-radius:8px;${isSelected?'background:#e8f5ed;outline:2px solid var(--green);':''}">
+            <span style="font-weight:700;font-size:14px;min-width:60px;color:${isSelected?'var(--green)':'inherit'};">${yr}</span>
             <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count} show${count===1?'':'s'}</span>
-            <span style="font-size:12px;color:var(--text-light);margin-left:auto;">${isDrilled?'▾':'▸'}</span>
+            ${isSelected?'<span style="margin-left:auto;font-size:12px;font-weight:700;color:var(--green);">Viewing ✓</span>':''}
           </div>
           <div style="background:var(--hover);border-radius:5px;height:8px;overflow:hidden;">
-            <div style="background:var(--green);height:8px;width:${pct}%;border-radius:5px;"></div>
+            <div style="background:${isSelected?'var(--green)':'#bbb'};height:8px;width:${pct}%;border-radius:5px;"></div>
           </div>
-          ${drillHtml}
         </div>`;
       }).join('');
+      const yearBanner = SHOWS_YEAR_DRILL ? `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:10px 16px;background:#e8f5ed;border-radius:10px;border:1px solid var(--green);">
+          <span style="font-weight:700;color:var(--green);font-size:16px;">📅 ${SHOWS_YEAR_DRILL}</span>
+          <span style="font-size:13px;color:var(--text-light);">All stats below are filtered to this year.</span>
+          <button class="btn-ghost" style="margin-left:auto;font-size:12px;" onclick="SHOWS_YEAR_DRILL=null;showTab('manager')">✕ Clear</button>
+        </div>` : '';
       analyticsBody = `
-        ${yearRows ? `<h3 style="margin:0 0 4px;">Shows by year</h3><div class="sub" style="margin-bottom:12px;">Click a year to see show type breakdown.</div>${yearRows}<hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">` : ''}
+        <h3 style="margin:0 0 4px;">Shows by year</h3>
+        <div class="sub" style="margin-bottom:10px;">Click a year — everything below updates to show that year's data.</div>
+        ${yearRows}
+        <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+        ${yearBanner}
         <div class="stat-row" style="margin-bottom:20px;">
-          <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
+          <div class="stat-box"><div class="num">${SHOWS_YEAR_DRILL ? completedShows.length : allShows.length}</div><div class="lbl">${SHOWS_YEAR_DRILL ? 'Shows in '+SHOWS_YEAR_DRILL : 'Total shows (all time)'}</div></div>
           <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
-          <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
+          <div class="stat-box"><div class="num">${SHOWS_YEAR_DRILL ? '—' : upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
         </div>
         <h3 style="margin-bottom:14px;">Completed shows by type</h3>
-        ${typeRows}
+        ${completedShows.length ? typeRows : '<div class="empty">No completed show data available for this year.</div>'}
         ${(()=>{
           const charCounts = {};
           getCharactersList().forEach(c => { charCounts[c] = 0; });
-          allShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; else charCounts[c]=1; }); });
-          const totalCharShows = allShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
+          viewShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; else charCounts[c]=1; }); });
+          const totalCharShows = viewShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
           const maxChar = Math.max(1, ...Object.values(charCounts));
           const charRows = [...getCharactersList()].sort((a,b)=>(charCounts[b]||0)-(charCounts[a]||0)).map(c => {
             const count = charCounts[c];
@@ -9357,7 +9357,7 @@ function renderManager(){
         })()}
         ${(()=>{
           // Only count shows where an occasion was explicitly selected via the occasion picker
-          const occasionShows = allShows.filter(s=>(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)));
+          const occasionShows = viewShows.filter(s=>(s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t)));
           if(!occasionShows.length) return '';
           const occCounts = {};
           OCCASIONS_LIST.forEach(o => { occCounts[o] = 0; });
@@ -9389,7 +9389,7 @@ function renderManager(){
         ${(()=>{
           const regionCounts = {};
           SHOW_REGIONS.forEach(r => { regionCounts[r.id] = 0; });
-          allShows.forEach(s => { if(s.region && regionCounts[s.region]!==undefined) regionCounts[s.region]++; });
+          viewShows.forEach(s => { if(s.region && regionCounts[s.region]!==undefined) regionCounts[s.region]++; });
           const maxRegion = Math.max(1, ...Object.values(regionCounts));
           const sortedRegions = SHOW_REGIONS.slice().sort((a,b) => regionCounts[b.id] - regionCounts[a.id]);
           const regionRows = sortedRegions.map(r => {
@@ -9995,22 +9995,37 @@ function renderManager(){
           <td style="padding:10px 12px;font-size:12px;color:var(--text-light);">${y.outreach ? `Country ${y.outreach.country} · Continent ${y.outreach.continent} · Custom ${y.outreach.custom} · Free ${y.outreach.free}` : '—'}</td>
         </tr>`;
       }).join('');
-      const totalInc = HISTORICAL_YEARS.reduce((s,y)=>s+(y.income||0),0);
-      const totalExp = HISTORICAL_YEARS.filter(y=>y.expenses!=null).reduce((s,y)=>s+(y.expenses||0),0);
-      // Merge 2026 live show count
-      const live2026 = (DATA.shows||[]).filter(s=>(s.date||'').startsWith('2026') && showStatus(s)==='completed').length;
+      const histInc = HISTORICAL_YEARS.reduce((s,y)=>s+(y.income||0),0);
+      const histExp = HISTORICAL_YEARS.filter(y=>y.expenses!=null).reduce((s,y)=>s+(y.expenses||0),0);
+      // Live 2026+ show revenue using same pricing as Income analytics tab
+      const TOTALS_PRICES = {'Country':350,'Continent':475,'Display':2500,'MTK Racing':2000,'Archeology':299,'Battle Match':350,'Science':299,'Fairs/Festivals':1400};
+      const liveShowIncome = (DATA.shows||[]).filter(s=>showStatus(s)==='completed').reduce((sum,s)=>{
+        const days = getShowDays(s).length;
+        return sum + (s.showTypes||[]).reduce((t,type)=>{
+          if(type==='Character Walkaround'){ const nc=(s.characters||[]).length; return t+(nc>=3?1800:nc===2?1500:1200)*days; }
+          const p=TOTALS_PRICES[type]; if(!p) return t;
+          return t+(['Display','MTK Racing','Fairs/Festivals'].includes(type)?p*days:p);
+        },0);
+      },0);
+      // Live 2026+ expenses: monthly recurring × 12
+      const liveMonthlyExp = (DATA.expenses||[]).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+      const liveAnnualExp = liveMonthlyExp * 12;
+      const totalInc = histInc + liveShowIncome;
+      const totalExp = histExp + liveAnnualExp;
+      // Live 2026 completed show count
+      const live2026 = (DATA.shows||[]).filter(s=>showStatus(s)==='completed').length;
       const totalHistShows = HISTORICAL_YEARS.filter(y=>y.shows).reduce((s,y)=>s+y.shows,0) + live2026;
       analyticsBody = `
         <h3 style="margin:0 0 4px;">Year-over-Year Totals</h3>
-        <div class="sub" style="margin-bottom:16px;">Historical income & expenses from Excel records (2021–2025) + live 2026 show count.</div>
+        <div class="sub" style="margin-bottom:16px;">Historical records (2021–2025) + live show revenue and expenses combined.</div>
         <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div class="stat-box" style="border-left:4px solid #27ae60;">
             <div class="num" style="color:#27ae60;">${fmtH(totalInc)}</div>
-            <div class="lbl">Total Income (2021–2025)</div>
+            <div class="lbl">Total Income (All Time)</div>
           </div>
           <div class="stat-box" style="border-left:4px solid #c0392b;">
             <div class="num" style="color:#c0392b;">${fmtH(totalExp)}</div>
-            <div class="lbl">Total Expenses (2022–2025)</div>
+            <div class="lbl">Total Expenses (All Time)</div>
           </div>
           <div class="stat-box" style="border-left:4px solid #1a5a8a;">
             <div class="num" style="color:#1a5a8a;">${totalHistShows}</div>
@@ -10030,10 +10045,16 @@ function renderManager(){
             <tbody>
               ${rows}
               <tr style="border-top:2px solid var(--border);background:#f5fff8;">
-                <td style="padding:10px 12px;font-weight:700;">2026 (live)</td>
-                <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">Tracked in Shows</td>
-                <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">Tracked in Financials</td>
-                <td style="padding:10px 12px;color:var(--text-light);">—</td>
+                <td style="padding:10px 12px;font-weight:700;">2026 <span style="font-size:11px;color:#27ae60;font-weight:400;">live</span></td>
+                <td style="padding:10px 12px;">
+                  <div style="font-weight:700;color:#1a6b35;font-size:14px;">${fmtH(liveShowIncome)}</div>
+                  <div style="font-size:11px;color:var(--text-light);margin-top:2px;">From completed shows</div>
+                </td>
+                <td style="padding:10px 12px;">
+                  <div style="font-weight:700;color:#c0392b;font-size:14px;">${fmtH(liveAnnualExp)}</div>
+                  <div style="font-size:11px;color:var(--text-light);margin-top:2px;">Monthly recurring × 12</div>
+                </td>
+                <td style="padding:10px 12px;font-weight:700;font-size:14px;color:${liveShowIncome-liveAnnualExp>=0?'#1a6b35':'#c0392b'}">${liveShowIncome-liveAnnualExp>=0?'+':''}${fmtH(liveShowIncome-liveAnnualExp)}</td>
                 <td style="padding:10px 12px;font-weight:700;color:#1a5a8a;">${live2026} completed</td>
                 <td style="padding:10px 12px;color:var(--text-light);font-size:13px;">See Analytics → Shows</td>
               </tr>
