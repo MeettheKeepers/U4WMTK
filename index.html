@@ -7763,6 +7763,7 @@ const FFF_EXPENSE_CATEGORIES = ['Marketing','Payroll','Rent','Utilities','Fuel',
 const FFF_DISPLAY_ITEMS = ['Animal 1','Animal 2','Archeology','Animal Face Panel','Keepers Face Panel','Jr. Keeper Face Panel','Dino Face Panel','U4W Panel'];
 const FFF_MASCOTS = ['Zara','Rex','Buddy']; // expandable via custom list
 let FFF_EDITING_ID = null; // which event is open for edit
+let FFF_EXPANDED = new Set(); // which events are expanded in view mode
 let FFF_EXPENSES_OPEN = false;
 let FFF_INCOME_OPEN = false;
 let FFF_ACTIVITIES_OPEN = false;
@@ -7787,7 +7788,12 @@ function fffDeleteEvent(id){
   if(FFF_EDITING_ID===id) FFF_EDITING_ID=null;
   saveData(); showTab(CURRENT_TAB||'manager');
 }
-function fffSetEdit(id){ FFF_EDITING_ID=(FFF_EDITING_ID===id?null:id); FFF_EXPENSES_OPEN=false; FFF_INCOME_OPEN=false; FFF_ACTIVITIES_OPEN=false; showTab(CURRENT_TAB||'manager'); }
+function fffSetEdit(id){ FFF_EDITING_ID=(FFF_EDITING_ID===id?null:id); FFF_EXPENSES_OPEN=false; FFF_INCOME_OPEN=false; FFF_ACTIVITIES_OPEN=false; showTab(CURRENT_TAB||'familyfunfest'); }
+function fffToggleExpand(id, e){
+  if(e&&e.target&&(e.target.tagName==='BUTTON'||e.target.closest('button'))) return;
+  if(FFF_EXPANDED.has(id)) FFF_EXPANDED.delete(id); else FFF_EXPANDED.add(id);
+  showTab(CURRENT_TAB||'familyfunfest');
+}
 function fffUpdateField(id,field,value){
   const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
   e[field]=field==='price'||field==='ticketsSold'?parseFloat(value)||0:value;
@@ -7887,8 +7893,33 @@ function renderFamilyFunFest(){
     (act.custom||[]).forEach(c=>actList.push(c));
 
     if(!isEditing){
+      const isExpanded = FFF_EXPANDED.has(ev.id);
+      const incBreakdown = (ev.income||[]).map(inc=>{
+        const lbl = inc.type==='vendor'?`Vendor — ${inc.vendorName||'?'}`:
+                    inc.type==='presale'?`Pre-sale (${inc.method})`:
+                    inc.type==='atdoor'?`At Door (${inc.method})`:
+                    inc.type==='fundraiser'?'Fundraiser':
+                    inc.type==='auction'?'Auction':'Donation';
+        return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;"><span>${lbl}</span><span style="font-weight:600;color:#1a6b35;">${fmt(parseFloat(inc.amount||0))}</span></div>`;
+      }).join('');
+      const expBreakdown = (ev.expenses||[]).map(exp=>`
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;"><span>${exp.category}</span><span style="font-weight:600;color:#c0392b;">${fmt(parseFloat(exp.amount||0))}</span></div>`).join('');
+      const expandedHtml = isExpanded ? `
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#1a6b35;">Income</div>
+            ${incBreakdown||'<div style="font-size:13px;color:var(--gray);">None recorded.</div>'}
+            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;font-weight:700;border-top:2px solid var(--border);margin-top:4px;"><span>Total</span><span style="color:#1a6b35;">${fmt(totalIncome)}</span></div>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#c0392b;">Expenses</div>
+            ${expBreakdown||'<div style="font-size:13px;color:var(--gray);">None recorded.</div>'}
+            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;font-weight:700;border-top:2px solid var(--border);margin-top:4px;"><span>Total</span><span style="color:#c0392b;">${fmt(totalExpenses)}</span></div>
+          </div>
+        </div>
+        ${actList.length?`<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);"><span style="font-weight:700;font-size:13px;">Activities: </span><span style="font-size:13px;color:var(--gray);">${actList.join(' · ')}</span></div>`:''}` : '';
       return `
-      <div class="card" style="border-left:4px solid #1a5a8a;">
+      <div class="card" style="border-left:4px solid #1a5a8a;cursor:pointer;" onclick="fffToggleExpand(${ev.id},event)">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div>
             <h3 style="margin:0 0 2px;">${esc(ev.venue||'Untitled')} — ${ev.year}</h3>
@@ -7898,11 +7929,13 @@ function renderFamilyFunFest(){
             <span style="font-size:13px;color:#27ae60;font-weight:700;">${fmt(totalIncome)} in</span>
             <span style="font-size:13px;color:#c0392b;font-weight:700;">${fmt(totalExpenses)} out</span>
             <span style="font-size:13px;font-weight:700;color:${net>=0?'#1a6b35':'#c0392b'}">${net>=0?'+':''}${fmt(net)}</span>
+            <span style="font-size:18px;color:var(--gray);margin-left:4px;">${isExpanded?'▾':'▸'}</span>
             <button class="btn-ghost" onclick="fffSetEdit(${ev.id})">Edit</button>
             <button class="btn-ghost" style="color:var(--red);" onclick="fffDeleteEvent(${ev.id})">Delete</button>
           </div>
         </div>
-        ${actList.length?`<div style="margin-top:8px;font-size:12px;color:var(--gray);">Activities: ${actList.join(' · ')}</div>`:''}
+        ${!isExpanded&&actList.length?`<div style="margin-top:6px;font-size:12px;color:var(--gray);">Activities: ${actList.join(' · ')}</div>`:''}
+        ${expandedHtml}
       </div>`;
     }
 
@@ -7929,6 +7962,18 @@ function renderFamilyFunFest(){
           <td style="padding:5px 6px;"><input type="number" value="${inc.amount||0}" step="50" onchange="fffUpdateIncome(${ev.id},${inc.id},'amount',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
           <td style="padding:5px 6px;"><button onclick="fffRemoveIncome(${ev.id},${inc.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
         </tr>`;
+      if(inc.type==='fundraiser'||inc.type==='auction'||inc.type==='donation'){
+        const lbl=inc.type==='fundraiser'?'Fundraiser':inc.type==='auction'?'Auction':'Donation';
+        const bg=inc.type==='fundraiser'?'#fff3e0':inc.type==='auction'?'#f3e5f5':'#e8f5e9';
+        const col=inc.type==='fundraiser'?'#a84400':inc.type==='auction'?'#6a1b9a':'#1a6b35';
+        return `
+        <tr>
+          <td style="padding:5px 6px;"><span style="font-size:12px;background:${bg};color:${col};padding:3px 8px;border-radius:8px;">${lbl}</span></td>
+          <td style="padding:5px 6px;color:var(--gray);font-size:13px;">—</td>
+          <td style="padding:5px 6px;"><input type="number" value="${inc.amount||0}" step="50" onchange="fffUpdateIncome(${ev.id},${inc.id},'amount',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+          <td style="padding:5px 6px;"><button onclick="fffRemoveIncome(${ev.id},${inc.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+        </tr>`;
+      }
       const typeLabel=inc.type==='presale'?'Pre-sale':'At Door';
       return `
         <tr>
@@ -8030,6 +8075,9 @@ function renderFamilyFunFest(){
             <button class="btn-small" style="background:#1a6b35;" onclick="fffAddIncome(${ev.id},'presale')">+ Pre-sale</button>
             <button class="btn-small" style="background:#1a6b35;" onclick="fffAddIncome(${ev.id},'atdoor')">+ At Door</button>
             <button class="btn-small" style="background:#33507a;" onclick="fffAddIncome(${ev.id},'vendor')">+ Vendor</button>
+            <button class="btn-small" style="background:#a84400;" onclick="fffAddIncome(${ev.id},'fundraiser')">+ Fundraiser</button>
+            <button class="btn-small" style="background:#6a1b9a;" onclick="fffAddIncome(${ev.id},'auction')">+ Auction</button>
+            <button class="btn-small" style="background:#2e7d32;" onclick="fffAddIncome(${ev.id},'donation')">+ Donation</button>
           </div>
         </div>` : ''}
       </div>
@@ -8057,14 +8105,45 @@ function renderFamilyFunFest(){
     </div>`;
   }).join('');
 
+  const chars = getCharactersList();
+  const charListHtml = chars.map((c,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:14px;">${esc(c)}</span>
+      <button class="btn-ghost" style="color:#c0392b;font-size:12px;" onclick="fffRemoveCharacter(${i})">Remove</button>
+    </div>`).join('');
+
   return `
     <div class="card">
       <h2>🎪 Family Fun Fest</h2>
       <div class="sub">Track each year's event — location, venue, activities, income, and expenses.</div>
-      <button class="btn-small" style="margin-top:10px;background:#1a5a8a;" onclick="fffNewEvent()">+ Add Year</button>
+      <button class="btn-small" style="margin-top:10px;background:#1a5a8a;" onclick="fffNewEvent()">+ Add Event</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px;">🎭 Mascot / Character List</h3>
+      <div class="sub" style="margin-bottom:12px;">These characters appear as options in each event's Activities section.</div>
+      <div style="max-width:360px;">
+        ${charListHtml || '<div style="color:var(--gray);font-size:13px;">No characters yet.</div>'}
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <input type="text" id="fff-new-character" placeholder="Add a character…" style="flex:1;">
+          <button class="btn-small" onclick="fffAddCharacter()">+ Add</button>
+        </div>
+      </div>
     </div>
     ${events.length ? eventCards : '<div class="card"><div class="empty">No events yet — click "+ Add Year" to get started.</div></div>'}
   `;
+}
+function fffAddCharacter(){
+  const el = document.getElementById('fff-new-character');
+  const name = (el&&el.value||'').trim();
+  if(!name) return;
+  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
+  if(!DATA.characters.includes(name)){ DATA.characters.push(name); saveData(); }
+  showTab('familyfunfest');
+}
+function fffRemoveCharacter(idx){
+  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
+  if(idx>=0 && idx<DATA.characters.length){ DATA.characters.splice(idx,1); saveData(); }
+  showTab('familyfunfest');
 }
 
 const MANAGER_TABS = [
@@ -8081,7 +8160,6 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
-  {id:'familyfunfest', label:'Family Fun Fest'},
   {id:'foundation', label:'U4W Charity FDN'},
   {id:'data', label:'Data Tools'}
 ];
@@ -9037,8 +9115,10 @@ function renderManager(){
       const typeCounts = {};
       SHOW_TYPES_LIST.forEach(t => { typeCounts[t] = 0; });
       completedShows.forEach(s => { (s.showTypes||[]).forEach(t => { if(typeCounts[t] !== undefined) typeCounts[t]++; }); });
+      const fffEventCount = fffGetEvents().length;
+      if(fffEventCount > 0) typeCounts['Family Fun Fest'] = fffEventCount;
       const maxCount = Math.max(1, ...Object.values(typeCounts));
-      const sortedTypes = SHOW_TYPES_LIST.slice().sort((a,b) => typeCounts[b] - typeCounts[a]);
+      const sortedTypes = Object.keys(typeCounts).sort((a,b) => typeCounts[b] - typeCounts[a]);
       const typeRows = sortedTypes.map(t => {
         const count = typeCounts[t];
         const pct = Math.round((count / maxCount) * 100);
@@ -9586,6 +9666,14 @@ function renderManager(){
           else if(isUp){ typeTotals[t].upcoming+=v; }
         });
       });
+      // Add Family Fun Fest income to the type table
+      const fffTotalIncome = fffGetEvents().reduce((sum,ev)=>{
+        return sum + (ev.income||[]).reduce((s,i)=>s+parseFloat(i.amount||0),0);
+      }, 0);
+      if(fffTotalIncome > 0){
+        typeTotals['Family Fun Fest'] = {earned: fffTotalIncome, upcoming: 0, count: fffGetEvents().length};
+      }
+
       const sortedTypeList = Object.entries(typeTotals)
         .filter(([,v])=>v.earned+v.upcoming>0)
         .sort(([,a],[,b])=>(b.earned+b.upcoming)-(a.earned+a.upcoming));
@@ -9702,45 +9790,6 @@ function renderManager(){
               </div>
               <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExtraIncomeRow()">+ Add Row</button>
             </div>`;
-        })()}
-        ${(()=>{
-          // ---- Family Fun Fest Income Summary ----
-          const fffEvents = fffGetEvents();
-          if(!fffEvents.length) return '';
-          const fffIncomeByType={};
-          fffEvents.forEach(ev=>{
-            (ev.income||[]).forEach(inc=>{
-              const key = inc.type==='vendor' ? 'Vendor ('+esc(inc.vendorName||'Unknown')+')' : (inc.type==='presale'?'Pre-sale':'At Door')+' ('+inc.method+')';
-              fffIncomeByType[key]=(fffIncomeByType[key]||0)+parseFloat(inc.amount||0);
-            });
-          });
-          const fffTotalIncome=Object.values(fffIncomeByType).reduce((s,v)=>s+v,0);
-          const fffExpByCategory={};
-          fffEvents.forEach(ev=>{
-            (ev.expenses||[]).forEach(exp=>{
-              fffExpByCategory[exp.category]=(fffExpByCategory[exp.category]||0)+parseFloat(exp.amount||0);
-            });
-          });
-          const fffTotalExp=Object.values(fffExpByCategory).reduce((s,v)=>s+v,0);
-          const incRows=Object.entries(fffIncomeByType).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;">
-              <span>${k}</span><span style="font-weight:700;color:#1a6b35;">${fmt(v)}</span>
-            </div>`).join('');
-          const expRows=Object.entries(fffExpByCategory).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;">
-              <span>${k}</span><span style="font-weight:700;color:#c0392b;">${fmt(v)}</span>
-            </div>`).join('');
-          return `<hr style="margin:24px 0;">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-              <h3 style="margin:0;flex:1;">🎪 Family Fun Fest — All Events</h3>
-              <span style="font-size:13px;color:#27ae60;font-weight:700;">${fmt(fffTotalIncome)} income</span>
-              <span style="font-size:13px;color:#c0392b;font-weight:700;">${fmt(fffTotalExp)} expenses</span>
-              <span style="font-size:13px;font-weight:700;color:${fffTotalIncome-fffTotalExp>=0?'#1a6b35':'#c0392b'}">${fffTotalIncome-fffTotalExp>=0?'+':''}${fmt(fffTotalIncome-fffTotalExp)} net</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-              <div><div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#1a6b35;">Income by Source</div>${incRows||'<div style="color:#bbb;font-size:13px;">None recorded.</div>'}</div>
-              <div><div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#c0392b;">Expenses by Category</div>${expRows||'<div style="color:#bbb;font-size:13px;">None recorded.</div>'}</div>
-            </div>`;
         })()}`;
       } // end else income
     }
@@ -9812,8 +9861,6 @@ function renderManager(){
         `).join('')}
       </div>
     `;
-  } else if(MANAGER_TAB === 'familyfunfest'){
-    body = renderFamilyFunFest();
   } else if(MANAGER_TAB === 'foundation'){
     const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
     const faccess = DATA.foundation.access || [];
