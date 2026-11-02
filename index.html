@@ -9282,7 +9282,7 @@ function renderManager(){
       }).join('');
       const yearCounts = {};
       const yearShowTypes = {}; // { '2026': { Country: 5, Continent: 3, ... } }
-      completedShows.forEach(s => {
+      allCompleted.forEach(s => {
         const yr=(s.date||'').slice(0,4);
         if(!yr) return;
         yearCounts[yr]=(yearCounts[yr]||0)+1;
