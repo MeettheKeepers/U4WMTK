@@ -9313,25 +9313,40 @@ function renderManager(){
           </div>
         </div>`;
       }).join('');
-      const yearBanner = SHOWS_YEAR_DRILL ? `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:10px 16px;background:#e8f5ed;border-radius:10px;border:1px solid var(--green);">
-          <span style="font-weight:700;color:var(--green);font-size:16px;">📅 ${SHOWS_YEAR_DRILL}</span>
-          <span style="font-size:13px;color:var(--text-light);">All stats below are filtered to this year.</span>
-          <button class="btn-ghost" style="margin-left:auto;font-size:12px;" onclick="SHOWS_YEAR_DRILL=null;showTab('manager')">✕ Clear</button>
-        </div>` : '';
+      // For historical years, look up outreach data
+      const histEntry = SHOWS_YEAR_DRILL ? HISTORICAL_YEARS.find(h=>String(h.year)===SHOWS_YEAR_DRILL) : null;
+      const histOutreach = histEntry && histEntry.outreach ? histEntry.outreach : null;
+      const drillTotal = histEntry ? (histEntry.shows || (histOutreach ? histOutreach.country+histOutreach.continent+histOutreach.custom+histOutreach.free : 0)) : completedShows.length;
+
+      const statBoxes = SHOWS_YEAR_DRILL
+        ? (histOutreach
+          ? `<div class="stat-row" style="margin-bottom:20px;">
+              <div class="stat-box"><div class="num">${drillTotal}</div><div class="lbl">Total shows ${SHOWS_YEAR_DRILL}</div></div>
+              <div class="stat-box"><div class="num">${histOutreach.country}</div><div class="lbl">Country</div></div>
+              <div class="stat-box"><div class="num">${histOutreach.continent}</div><div class="lbl">Continent</div></div>
+              <div class="stat-box"><div class="num">${histOutreach.custom}</div><div class="lbl">Other</div></div>
+              <div class="stat-box"><div class="num">${histOutreach.free}</div><div class="lbl">Free</div></div>
+            </div>`
+          : `<div class="stat-row" style="margin-bottom:20px;">
+              <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Shows in ${SHOWS_YEAR_DRILL}</div></div>
+              <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
+            </div>`)
+        : `<div class="stat-row" style="margin-bottom:20px;">
+            <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
+            <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
+            <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
+          </div>`;
+
       analyticsBody = `
         <h3 style="margin:0 0 4px;">Shows by year</h3>
-        <div class="sub" style="margin-bottom:10px;">Click a year — everything below updates to show that year's data.</div>
+        <div class="sub" style="margin-bottom:10px;">Click a year to filter everything below. Click again to clear.</div>
         ${yearRows}
         <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
-        ${yearBanner}
-        <div class="stat-row" style="margin-bottom:20px;">
-          <div class="stat-box"><div class="num">${SHOWS_YEAR_DRILL ? completedShows.length : allShows.length}</div><div class="lbl">${SHOWS_YEAR_DRILL ? 'Shows in '+SHOWS_YEAR_DRILL : 'Total shows (all time)'}</div></div>
-          <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
-          <div class="stat-box"><div class="num">${SHOWS_YEAR_DRILL ? '—' : upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
-        </div>
+        ${statBoxes}
         <h3 style="margin-bottom:14px;">Completed shows by type</h3>
-        ${completedShows.length ? typeRows : '<div class="empty">No completed show data available for this year.</div>'}
+        ${histOutreach
+          ? `<div class="empty" style="color:var(--text-light);font-size:13px;">Only outreach totals (Country / Continent / Other / Free) are available for ${SHOWS_YEAR_DRILL}. Individual show type breakdown not recorded.</div>`
+          : (completedShows.length ? typeRows : '<div class="empty">No completed show data available for this year.</div>')}
         ${(()=>{
           const charCounts = {};
           getCharactersList().forEach(c => { charCounts[c] = 0; });
