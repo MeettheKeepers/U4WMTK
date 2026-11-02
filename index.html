@@ -1570,6 +1570,8 @@ function doLogin(){
       return;
     }
     CURRENT_LOGIN = match;
+    match.lastLogin = new Date().toISOString();
+    saveData();
     autoReturnAnimals();
     autoClockOutStaff();
     document.getElementById('login-screen').style.display = 'none';
@@ -3241,13 +3243,15 @@ function renderTeam(){
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
-        <tr><th>Name</th><th>Position</th><th>Phone</th>${isManagerLogin()?'<th>Hourly Rate</th>':''}</tr>
+        <tr><th>Name</th><th>Position</th><th>Phone</th>${isManagerLogin()?'<th>Hourly Rate</th><th>Last Login</th>':''}</tr>
         ${(()=>{
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
           return sortedTeamMembers().map(m=>{
             const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
             const rCol = roleColors[displayRole];
-            const rateCell = isManagerLogin() ? `<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td>` : '';
+            const login = (DATA.logins||[]).find(l=>l.name===m.name);
+            const lastLogin = login && login.lastLogin ? (()=>{ const d=new Date(login.lastLogin); return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true}); })() : 'Never';
+            const rateCell = isManagerLogin() ? `<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td><td style="font-size:13px;color:var(--gray);">${lastLogin}</td>` : '';
             return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td>${rateCell}</tr>`;
           }).join('');
         })()}
@@ -7658,6 +7662,10 @@ function renderEmployeeFile(m){
         <div class="field-block" style="flex:1;min-width:140px;">
           <label>Hourly Rate ($)</label>
           <input type="number" step="0.01" min="0" value="${m.hourlyRate||''}" placeholder="e.g. 17.00" onchange="updateTeamField(${m.id},'hourlyRate',this.value)">
+        </div>
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>Last Login</label>
+          <div style="padding-top:6px;color:var(--gray);font-size:13px;">${(()=>{ const lg=(DATA.logins||[]).find(l=>l.name===m.name); if(!lg||!lg.lastLogin) return 'Never'; const d=new Date(lg.lastLogin); return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true}); })()}</div>
         </div>
       </div>
     </div>
