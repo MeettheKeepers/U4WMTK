@@ -2762,16 +2762,9 @@ function renderNonProfit(){
 
   } else if(NONPROFIT_SUBTAB === 'bylaws'){
     const content = (DATA.nonprofit && DATA.nonprofit.bylaws) || '';
-    if(isMgr){
-      body = `
-        <div class="sub" style="margin-bottom:10px;">Edit the by-laws content below. Changes save automatically on blur.</div>
-        <div class="rich-editor-wrap">
-          ${richToolbarFull('np-bylaws-editor')}
-          <div class="welcome-editor" id="np-bylaws-editor" contenteditable="true" onblur="saveNonprofitBylaws()" style="min-height:300px;">${content||''}</div>
-        </div>`;
-    } else {
-      body = content ? `<div class="welcome-content">${content}</div>` : '<div class="empty">No by-laws posted yet.</div>';
-    }
+    body = `
+      ${isMgr ? `<div class="sub" style="margin-bottom:10px;">To edit the by-laws, go to <strong>Manager → U4W Non-Profit Organization</strong>.</div>` : ''}
+      ${content ? `<div class="welcome-content">${content}</div>` : '<div class="empty">No by-laws posted yet.</div>'}`;
   }
 
   return `
@@ -2806,7 +2799,7 @@ function removeBoardMember(id){
   saveData(); showTab('nonprofit');
 }
 function saveNonprofitBylaws(){
-  const el = document.getElementById('np-bylaws-editor');
+  const el = document.getElementById('np-bylaws-editor-mgr') || document.getElementById('np-bylaws-editor');
   if(!el) return;
   DATA.nonprofit.bylaws = el.innerHTML;
   saveData();
@@ -8272,6 +8265,7 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
+  {id:'nonprofit', label:'U4W Non-Profit Org.'},
   {id:'foundation', label:'U4W Charity Foundation'},
   {id:'data', label:'Data Tools'}
 ];
@@ -9328,7 +9322,7 @@ function renderManager(){
             const count = occCounts[o];
             if(!count) return '';
             const pct = Math.round((count / maxOcc) * 100);
-            const color = o==='Unknown' ? '#e6a817' : o==='Fairs/Festivals' ? '#1a7a8a' : '#2da84a';
+            const color = o==='Unknown' ? '#e6a817' : '#2da84a';
             return `<div style="margin-bottom:10px;max-width:400px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
                 <span style="font-weight:600;font-size:13px;min-width:160px;">${o}</span>
@@ -9992,6 +9986,29 @@ function renderManager(){
               ${esc(m.name)}
             </label>`).join('')}
         `).join('')}
+      </div>
+    `;
+  } else if(MANAGER_TAB === 'nonprofit'){
+    const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+    const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
+    body = `
+      <div class="card">
+        <h2 style="margin-bottom:6px;">Who Can See U4W Non-Profit Organization</h2>
+        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Non-Profit Organization tab.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+            <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
+            ${esc(m.name)}
+          </label>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:6px;">By-laws</h2>
+        <div class="sub" style="margin-bottom:10px;">Edit the by-laws content here. Staff see it as read-only in the Unite for Wildlife tab.</div>
+        <div class="rich-editor-wrap">
+          ${richToolbarFull('np-bylaws-editor-mgr')}
+          <div class="welcome-editor" id="np-bylaws-editor-mgr" contenteditable="true" onblur="saveNonprofitBylaws()" style="min-height:300px;">${(DATA.nonprofit && DATA.nonprofit.bylaws)||''}</div>
+        </div>
       </div>
     `;
   } else if(MANAGER_TAB === 'foundation'){
