@@ -3051,7 +3051,7 @@ function renderStaffFileReadOnly(m){
     <div class="card">
       <h2>Employee File</h2>
       <div class="sub">This is what ${esc(m.name)} sees — read-only.</div>
-      <div class="field-block"><label>Start Date</label><div>${m.startDate ? fmtShortDate(m.startDate) : '—'}</div></div>
+      <div class="field-block"><label>Start Date</label><div>${m.startDate ? fmtShortDate(m.startDate) : '—'}${m.startDate ? (()=>{ const s=new Date(m.startDate),n=new Date(); let y=n.getFullYear()-s.getFullYear(),mo=n.getMonth()-s.getMonth(); if(mo<0){y--;mo+=12;} return ` <span style="color:var(--gray);font-size:13px;">(${y>0?y+' yr'+(y!==1?'s':'')+(mo>0?', ':''):''}${mo>0?mo+' mo':''}${y===0&&mo===0?'< 1 mo':''})</span>`; })() : ''}</div></div>
       ${m.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(m.endDate)}</div></div>` : ''}
       <div class="field-block"><label>Birthday</label><div>${m.birthday ? fmtShortDate(m.birthday) : '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Name</label><div>${m.emergencyName || '—'}</div></div>
@@ -3142,7 +3142,7 @@ function renderTeam(){
     <div class="card">
       <h2>My Employee File</h2>
       <div class="sub">Read-only. Contact a manager if anything here needs to be updated.</div>
-      <div class="field-block"><label>Start Date</label><div>${me.startDate ? fmtShortDate(me.startDate) : '—'}</div></div>
+      <div class="field-block"><label>Start Date</label><div>${me.startDate ? fmtShortDate(me.startDate) : '—'}${me.startDate ? (()=>{ const s=new Date(me.startDate),n=new Date(); let y=n.getFullYear()-s.getFullYear(),m=n.getMonth()-s.getMonth(); if(m<0){y--;m+=12;} return ` <span style="color:var(--gray);font-size:13px;">(${y>0?y+' yr'+(y!==1?'s':'')+(m>0?', ':''):''}${m>0?m+' mo':''}${y===0&&m===0?'< 1 mo':''})</span>`; })() : ''}</div></div>
       ${me.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(me.endDate)}</div></div>` : ''}
       <div class="field-block"><label>Birthday</label><div>${me.birthday ? fmtShortDate(me.birthday) : '—'}</div></div>
       <div class="field-block"><label>Hourly Rate</label><div>${me.hourlyRate ? '$'+parseFloat(me.hourlyRate).toFixed(2)+'/hr' : '—'}</div></div>
