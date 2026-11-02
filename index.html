@@ -645,6 +645,7 @@ const STORAGE_KEY = "ufw_app_data_v8";
 function getShowStaffRoster(){ return DATA.team.filter(m=>!m.archived).map(m=>m.name); }
 const SHOW_TYPES_LIST = ["Country","Continent","Battle Match","Character Walkaround","MTK Racing","Archeology","Science","Display","Fairs/Festivals"];
 const CHARACTERS_LIST = ["Bee","Dino","Trixie","Spiderman","Spider Gwen","Mario","Ironman","Gorilla","Rescue Pup","Felix The Fox","Snowman"];
+function getCharactersList(){ return (DATA && Array.isArray(DATA.characters) && DATA.characters.length) ? DATA.characters : CHARACTERS_LIST; }
 const OCCASION_SHOW_TYPES = ["Country","Continent","Battle Match","Science","Archeology"];
 const OCCASIONS_LIST = ["Birthday","School","Daycare","Summer Camp","Retirement Home","Special Needs Program","Fairs/Festivals","Keepers Family Fun Fest","Other","Unknown"];
 const SHOW_REGIONS = [
@@ -1027,6 +1028,7 @@ function normalizeData(d){
   if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
   if(!Array.isArray(d.nonprofitRows)) d.nonprofitRows = [];
   if(!Array.isArray(d.familyFunFest)) d.familyFunFest = [];
+  if(!Array.isArray(d.characters)) d.characters = CHARACTERS_LIST.slice();
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1620,6 +1622,7 @@ const TABS = [
   {id:'nonprofit', label:'U4W Non Profit Org.'},
   {id:'foundation', label:'U4W Charity FDN'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
+  {id:'characters', label:'Character Walkarounds'},
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
@@ -1735,6 +1738,7 @@ function hasAdminAccess(){
 function visibleTabs(){
   return TABS.filter(t=>{
     if(t.id === 'manager') return isManagerLogin();
+    if(t.id === 'characters') return isManagerLogin();
     if(t.id === 'supervisor') return !isManagerLogin() && hasSupervisorAccess();
     if(t.id === 'admin') return hasAdminAccess();
     if(t.id === 'nonprofit') return isManagerLogin() || hasNonProfitAccess();
@@ -1798,6 +1802,7 @@ function showTab(id){
     nonprofit: renderNonProfit,
     foundation: renderFoundation,
     'wildlife-show': renderWildlifeShow,
+    characters: renderCharactersTab,
     manager: renderManager
   }[id];
   // Save scroll positions of named scrollable containers before wiping innerHTML
@@ -7271,7 +7276,7 @@ function renderShowForm(){
     <div class="field-block" id="new-show-character-extra" style="display:none; background:#e8f4fd; border:1px solid #a8d0f0; border-radius:8px; padding:12px;">
       <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
       <div class="task-tags" style="margin-top:8px;">
-        ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-character" value="${c}"> ${c}</label>`).join('')}
+        ${getCharactersList().map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-character" value="${c}"> ${c}</label>`).join('')}
       </div>
     </div>
     <div class="field-block" id="new-show-occasion-extra" style="display:none; background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:12px;">
@@ -7485,7 +7490,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       <div class="field-block" style="background:#e8f4fd; border:1px solid #a8d0f0; border-radius:8px; padding:10px;">
         <label style="color:#1a5a8a; font-weight:700;">🎭 Characters for this Walkaround</label>
         <div class="task-tags" style="margin-top:8px;">
-          ${CHARACTERS_LIST.map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${(s.characters||[]).includes(c)?'checked':''} onchange="toggleShowCharacter(${s.id},'${c}')"> ${c}</label>`).join('')}
+          ${getCharactersList().map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${(s.characters||[]).includes(c)?'checked':''} onchange="toggleShowCharacter(${s.id},'${c}')"> ${c}</label>`).join('')}
         </div>
       </div>` : ''}
       ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
@@ -8077,6 +8082,7 @@ const MANAGER_TABS = [
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
   {id:'familyfunfest', label:'Family Fun Fest'},
+  {id:'characters', label:'Characters'},
   {id:'foundation', label:'U4W Charity FDN'},
   {id:'data', label:'Data Tools'}
 ];
@@ -8088,6 +8094,76 @@ const WELCOME_EDIT_SECTIONS = [
   {key:'vehicles', label:'Vehicles'},
   {key:'shows', label:'Shows & Presentations'}
 ];
+/* ---- Character Walkarounds shared chart helper ---- */
+function buildCharChart(allShows){
+  const charCounts = {};
+  getCharactersList().forEach(c => { charCounts[c] = 0; });
+  allShows.forEach(s => { (s.characters||[]).forEach(c => { charCounts[c] = (charCounts[c]||0)+1; }); });
+  const totalCharShows = allShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
+  const maxChar = Math.max(1, ...Object.values(charCounts));
+  const charRows = [...getCharactersList()].sort((a,b)=>(charCounts[b]||0)-(charCounts[a]||0)).map(c => {
+    const count = charCounts[c]||0;
+    const pct = Math.round((count / maxChar) * 100);
+    return `<div style="margin-bottom:12px;max-width:460px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+        <span style="font-weight:600;font-size:14px;min-width:140px;">${esc(c)}</span>
+        <span style="font-size:13px;color:var(--text-light);font-weight:600;">${count}</span>
+      </div>
+      <div style="background:var(--hover);border-radius:5px;height:10px;overflow:hidden;">
+        <div style="background:#1a8ad4;height:10px;width:${pct}%;border-radius:5px;transition:width .3s;"></div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">${totalCharShows} Character Walkaround show${totalCharShows===1?'':'s'} total</div>${charRows}`;
+}
+
+/* Main-nav read-only Character Walkarounds tab */
+function renderCharactersTab(){
+  const allShows = DATA.shows||[];
+  return `<div class="card">
+    <h2>🎭 Character Walkarounds</h2>
+    ${buildCharChart(allShows)}
+  </div>`;
+}
+
+/* Manager sub-tab: Characters (editable list + chart) */
+function renderManagerCharacters(){
+  const allShows = DATA.shows||[];
+  const chars = getCharactersList();
+  const charRows = chars.map((c,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:14px;">${esc(c)}</span>
+      <button class="btn-ghost" style="color:#c0392b;font-size:12px;" onclick="removeCharacter(${i})">Remove</button>
+    </div>`).join('');
+  return `<div class="card">
+    <h2>🎭 Character Walkarounds</h2>
+    <div class="sub" style="margin-bottom:16px;">Manage the list of characters/mascots available for walkaround shows.</div>
+    ${buildCharChart(allShows)}
+    <hr style="margin:20px 0;">
+    <h3 style="margin-bottom:12px;">Edit Character List</h3>
+    <div style="max-width:400px;">
+      ${charRows}
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <input type="text" id="new-character-name" placeholder="New character name…" style="flex:1;">
+        <button class="btn-small" onclick="addCharacter()">+ Add</button>
+      </div>
+    </div>
+  </div>`;
+}
+function addCharacter(){
+  const el = document.getElementById('new-character-name');
+  const name = (el&&el.value||'').trim();
+  if(!name) return;
+  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
+  if(!DATA.characters.includes(name)){ DATA.characters.push(name); saveData(); }
+  showTab('manager');
+}
+function removeCharacter(idx){
+  if(!Array.isArray(DATA.characters)) DATA.characters = getCharactersList().slice();
+  if(idx>=0 && idx<DATA.characters.length){ DATA.characters.splice(idx,1); saveData(); }
+  showTab('manager');
+}
+
 function renderManager(){
   const openRepairs = DATA.repairs.filter(r=>r.status!=='Done').length;
   const openIncidents = DATA.incidents.filter(i=>i.status==='Open').length;
@@ -9074,11 +9150,11 @@ function renderManager(){
         ${typeRows}
         ${(()=>{
           const charCounts = {};
-          CHARACTERS_LIST.forEach(c => { charCounts[c] = 0; });
-          allShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; }); });
+          getCharactersList().forEach(c => { charCounts[c] = 0; });
+          allShows.forEach(s => { (s.characters||[]).forEach(c => { if(charCounts[c]!==undefined) charCounts[c]++; else charCounts[c]=1; }); });
           const totalCharShows = allShows.filter(s=>(s.showTypes||[]).includes('Character Walkaround')).length;
           const maxChar = Math.max(1, ...Object.values(charCounts));
-          const charRows = [...CHARACTERS_LIST].sort((a,b)=>charCounts[b]-charCounts[a]).map(c => {
+          const charRows = [...getCharactersList()].sort((a,b)=>(charCounts[b]||0)-(charCounts[a]||0)).map(c => {
             const count = charCounts[c];
             const pct = Math.round((count / maxChar) * 100);
             return `<div style="margin-bottom:10px;max-width:400px;">
@@ -9809,6 +9885,8 @@ function renderManager(){
     `;
   } else if(MANAGER_TAB === 'familyfunfest'){
     body = renderFamilyFunFest();
+  } else if(MANAGER_TAB === 'characters'){
+    body = renderManagerCharacters();
   } else if(MANAGER_TAB === 'foundation'){
     const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
     const faccess = DATA.foundation.access || [];
