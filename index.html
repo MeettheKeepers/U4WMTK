@@ -698,10 +698,10 @@ function categoryLabel(id){ const c=SCHEDULE_CATEGORIES.find(x=>x.id===id); retu
 function categoryColor(id){ const c=SCHEDULE_CATEGORIES.find(x=>x.id===id); return c?c.color:'#e2e2dd'; }
 
 function blankWelcomeAck(){
-  return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null, custom:{} };
+  return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null, yourrole:null, mtkprovides:null, custom:{} };
 }
 function blankStaffExtras(){
-  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"", startDate:"", endDate:"" };
+  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"", startDate:"", endDate:"", hourlyRate:"18.00" };
 }
 function defaultData(){
   return {
@@ -885,7 +885,9 @@ function normalizeData(d){
   if(!d.scheduleSettings.firstPeriodStart) d.scheduleSettings.firstPeriodStart = '2026-06-22';
   if(!d.scheduleOverrides) d.scheduleOverrides = [];
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
-  if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"" };
+  if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"" };
+  if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
+  if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
     if(!m.welcomeAck) m.welcomeAck = blankWelcomeAck();
@@ -1016,6 +1018,7 @@ function normalizeData(d){
   (d.team||[]).forEach(m=>{
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
     if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
+    if(m.hourlyRate===undefined) m.hourlyRate = "18.00";
   });
   (d.animals||[]).forEach(a=>{ if(a.scriptFr===undefined) a.scriptFr=''; });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
@@ -2203,6 +2206,8 @@ function renderAdmin(){
 const WELCOME_TABS = [
   {id:'about', label:'About Us'},
   {id:'mission', label:'Mission Statement & Core Values'},
+  {id:'yourrole', label:'Your Role'},
+  {id:'mtkprovides', label:'What MTK Provides'},
   {id:'policies', label:'Policies & Procedures'},
   {id:'safety', label:'Health & Safety'},
   {id:'vehicles', label:'Vehicles'},
@@ -3140,6 +3145,7 @@ function renderTeam(){
       <div class="field-block"><label>Start Date</label><div>${me.startDate ? fmtShortDate(me.startDate) : '—'}</div></div>
       ${me.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(me.endDate)}</div></div>` : ''}
       <div class="field-block"><label>Birthday</label><div>${me.birthday ? fmtShortDate(me.birthday) : '—'}</div></div>
+      <div class="field-block"><label>Hourly Rate</label><div>${me.hourlyRate ? '$'+parseFloat(me.hourlyRate).toFixed(2)+'/hr' : '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Name</label><div>${me.emergencyName || '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Phone</label><div>${me.emergencyPhone || '—'}</div></div>
       <div class="field-block"><label>Relationship</label><div>${me.emergencyRelation || '—'}</div></div>
@@ -3235,13 +3241,14 @@ function renderTeam(){
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
-        <tr><th>Name</th><th>Position</th><th>Phone</th></tr>
+        <tr><th>Name</th><th>Position</th><th>Phone</th>${isManagerLogin()?'<th>Hourly Rate</th>':''}</tr>
         ${(()=>{
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
           return sortedTeamMembers().map(m=>{
             const displayRole = JOB_ROLES.includes(m.role) ? m.role : 'Keeper';
             const rCol = roleColors[displayRole];
-            return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td></tr>`;
+            const rateCell = isManagerLogin() ? `<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td>` : '';
+            return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">💬</button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td>${rateCell}</tr>`;
           }).join('');
         })()}
       </table>
@@ -7648,6 +7655,10 @@ function renderEmployeeFile(m){
           <label>End Date <span style="font-weight:400;color:var(--gray);font-size:12px;">(leave blank if ongoing)</span></label>
           <input type="date" value="${m.endDate||''}" onchange="updateTeamField(${m.id},'endDate',this.value)">
         </div>
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>Hourly Rate ($)</label>
+          <input type="number" step="0.01" min="0" value="${m.hourlyRate||''}" placeholder="e.g. 17.00" onchange="updateTeamField(${m.id},'hourlyRate',this.value)">
+        </div>
       </div>
     </div>
     <div class="card">
@@ -8135,6 +8146,8 @@ const MANAGER_TABS = [
 const WELCOME_EDIT_SECTIONS = [
   {key:'about', label:'About Us'},
   {key:'mission', label:'Mission Statement & Core Values'},
+  {key:'yourrole', label:'Your Role'},
+  {key:'mtkprovides', label:'What MTK Provides'},
   {key:'policies', label:'Policies & Procedures'},
   {key:'safety', label:'Health & Safety'},
   {key:'vehicles', label:'Vehicles'},
