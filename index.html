@@ -7463,8 +7463,9 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const needsOccasion = (s.showTypes||[]).some(t=>OCCASION_SHOW_TYPES.includes(t));
   const missingOccasion = isPast && needsOccasion && (!s.occasion || s.occasion==='Unknown');
   const missingCharacter = (s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length;
-  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : missingCharacter ? '#e67e22' : missingOccasion ? '#e6a817' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
-  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : langMismatch ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : missingCharacter ? 'outline:2px solid #e67e22; background:#fff5ec;' : missingOccasion ? 'outline:2px solid #e6a817; background:#fffbea;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : '';
+  const missingContact = isPast && (!s.clientPhone || !s.clientEmail);
+  const mgrBorderColor = conflictInfo.hasConflict ? 'var(--red)' : missingMgr ? '#7c3fad' : langMismatch ? '#7c3fad' : missingCharacter ? '#e67e22' : missingOccasion ? '#e6a817' : (!isCompletedMgr && isRepeatMgr) ? '#e6a817' : missingContact ? '#b0b0b0' : (s.paid ? 'var(--paid-green)' : 'var(--red)');
+  const mgrOutlineStyle = conflictInfo.hasConflict ? 'outline:2px solid var(--red); background:#fff5f5;' : missingMgr ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : langMismatch ? 'outline:2px solid #7c3fad; background:#f7f0ff;' : missingCharacter ? 'outline:2px solid #e67e22; background:#fff5ec;' : missingOccasion ? 'outline:2px solid #e6a817; background:#fffbea;' : (!isCompletedMgr && isRepeatMgr) ? 'outline:2px solid #e6a817; background:#fffbea;' : missingContact ? 'background:#f4f4f4;' : '';
   return `
     <div class="animal-card" style="margin-bottom:16px; border-left:5px solid ${mgrBorderColor}; ${mgrOutlineStyle}">
       <div class="animal-card-top">
@@ -9390,11 +9391,15 @@ function renderManager(){
       const clients = Object.values(clientMap).sort((a,b) => a.name.localeCompare(b.name));
       const clientRows = clients.map(c => `
         <tr style="border-bottom:1px solid var(--border);${c.count > 1 ? 'background:#fffbea;' : ''}">
-          <td style="padding:10px 12px;font-weight:600;">${esc(c.name)}${c.count > 1 ? ` <span style="font-size:11px;background:#e6a817;color:#fff;padding:2px 7px;border-radius:10px;font-weight:700;margin-left:6px;">${c.count} shows</span>` : ''}</td>
+          <td style="padding:10px 12px;font-weight:600;">
+            ${esc(c.name)}
+            ${c.count > 1 ? `<div style="display:inline-block;background:#c47d00;color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;margin-left:8px;vertical-align:middle;">${c.count} shows</div>` : ''}
+          </td>
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.email)||'<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.phone)||'<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${c.lastDate ? fmtShortDate(c.lastDate) : '—'}</td>
-          <td style="padding:10px 12px;white-space:nowrap;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button> ` : ''}<button class="btn-ghost" style="font-size:12px;padding:3px 10px;" onclick="renameClient('${esc(c.name).replace(/'/g,"\\'")}')">Rename / Merge</button></td>
+          <td style="padding:10px 12px;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button>` : ''}</td>
+          <td style="padding:10px 12px;"><button class="btn-ghost" style="font-size:12px;padding:3px 10px;white-space:nowrap;" onclick="renameClient('${esc(c.name).replace(/'/g,"\\'")}')">Rename / Merge</button></td>
         </tr>`).join('');
       const allEmails = clients.filter(c=>c.email).map(c=>c.email);
       analyticsBody = `
@@ -9410,6 +9415,7 @@ function renderManager(){
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Email</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Phone</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Last booked</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
             </tr></thead>
             <tbody>${clientRows}</tbody>
