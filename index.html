@@ -1026,6 +1026,7 @@ function normalizeData(d){
   if(!d.nonprofit) d.nonprofit = { access: [] };
   if(!Array.isArray(d.nonprofit.access)) d.nonprofit.access = [];
   if(!Array.isArray(d.nonprofitRows)) d.nonprofitRows = [];
+  if(!Array.isArray(d.familyFunFest)) d.familyFunFest = [];
   if(!d.foundation) d.foundation = { customTabs: [], tabAccess: {}, access: [] };
   if(!Array.isArray(d.foundation.customTabs)) d.foundation.customTabs = [];
   if(!d.foundation.tabAccess) d.foundation.tabAccess = {};
@@ -1626,9 +1627,10 @@ const STAFF_SPECIALTIES = ['Animal Care','Wildlife Educator','MTK Racing','Chara
 function getLoginLevel(){
   if(!CURRENT_LOGIN) return 'keeper';
   const r = (CURRENT_LOGIN.role||'').toLowerCase();
-  if(r==='manager'||r==='owner') return 'owner'; // backward compat: old 'manager' = owner
-  if(r==='staff'||r==='keeper') return 'keeper'; // backward compat: old 'staff' = keeper
-  return r; // supervisor
+  if(r==='owner') return 'owner';
+  if(r==='manager') return 'manager';
+  if(r==='supervisor') return 'supervisor';
+  return 'keeper'; // 'staff', 'keeper', anything else
 }
 function isManagerLogin(){
   const l = getLoginLevel();
@@ -1638,7 +1640,7 @@ function isOwnerLogin(){ return getLoginLevel()==='owner'; }
 function canAccessTab(tabId){
   const l = getLoginLevel();
   if(l==='owner' || l==='manager') return true;
-  if(l==='supervisor') return !['analytics','staff','logins','incidents'].includes(tabId);
+  if(l==='supervisor') return !['analytics','staff','logins','incidents','familyfunfest'].includes(tabId);
   return false;
 }
 function canAccessFinancials(){ return isOwnerLogin(); }
@@ -7749,6 +7751,317 @@ function renderEmployeeFile(m){
     </div>
   `;
 }
+/* =========================================================
+   FAMILY FUN FEST
+   ========================================================= */
+const FFF_EXPENSE_CATEGORIES = ['Marketing','Payroll','Rent','Utilities','Fuel','Contracts'];
+const FFF_DISPLAY_ITEMS = ['Animal 1','Animal 2','Archeology','Animal Face Panel','Keepers Face Panel','Jr. Keeper Face Panel','Dino Face Panel','U4W Panel'];
+const FFF_MASCOTS = ['Zara','Rex','Buddy']; // expandable via custom list
+let FFF_EDITING_ID = null; // which event is open for edit
+let FFF_EXPENSES_OPEN = false;
+let FFF_INCOME_OPEN = false;
+let FFF_ACTIVITIES_OPEN = false;
+
+function fffGetEvents(){ if(!Array.isArray(DATA.familyFunFest)) DATA.familyFunFest=[]; return DATA.familyFunFest; }
+function fffNewEvent(){
+  const events = fffGetEvents();
+  const id = events.length ? Math.max(...events.map(e=>e.id))+1 : 1;
+  const yr = new Date().getFullYear();
+  events.push({
+    id, year:yr, location:'', venue:'', price:0, ticketsSold:0,
+    activities:{ shows:false, characters:[], mtkRacing:false, science:false, archeology:false, magic:false, rocketLeague:false, display:[], custom:[] },
+    expenses:[], income:[]
+  });
+  FFF_EDITING_ID = id;
+  FFF_EXPENSES_OPEN=false; FFF_INCOME_OPEN=false; FFF_ACTIVITIES_OPEN=false;
+  saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffDeleteEvent(id){
+  if(!confirm('Delete this event?')) return;
+  DATA.familyFunFest = fffGetEvents().filter(e=>e.id!==id);
+  if(FFF_EDITING_ID===id) FFF_EDITING_ID=null;
+  saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffSetEdit(id){ FFF_EDITING_ID=(FFF_EDITING_ID===id?null:id); FFF_EXPENSES_OPEN=false; FFF_INCOME_OPEN=false; FFF_ACTIVITIES_OPEN=false; showTab(CURRENT_TAB||'manager'); }
+function fffUpdateField(id,field,value){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  e[field]=field==='price'||field==='ticketsSold'?parseFloat(value)||0:value;
+  saveData();
+}
+function fffToggleActivity(id,key,checked){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  e.activities[key]=checked; saveData();
+  const el=document.getElementById('fff-act-'+id+'-'+key);
+  if(el) el.checked=checked;
+}
+function fffToggleDisplay(id,item,checked){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  if(!e.activities.display) e.activities.display=[];
+  if(checked){ if(!e.activities.display.includes(item)) e.activities.display.push(item); }
+  else { e.activities.display=e.activities.display.filter(x=>x!==item); }
+  saveData();
+}
+function fffToggleCharacter(id,char,checked){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  if(!e.activities.characters) e.activities.characters=[];
+  if(checked){ if(!e.activities.characters.includes(char)) e.activities.characters.push(char); }
+  else { e.activities.characters=e.activities.characters.filter(x=>x!==char); }
+  saveData();
+}
+function fffAddCustomActivity(id){
+  const name=prompt('Activity name:'); if(!name||!name.trim()) return;
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  if(!e.activities.custom) e.activities.custom=[];
+  e.activities.custom.push(name.trim());
+  saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffRemoveCustomActivity(id,idx){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  e.activities.custom.splice(idx,1);
+  saveData(); showTab(CURRENT_TAB||'manager');
+}
+// Expenses
+function fffAddExpense(id){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  if(!e.expenses) e.expenses=[];
+  const nid=e.expenses.length?Math.max(...e.expenses.map(x=>x.id))+1:1;
+  e.expenses.push({id:nid,category:'Marketing',description:'',amount:0});
+  FFF_EXPENSES_OPEN=true; saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffRemoveExpense(eventId,expId){
+  const e=fffGetEvents().find(x=>x.id===eventId); if(!e) return;
+  e.expenses=e.expenses.filter(x=>x.id!==expId);
+  FFF_EXPENSES_OPEN=true; saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffUpdateExpense(eventId,expId,field,val){
+  const e=fffGetEvents().find(x=>x.id===eventId); if(!e) return;
+  const exp=e.expenses.find(x=>x.id===expId); if(!exp) return;
+  exp[field]=field==='amount'?parseFloat(val)||0:val; saveData();
+}
+// Income
+function fffAddIncome(id,type){
+  const e=fffGetEvents().find(x=>x.id===id); if(!e) return;
+  if(!e.income) e.income=[];
+  const nid=e.income.length?Math.max(...e.income.map(x=>x.id))+1:1;
+  if(type==='vendor') e.income.push({id:nid,type:'vendor',vendorName:'',amount:0});
+  else e.income.push({id:nid,type,method:'cash',amount:0});
+  FFF_INCOME_OPEN=true; saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffRemoveIncome(eventId,incId){
+  const e=fffGetEvents().find(x=>x.id===eventId); if(!e) return;
+  e.income=e.income.filter(x=>x.id!==incId);
+  FFF_INCOME_OPEN=true; saveData(); showTab(CURRENT_TAB||'manager');
+}
+function fffUpdateIncome(eventId,incId,field,val){
+  const e=fffGetEvents().find(x=>x.id===eventId); if(!e) return;
+  const inc=e.income.find(x=>x.id===incId); if(!inc) return;
+  inc[field]=field==='amount'?parseFloat(val)||0:val; saveData();
+}
+
+function renderFamilyFunFest(){
+  const fmt=n=>'$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+  const events=[...fffGetEvents()].sort((a,b)=>b.year-a.year);
+
+  const eventCards = events.map(ev=>{
+    const totalIncome=(ev.income||[]).reduce((s,r)=>s+parseFloat(r.amount||0),0);
+    const totalExpenses=(ev.expenses||[]).reduce((s,r)=>s+parseFloat(r.amount||0),0);
+    const net=totalIncome-totalExpenses;
+    const isEditing=FFF_EDITING_ID===ev.id;
+    const act=ev.activities||{};
+
+    // Activities summary for collapsed view
+    const actList=[];
+    if(act.shows) actList.push('Shows');
+    if(act.characters&&act.characters.length) actList.push('Characters ('+act.characters.join(', ')+')');
+    if(act.mtkRacing) actList.push('MTK Racing');
+    if(act.display&&act.display.length) actList.push('Display');
+    if(act.science) actList.push('Science');
+    if(act.archeology) actList.push('Archeology');
+    if(act.magic) actList.push('Magic');
+    if(act.rocketLeague) actList.push('Rocket League');
+    (act.custom||[]).forEach(c=>actList.push(c));
+
+    if(!isEditing){
+      return `
+      <div class="card" style="border-left:4px solid #1a5a8a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 style="margin:0 0 2px;">${esc(ev.venue||'Untitled')} — ${ev.year}</h3>
+            <div class="sub" style="margin:0;">${esc(ev.location||'Location TBD')} · ${ev.ticketsSold||0} tickets @ ${fmt(ev.price||0)} each</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#27ae60;font-weight:700;">${fmt(totalIncome)} in</span>
+            <span style="font-size:13px;color:#c0392b;font-weight:700;">${fmt(totalExpenses)} out</span>
+            <span style="font-size:13px;font-weight:700;color:${net>=0?'#1a6b35':'#c0392b'}">${net>=0?'+':''}${fmt(net)}</span>
+            <button class="btn-ghost" onclick="fffSetEdit(${ev.id})">Edit</button>
+            <button class="btn-ghost" style="color:var(--red);" onclick="fffDeleteEvent(${ev.id})">Delete</button>
+          </div>
+        </div>
+        ${actList.length?`<div style="margin-top:8px;font-size:12px;color:var(--gray);">Activities: ${actList.join(' · ')}</div>`:''}
+      </div>`;
+    }
+
+    // ---- EDIT VIEW ----
+    // Expenses rows
+    const expRows=(ev.expenses||[]).map(exp=>`
+      <tr>
+        <td style="padding:5px 6px;">
+          <select onchange="fffUpdateExpense(${ev.id},${exp.id},'category',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
+            ${FFF_EXPENSE_CATEGORIES.map(c=>`<option value="${c}" ${exp.category===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </td>
+        <td style="padding:5px 6px;"><input type="text" value="${esc(exp.description||'')}" placeholder="Description" onchange="fffUpdateExpense(${ev.id},${exp.id},'description',this.value)" style="width:160px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+        <td style="padding:5px 6px;"><input type="number" value="${exp.amount||0}" step="50" onchange="fffUpdateExpense(${ev.id},${exp.id},'amount',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+        <td style="padding:5px 6px;"><button onclick="fffRemoveExpense(${ev.id},${exp.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+      </tr>`).join('');
+
+    // Income rows
+    const incRows=(ev.income||[]).map(inc=>{
+      if(inc.type==='vendor') return `
+        <tr>
+          <td style="padding:5px 6px;"><span style="font-size:12px;background:#e3e9f5;color:#33507a;padding:3px 8px;border-radius:8px;">Vendor</span></td>
+          <td style="padding:5px 6px;"><input type="text" value="${esc(inc.vendorName||'')}" placeholder="Vendor name" onchange="fffUpdateIncome(${ev.id},${inc.id},'vendorName',this.value)" style="width:150px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+          <td style="padding:5px 6px;"><input type="number" value="${inc.amount||0}" step="50" onchange="fffUpdateIncome(${ev.id},${inc.id},'amount',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+          <td style="padding:5px 6px;"><button onclick="fffRemoveIncome(${ev.id},${inc.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+        </tr>`;
+      const typeLabel=inc.type==='presale'?'Pre-sale':'At Door';
+      return `
+        <tr>
+          <td style="padding:5px 6px;"><span style="font-size:12px;background:#e3f5e9;color:#1a6b35;padding:3px 8px;border-radius:8px;">${typeLabel}</span></td>
+          <td style="padding:5px 6px;">
+            <select onchange="fffUpdateIncome(${ev.id},${inc.id},'method',this.value)" style="font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">
+              <option value="cash" ${inc.method==='cash'?'selected':''}>Cash</option>
+              <option value="card" ${inc.method==='card'?'selected':''}>Card</option>
+            </select>
+          </td>
+          <td style="padding:5px 6px;"><input type="number" value="${inc.amount||0}" step="50" onchange="fffUpdateIncome(${ev.id},${inc.id},'amount',this.value)" style="width:100px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 7px;"></td>
+          <td style="padding:5px 6px;"><button onclick="fffRemoveIncome(${ev.id},${inc.id})" style="background:#c0392b;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Remove</button></td>
+        </tr>`;
+    }).join('');
+
+    const mascotList=[...(DATA.admin&&DATA.admin.mascots||[]),'Zara','Rex','Buddy','Luna','Milo'].filter((v,i,a)=>a.indexOf(v)===i);
+
+    return `
+    <div class="card" style="border-left:4px solid #1a5a8a;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="margin:0;">Editing: ${ev.year} Event</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-ghost" onclick="fffSetEdit(${ev.id})">Done Editing</button>
+          <button class="btn-ghost" style="color:var(--red);" onclick="fffDeleteEvent(${ev.id})">Delete</button>
+        </div>
+      </div>
+
+      <!-- Basic Info -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px;">
+        <div><label style="font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:4px;">Year</label>
+          <input type="number" value="${ev.year}" onchange="fffUpdateField(${ev.id},'year',this.value)" style="width:100%;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;"></div>
+        <div><label style="font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:4px;">Location</label>
+          <input type="text" value="${esc(ev.location||'')}" onchange="fffUpdateField(${ev.id},'location',this.value)" style="width:100%;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;" placeholder="City / Area"></div>
+        <div><label style="font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:4px;">Venue</label>
+          <input type="text" value="${esc(ev.venue||'')}" onchange="fffUpdateField(${ev.id},'venue',this.value)" style="width:100%;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;" placeholder="Venue name"></div>
+        <div><label style="font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:4px;">Ticket Price ($)</label>
+          <input type="number" value="${ev.price||0}" step="1" onchange="fffUpdateField(${ev.id},'price',this.value)" style="width:100%;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;"></div>
+        <div><label style="font-size:12px;font-weight:600;color:var(--gray);display:block;margin-bottom:4px;"># Tickets Sold</label>
+          <input type="number" value="${ev.ticketsSold||0}" step="1" onchange="fffUpdateField(${ev.id},'ticketsSold',this.value)" style="width:100%;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;"></div>
+      </div>
+
+      <!-- Summary stats -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;padding:12px;background:var(--hover);border-radius:10px;">
+        <div style="flex:1;min-width:120px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#27ae60;">${fmt(totalIncome)}</div><div style="font-size:12px;color:var(--gray);">Total Income</div></div>
+        <div style="flex:1;min-width:120px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#c0392b;">${fmt(totalExpenses)}</div><div style="font-size:12px;color:var(--gray);">Total Expenses</div></div>
+        <div style="flex:1;min-width:120px;text-align:center;"><div style="font-size:20px;font-weight:800;color:${net>=0?'#1a6b35':'#c0392b'}">${net>=0?'+':''}${fmt(net)}</div><div style="font-size:12px;color:var(--gray);">Net</div></div>
+        <div style="flex:1;min-width:120px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#1a5a8a;">${fmt((ev.ticketsSold||0)*(ev.price||0))}</div><div style="font-size:12px;color:var(--gray);">Ticket Revenue</div></div>
+      </div>
+
+      <!-- Activities -->
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-bottom:1px solid var(--border);" onclick="FFF_ACTIVITIES_OPEN=!FFF_ACTIVITIES_OPEN;showTab(CURRENT_TAB||'manager')">
+          <h4 style="margin:0;font-size:15px;">Activities</h4>
+          <span style="color:var(--text-light);">${FFF_ACTIVITIES_OPEN?'▾':'▸'}</span>
+        </div>
+        ${FFF_ACTIVITIES_OPEN?`
+        <div style="padding:12px 0;display:flex;flex-direction:column;gap:10px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.shows?'checked':''} onchange="fffToggleActivity(${ev.id},'shows',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Shows</label>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.characters&&act.characters.length?'checked':''} onchange="fffToggleActivity(${ev.id},'_charToggle',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Characters (Mascots)</label>
+            <div style="margin-left:28px;margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;">
+              ${mascotList.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" ${(act.characters||[]).includes(m)?'checked':''} onchange="fffToggleCharacter(${ev.id},'${m.replace(/'/g,"\\'")}',this.checked)" style="cursor:pointer;"> ${esc(m)}</label>`).join('')}
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.mtkRacing?'checked':''} onchange="fffToggleActivity(${ev.id},'mtkRacing',this.checked)" style="width:16px;height:16px;cursor:pointer;"> MTK Racing</label>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.display&&act.display.length?'checked':''} style="width:16px;height:16px;cursor:pointer;"> Display</label>
+            <div style="margin-left:28px;margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;">
+              ${FFF_DISPLAY_ITEMS.map(item=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" ${(act.display||[]).includes(item)?'checked':''} onchange="fffToggleDisplay(${ev.id},'${item.replace(/'/g,"\\'")}',this.checked)" style="cursor:pointer;"> ${esc(item)}</label>`).join('')}
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.science?'checked':''} onchange="fffToggleActivity(${ev.id},'science',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Science</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.archeology?'checked':''} onchange="fffToggleActivity(${ev.id},'archeology',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Archeology</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.magic?'checked':''} onchange="fffToggleActivity(${ev.id},'magic',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Magic</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" ${act.rocketLeague?'checked':''} onchange="fffToggleActivity(${ev.id},'rocketLeague',this.checked)" style="width:16px;height:16px;cursor:pointer;"> Rocket League</label>
+          ${(act.custom||[]).map((c,i)=>`<label style="display:flex;align-items:center;gap:8px;font-size:14px;"><input type="checkbox" checked style="width:16px;height:16px;cursor:pointer;" onchange="fffRemoveCustomActivity(${ev.id},${i})"> ${esc(c)}</label>`).join('')}
+          <button class="btn-ghost" style="align-self:flex-start;" onclick="fffAddCustomActivity(${ev.id})">+ Add Activity</button>
+        </div>` : ''}
+      </div>
+
+      <!-- Income -->
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-bottom:1px solid var(--border);" onclick="FFF_INCOME_OPEN=!FFF_INCOME_OPEN;showTab(CURRENT_TAB||'manager')">
+          <h4 style="margin:0;font-size:15px;">Income <span style="font-size:13px;font-weight:400;color:#27ae60;">${fmt(totalIncome)}</span></h4>
+          <span style="color:var(--text-light);">${FFF_INCOME_OPEN?'▾':'▸'}</span>
+        </div>
+        ${FFF_INCOME_OPEN?`
+        <div style="margin-top:10px;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left;padding:6px;">Type</th>
+              <th style="text-align:left;padding:6px;">Method / Name</th>
+              <th style="text-align:left;padding:6px;">Amount</th>
+              <th style="padding:6px;"></th>
+            </tr></thead>
+            <tbody>${incRows||'<tr><td colspan="4" style="padding:10px;color:var(--gray);font-size:13px;">No income entries yet.</td></tr>'}</tbody>
+          </table>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+            <button class="btn-small" style="background:#1a6b35;" onclick="fffAddIncome(${ev.id},'presale')">+ Pre-sale</button>
+            <button class="btn-small" style="background:#1a6b35;" onclick="fffAddIncome(${ev.id},'atdoor')">+ At Door</button>
+            <button class="btn-small" style="background:#33507a;" onclick="fffAddIncome(${ev.id},'vendor')">+ Vendor</button>
+          </div>
+        </div>` : ''}
+      </div>
+
+      <!-- Expenses -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-bottom:1px solid var(--border);" onclick="FFF_EXPENSES_OPEN=!FFF_EXPENSES_OPEN;showTab(CURRENT_TAB||'manager')">
+          <h4 style="margin:0;font-size:15px;">Expenses <span style="font-size:13px;font-weight:400;color:#c0392b;">${fmt(totalExpenses)}</span></h4>
+          <span style="color:var(--text-light);">${FFF_EXPENSES_OPEN?'▾':'▸'}</span>
+        </div>
+        ${FFF_EXPENSES_OPEN?`
+        <div style="margin-top:10px;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left;padding:6px;">Category</th>
+              <th style="text-align:left;padding:6px;">Description</th>
+              <th style="text-align:left;padding:6px;">Amount</th>
+              <th style="padding:6px;"></th>
+            </tr></thead>
+            <tbody>${expRows||'<tr><td colspan="4" style="padding:10px;color:var(--gray);font-size:13px;">No expense entries yet.</td></tr>'}</tbody>
+          </table>
+          <button class="btn-small" style="margin-top:10px;background:#c0392b;" onclick="fffAddExpense(${ev.id})">+ Add Expense</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>🎪 Family Fun Fest</h2>
+      <div class="sub">Track each year's event — location, venue, activities, income, and expenses.</div>
+      <button class="btn-small" style="margin-top:10px;background:#1a5a8a;" onclick="fffNewEvent()">+ Add Year</button>
+    </div>
+    ${events.length ? eventCards : '<div class="card"><div class="empty">No events yet — click "+ Add Year" to get started.</div></div>'}
+  `;
+}
+
 const MANAGER_TABS = [
   {id:'overview', label:'Overview'},
   {id:'tasks', label:'Tasks'},
@@ -7763,6 +8076,7 @@ const MANAGER_TABS = [
   {id:'welcome', label:'Welcome'},
   {id:'quiz', label:'Quiz'},
   {id:'admin', label:'Admin'},
+  {id:'familyfunfest', label:'Family Fun Fest'},
   {id:'foundation', label:'U4W Charity FDN'},
   {id:'data', label:'Data Tools'}
 ];
@@ -8343,7 +8657,7 @@ function renderManager(){
           </div>
         </div>
         ${(()=>{
-          const managerCount = (DATA.logins||[]).filter(l=>l.role==='manager'||l.role==='owner').length;
+          const managerCount = (DATA.logins||[]).filter(l=>l.role==='owner').length;
           const loginRows = (DATA.logins||[]).filter(l=>{ const m=DATA.team.find(x=>x.name===l.name); return !m||!m.archived; }).map(l=>{
             const member = DATA.team.find(m=>m.name===l.name);
             const clockEnabled = member ? member.clockEnabled!==false : true;
@@ -8358,7 +8672,7 @@ function renderManager(){
                 </select>
               </td>
               <td>${(()=>{
-                const lr = l.role==='manager'?'owner': l.role==='staff'?'keeper': (l.role||'keeper');
+                const lr = l.role==='staff'?'keeper': (l.role||'keeper');
                 const locked = (lr==='owner') && managerCount<=1;
                 return `<select onchange="setLoginRole(${l.id}, this.value)" ${locked?'disabled title="At least one Owner login is required."':''}>
                   <option value="owner"      ${lr==='owner'     ?'selected':''}>Owner</option>
@@ -9383,6 +9697,45 @@ function renderManager(){
               </div>
               <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExtraIncomeRow()">+ Add Row</button>
             </div>`;
+        })()}
+        ${(()=>{
+          // ---- Family Fun Fest Income Summary ----
+          const fffEvents = fffGetEvents();
+          if(!fffEvents.length) return '';
+          const fffIncomeByType={};
+          fffEvents.forEach(ev=>{
+            (ev.income||[]).forEach(inc=>{
+              const key = inc.type==='vendor' ? 'Vendor ('+esc(inc.vendorName||'Unknown')+')' : (inc.type==='presale'?'Pre-sale':'At Door')+' ('+inc.method+')';
+              fffIncomeByType[key]=(fffIncomeByType[key]||0)+parseFloat(inc.amount||0);
+            });
+          });
+          const fffTotalIncome=Object.values(fffIncomeByType).reduce((s,v)=>s+v,0);
+          const fffExpByCategory={};
+          fffEvents.forEach(ev=>{
+            (ev.expenses||[]).forEach(exp=>{
+              fffExpByCategory[exp.category]=(fffExpByCategory[exp.category]||0)+parseFloat(exp.amount||0);
+            });
+          });
+          const fffTotalExp=Object.values(fffExpByCategory).reduce((s,v)=>s+v,0);
+          const incRows=Object.entries(fffIncomeByType).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;">
+              <span>${k}</span><span style="font-weight:700;color:#1a6b35;">${fmt(v)}</span>
+            </div>`).join('');
+          const expRows=Object.entries(fffExpByCategory).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;">
+              <span>${k}</span><span style="font-weight:700;color:#c0392b;">${fmt(v)}</span>
+            </div>`).join('');
+          return `<hr style="margin:24px 0;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+              <h3 style="margin:0;flex:1;">🎪 Family Fun Fest — All Events</h3>
+              <span style="font-size:13px;color:#27ae60;font-weight:700;">${fmt(fffTotalIncome)} income</span>
+              <span style="font-size:13px;color:#c0392b;font-weight:700;">${fmt(fffTotalExp)} expenses</span>
+              <span style="font-size:13px;font-weight:700;color:${fffTotalIncome-fffTotalExp>=0?'#1a6b35':'#c0392b'}">${fffTotalIncome-fffTotalExp>=0?'+':''}${fmt(fffTotalIncome-fffTotalExp)} net</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+              <div><div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#1a6b35;">Income by Source</div>${incRows||'<div style="color:#bbb;font-size:13px;">None recorded.</div>'}</div>
+              <div><div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#c0392b;">Expenses by Category</div>${expRows||'<div style="color:#bbb;font-size:13px;">None recorded.</div>'}</div>
+            </div>`;
         })()}`;
       } // end else income
     }
@@ -9454,6 +9807,8 @@ function renderManager(){
         `).join('')}
       </div>
     `;
+  } else if(MANAGER_TAB === 'familyfunfest'){
+    body = renderFamilyFunFest();
   } else if(MANAGER_TAB === 'foundation'){
     const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
     const faccess = DATA.foundation.access || [];
@@ -9744,9 +10099,9 @@ function addLogin(){
 function deleteLogin(id){
   const l = DATA.logins.find(x=>x.id===id);
   if(!l) return;
-  const managerCount = DATA.logins.filter(x=>x.role==='manager').length;
-  if(l.role==='manager' && managerCount<=1){
-    alert('You must keep at least one Manager login.');
+  const ownerCount = DATA.logins.filter(x=>x.role==='owner').length;
+  if(l.role==='owner' && ownerCount<=1){
+    alert('You must keep at least one Owner login.');
     return;
   }
   if(!confirm(`Delete the login "${l.username}"? They will no longer be able to sign in.`)) return;
@@ -9764,10 +10119,10 @@ function saveLoginField(id, field, value){
 function setLoginRole(id, role){
   const l = DATA.logins.find(x=>x.id===id);
   if(!l) return;
-  if(l.role==='manager' && role!=='manager'){
-    const managerCount = DATA.logins.filter(x=>x.role==='manager').length;
-    if(managerCount<=1){
-      alert('You must keep at least one Manager login.');
+  if(l.role==='owner' && role!=='owner'){
+    const ownerCount = DATA.logins.filter(x=>x.role==='owner').length;
+    if(ownerCount<=1){
+      alert('You must keep at least one Owner login.');
       showTab('manager');
       return;
     }
