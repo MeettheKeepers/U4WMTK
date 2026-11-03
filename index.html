@@ -919,6 +919,7 @@ function normalizeData(d){
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
   if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
   d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
+  if(!Array.isArray(d.timeOffRemovals)) d.timeOffRemovals = [];
   (d.mileagePayments).forEach(mp=>{ if(!mp.legs) mp.legs=[]; if(mp.ratePerKm==null) mp.ratePerKm=0.50; });
   if(!d.roadTasks) d.roadTasks = [];
   if(!d.supplyRequests) d.supplyRequests = [];
@@ -2414,7 +2415,7 @@ function getAllWelcomeTabs(){
   const tabs = [...WELCOME_TABS, ...custom.map(ct=>({id:'custom_'+ct.id, label:ct.title, customId:ct.id}))];
   // Add Training tab for allowed roles
   const tpRoles = (DATA.welcome && DATA.welcome.trainingPlanRoles) || ['owner','manager'];
-  if(tpRoles.includes(getLoginLevel())) tabs.push({id:'training', label:'📋 Training'});
+  if(tpRoles.includes(getLoginLevel())) tabs.push({id:'training', label:'Training'});
   // Add Quiz tab for staff who need it or are currently taking it
   if(!isManagerLogin()){
     const staffName = getWelcomeStaffName();
@@ -2510,9 +2511,6 @@ function renderWelcome(){
       </div>
       <div class="card">
         <div class="welcome-content" style="font-size:14px;line-height:1.75;">
-          <p><strong>Date: _______________&nbsp;&nbsp;&nbsp;Location: ___________________</strong></p>
-          <p><strong>Attendees:</strong></p>
-          <ul><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li></ul>
           <h3>Item 1 — Assign Logins for the App</h3>
           <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
           <p><strong>iPhone (Safari)</strong></p>
@@ -4004,6 +4002,8 @@ function renderDashboard(){
     (r.status==='approved'||r.status==='denied') &&
     !r.notificationDismissed
   ) : [];
+  const myRemovalNotifications = myName ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyStaff && r.staffName===myName && !r.staffDismissed) : [];
+  const managerRemovalNotifications = isManagerLogin() ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyManager && !r.managerDismissed) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</span>
@@ -4026,6 +4026,33 @@ function renderDashboard(){
           </div>
           <button class="btn-sm" style="background:var(--border);color:var(--text);border:none;" onclick="dismissTimeOffNotification('${r.id}')">Dismiss</button>
         </div>`;}).join('')}
+    </div>` : ''}
+    ${myRemovalNotifications.length ? `
+    <div class="card" style="border-left:5px solid var(--red);">
+      <h2 style="margin-bottom:10px;">🗑 Time Off Removed</h2>
+      ${myRemovalNotifications.map(n=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;color:var(--red);">Removed by ${esc(n.removedBy)}</span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text);">${n.startDate===n.endDate?n.startDate:n.startDate+' – '+n.endDate}</span>
+            ${n.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(n.reason)}"</span>`:''}
+          </div>
+          <button class="btn-sm" style="background:var(--border);color:var(--text);border:none;" onclick="dismissTimeOffRemovalNotification(${n.id},'staff')">Dismiss</button>
+        </div>`).join('')}
+    </div>` : ''}
+    ${managerRemovalNotifications.length ? `
+    <div class="card" style="border-left:5px solid var(--red);">
+      <h2 style="margin-bottom:10px;">🗑 Time Off Cancelled by Staff</h2>
+      ${managerRemovalNotifications.map(n=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;color:var(--text);">${esc(n.staffName)}</span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text-light);">${n.startDate===n.endDate?n.startDate:n.startDate+' – '+n.endDate}</span>
+            ${n.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(n.reason)}"</span>`:''}
+            <span style="margin-left:8px;font-size:12px;color:var(--text-light);">removed by ${esc(n.removedBy)}</span>
+          </div>
+          <button class="btn-sm" style="background:var(--border);color:var(--text);border:none;" onclick="dismissTimeOffRemovalNotification(${n.id},'manager')">Dismiss</button>
+        </div>`).join('')}
     </div>` : ''}
     ${pendingTimeOff.length ? `
     <div class="card" style="border-left:5px solid var(--amber,#c98a2a);">
@@ -5832,6 +5859,38 @@ function dismissTimeOffNotification(id){
   saveData(); showTab('dashboard');
 }
 
+function deleteTimeOffRequest(id){
+  const r = DATA.timeOffRequests.find(x=>x.id==id); if(!r) return;
+  const reason = prompt('Reason for removing this time-off request (optional):') ?? null;
+  if(reason === null) return; // user pressed Cancel
+  const removedBy = CURRENT_LOGIN ? CURRENT_LOGIN.name : 'Unknown';
+  const byManager = isManagerLogin();
+  // Store removal notification
+  if(!Array.isArray(DATA.timeOffRemovals)) DATA.timeOffRemovals = [];
+  DATA.timeOffRemovals.push({
+    id: nextId(DATA.timeOffRemovals),
+    staffName: r.staffName,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    reason: reason || '',
+    removedBy,
+    removedAt: new Date().toISOString(),
+    notifyStaff: byManager,   // staff gets notified if manager removed it
+    notifyManager: !byManager, // managers get notified if staff removed it
+    staffDismissed: false,
+    managerDismissed: false
+  });
+  DATA.timeOffRequests = DATA.timeOffRequests.filter(x=>x.id!=id);
+  saveData(); showTab(CURRENT_TAB);
+}
+
+function dismissTimeOffRemovalNotification(id, role){
+  const n = (DATA.timeOffRemovals||[]).find(x=>x.id==id); if(!n) return;
+  if(role==='staff') n.staffDismissed=true;
+  else n.managerDismissed=true;
+  saveData(); showTab('dashboard');
+}
+
 /* ============================================================
    SHOW CALENDAR
    ============================================================ */
@@ -6034,6 +6093,7 @@ function renderCalDayView(){
       ${r.status==='pending'&&isManagerLogin()?`
         <button class="btn-small" style="background:#1a6b35;color:#fff;" onclick="approveTimeOffRequest(${r.id})">Approve</button>
         <button class="btn-small" style="background:var(--red);color:#fff;" onclick="denyTimeOffRequest(${r.id})">Deny</button>`:''}
+      ${r.status==='approved'&&(isManagerLogin()||r.staffName===myName)?`<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--red);" onclick="deleteTimeOffRequest(${r.id})">Remove</button>`:''}
     </div>`).join('');
 
   const formOpen = TIME_OFF_FORM_DAY === ds;
@@ -6131,8 +6191,8 @@ function renderShowCalendar(){
       <div style="display:flex;gap:4px;">${navL}${navR}</div>
       <button class="btn-small" onclick="calGoToday()" style="margin-left:4px;">Today</button>
       <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-left:6px;">
-        <button onclick="calSetView('month')" style="padding:5px 14px;background:${isMonth?'var(--accent)':'transparent'};color:${isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;">Month</button>
-        <button onclick="calSetView('day')" style="padding:5px 14px;background:${!isMonth?'var(--accent)':'transparent'};color:${!isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;border-left:1px solid var(--border);">Day</button>
+        <button onclick="calSetView('month')" style="padding:5px 14px;background:${isMonth?'var(--accent)':'transparent'};color:${isMonth?'#fff':'var(--text)'};border:none;cursor:pointer;font-size:13px;font-weight:${isMonth?'600':'400'};">Month</button>
+        <button onclick="calSetView('day')" style="padding:5px 14px;background:${!isMonth?'var(--accent)':'transparent'};color:${!isMonth?'#fff':'var(--text)'};border:none;cursor:pointer;font-size:13px;border-left:1px solid var(--border);font-weight:${!isMonth?'600':'400'};">Day</button>
       </div>
       ${getWelcomeStaffName() ? `<button class="btn" style="margin-left:10px;font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
     </div>
