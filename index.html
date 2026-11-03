@@ -6199,8 +6199,8 @@ function renderShowCalendar(){
       <div style="display:flex;gap:4px;">${navL}${navR}</div>
       <button class="btn-small" onclick="calGoToday()" style="margin-left:4px;">Today</button>
       <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-left:6px;">
-        <button onclick="calSetView('month')" style="padding:5px 14px;background:transparent;color:#222;border:none;${isMonth?'outline:2px solid #222;':''}cursor:pointer;font-size:13px;font-weight:${isMonth?'700':'500'};">Month</button>
-        <button onclick="calSetView('day')" style="padding:5px 14px;background:transparent;color:#222;border:none;border-left:1px solid var(--border);${!isMonth?'outline:2px solid #222;':''}cursor:pointer;font-size:13px;font-weight:${!isMonth?'700':'500'};">Day</button>
+        <button onclick="calSetView('month')" style="padding:5px 14px;background:${isMonth?'#222':'transparent'};color:${isMonth?'#fff':'#222'};border:none;cursor:pointer;font-size:13px;font-weight:600;">Month</button>
+        <button onclick="calSetView('day')" style="padding:5px 14px;background:${!isMonth?'#222':'transparent'};color:${!isMonth?'#fff':'#222'};border:none;border-left:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;">Day</button>
       </div>
       ${getWelcomeStaffName() ? `<button class="btn" style="margin-left:10px;font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
     </div>
