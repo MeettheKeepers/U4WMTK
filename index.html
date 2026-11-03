@@ -889,6 +889,7 @@ function normalizeData(d){
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases." };
   if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
+  if(!Array.isArray(d.welcome.trainingPlanRoles)) d.welcome.trainingPlanRoles = ['owner','manager'];
   if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases.";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
@@ -1842,7 +1843,7 @@ function showTab(id){
     const el = document.getElementById(elId);
     if(el) scrollSave[elId] = { left: el.scrollLeft, top: el.scrollTop };
   });
-  document.getElementById('main-content').innerHTML = renderFn ? renderFn() : '';
+  document.getElementById('main-content').innerHTML = (renderFn ? renderFn() : '') + renderTimeOffModal();
   // Restore scroll positions after re-render — deferred so the browser has laid out the new content first
   if(Object.keys(scrollSave).length){
     requestAnimationFrame(()=>{
@@ -2447,6 +2448,21 @@ function ackWelcomeSection(sectionKey){
   saveData();
   showTab('welcome');
 }
+function saveTrainingPlanRoles(roles){
+  DATA.welcome.trainingPlanRoles = roles;
+  saveData(); showTab('welcome');
+}
+function toggleTrainingPlanRole(role){
+  const roles = DATA.welcome.trainingPlanRoles || ['owner','manager'];
+  const idx = roles.indexOf(role);
+  if(idx === -1){ roles.push(role); } else { roles.splice(idx,1); }
+  // Always keep owner and manager
+  if(!roles.includes('owner')) roles.push('owner');
+  if(!roles.includes('manager')) roles.push('manager');
+  DATA.welcome.trainingPlanRoles = roles;
+  saveData(); showTab('welcome');
+}
+
 function renderWelcome(){
   const allTabs = getAllWelcomeTabs();
   // If WELCOME_TAB is 'quiz' but quiz tab is no longer visible (e.g. after result cleared), fallback to 'about'
@@ -2525,6 +2541,84 @@ function renderWelcome(){
       ${content ? `<div class="welcome-content">${content}</div>` : '<div class="empty">Nothing posted here yet — check back soon.</div>'}
       <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:16px;">${ackHtml}</div>
     </div>
+    ${(()=>{
+      const tpRoles = DATA.welcome.trainingPlanRoles || ['owner','manager'];
+      const lvl = getLoginLevel();
+      const canSee = tpRoles.includes(lvl);
+      if(!canSee) return '';
+      const isMgr = lvl==='owner'||lvl==='manager';
+      const visControls = isMgr ? `
+        <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-light);">VISIBLE TO</div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;opacity:.6;cursor:default;">
+              <input type="checkbox" checked disabled> Owners &amp; Managers (always)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" ${tpRoles.includes('supervisor')?'checked':''} onchange="toggleTrainingPlanRole('supervisor')"> Supervisors
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" ${tpRoles.includes('keeper')?'checked':''} onchange="toggleTrainingPlanRole('keeper')"> Keepers
+            </label>
+          </div>
+        </div>` : '';
+      return `
+      <div class="card" style="border-left:5px solid var(--accent);">
+        <h2 style="margin-bottom:4px;">📋 Plan for Training Day</h2>
+        <div class="sub" style="margin-bottom:16px;">Reference guide for onboarding sessions.</div>
+        <div class="welcome-content" style="font-size:14px;line-height:1.75;">
+          <p><strong>Date: _______________&nbsp;&nbsp;&nbsp;Location: ___________________</strong></p>
+          <p><strong>Attendees:</strong></p>
+          <ul><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li></ul>
+
+          <h3>Item 1 — Assign Logins for the App</h3>
+          <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
+          <p><strong>iPhone (Safari)</strong></p>
+          <ol>
+            <li>Open <strong>Safari</strong> and go to the website.</li>
+            <li>Tap <strong>Share</strong> (square with upward arrow), then scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Turn on <strong>Open as Web App</strong> if it appears, then tap <strong>Add</strong>.</li>
+          </ol>
+          <p><strong>Android (Chrome)</strong></p>
+          <ol>
+            <li>Open <strong>Chrome</strong> and go to the website.</li>
+            <li>Tap the <strong>three-dot menu</strong>, then tap <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li>
+            <li>Choose <strong>Install</strong> if available, or <strong>Create shortcut</strong> and tap <strong>Add</strong>.</li>
+          </ol>
+          <p>Then walk through each tab one by one: <em>Welcome (About Us, Mission Statement, Your Role, What MTK Provides, Policies &amp; Procedures, Health &amp; Safety, Vehicles, Shows &amp; Presentations, Credit Cards, Quiz) → Dashboard → Tasks → Animals → Shows → Calendar → Schedule → Supplies &amp; Repairs → Inventory → Incidents → Team → Wildlife Adventures Show</em></p>
+          <p><strong>Dashboard</strong> — Clock in/out for shifts and breaks from your phone. Breaks are assigned times unless on the road.</p>
+          <p><strong>Tasks</strong> — Show examples, explain when to check them off; more detail during animal care training.</p>
+          <p><strong>Animals</strong> — "Take" animals at show start, "return" at shift end. 3-day/week limit per animal (exceptions require supervisor approval). Approved animal list and approved crate categories apply — if not approved, you can't take that animal. Diets and Scripts also live here.</p>
+          <p><strong>Shows</strong> — View shows assigned to you: client name, address, phone. Travel time includes 30-min load, drive time, and 20-min buffer. For 2 shows, travel is from show 1 to show 2. Always double-check addresses. If late, contact the client <em>and</em> the office. Check in on arrival, check out when leaving. On return: put away animals, clean habitats, complete "paperwork" (return animals in app, fill in occasion, record animals taken).</p>
+          <p><strong>Calendar</strong> — Upcoming shows and time-off requests. First come, first served, pending approval. Submit request → manager approves/denies → notification on your dashboard next sign-in.</p>
+          <p><strong>Schedule</strong> — Visible ~2 weeks out (ideally 1 month). Report errors to a supervisor ASAP. Schedule changes often as shows are added last-minute.</p>
+          <p><strong>Supplies &amp; Repairs</strong> — Click "Take" for common items (auto-reduces count). Write repairs you can't fix yourself. Use Supply Request for non-common items needing an order.</p>
+          <p><strong>Inventory</strong> — Contents of each vehicle travel bag. If something is low or missing, submit a supply request.</p>
+          <p><strong>Incidents</strong> — Log any injury or minor incident here. For major incidents, contact a supervisor immediately.</p>
+          <p><strong>Team</strong> — Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.</p>
+          <p><strong>Wildlife Adventures</strong> — New episodes of our show appear here.</p>
+
+          <h3>Item 2 — Handling All the Animals</h3>
+          <p>At the scripts section, stand and stretch. Handle each animal one by one and introduce the ball trick with tarantula and scorpion. Cover proper handling of each animal.</p>
+
+          <h3>Item 3 — Shows</h3>
+          <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee stand and deliver:</p>
+          <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
+          <p>Rate each on a 1–5 scale: <strong>Memory · Projection · Clarity · Confidence</strong></p>
+          <p>At a future event, we will film a presentation and review it like game film.</p>
+
+          <h3>Item 4 — Scripts</h3>
+          <p>Go over animal scripts — trainees are expected to memorize them. As experience grows, personality comes out more. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
+
+          <h3>Item 4 — Quiz</h3>
+          <p>Finish the day with the quiz. Failing the first attempt is okay — 7-day cooldown, then eligible again. <strong>80% required to pass (20 randomized questions).</strong> Until passed, trainees cannot perform in front of a crowd. If unable to pass after 3 attempts (1 month), they may be reprimanded, moved to animal care only, or dismissed.</p>
+
+          <h3>Conclusion</h3>
+          <p>Open the floor for questions, comments, and concerns. Ensure everyone understands their roles and expectations.</p>
+        </div>
+        ${visControls}
+      </div>`;
+    })()}
   `;
 }
 
@@ -3913,9 +4007,12 @@ function renderDashboard(){
     !r.notificationDismissed
   ) : [];
   return `
-    <div style="padding:10px 0 4px 2px;display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</span>
-      <span style="font-size:15px;color:var(--text-light);font-weight:500;">${_dateStr}</span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:15px;color:var(--text-light);font-weight:500;">${_dateStr}</span>
+        ${myName ? `<button class="btn" style="font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
+      </div>
     </div>
     ${myDecidedNotifications.length ? `
     <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
@@ -5621,6 +5718,67 @@ function toggleShowStaffRow(key){
    TIME OFF REQUESTS
    ============================================================ */
 let TIME_OFF_FORM_DAY = null; // date string when form is open in day view
+let TIME_OFF_MODAL_OPEN = false; // standalone modal form from calendar/dashboard
+
+function openTimeOffModal(){ TIME_OFF_MODAL_OPEN = true; showTab(CURRENT_TAB); }
+function closeTimeOffModal(){ TIME_OFF_MODAL_OPEN = false; showTab(CURRENT_TAB); }
+function submitTimeOffModal(){
+  const start = document.getElementById('torm-start').value;
+  const end   = document.getElementById('torm-end').value || start;
+  const reason= document.getElementById('torm-reason').value;
+  const tt    = document.querySelector('input[name=torm-type]:checked').value;
+  const tn    = tt!=='full' ? document.getElementById('torm-time').value : '';
+  if(!start){ alert('Please select a start date.'); return; }
+  submitTimeOffRequest(start, end, reason, tt, tn);
+  TIME_OFF_MODAL_OPEN = false;
+}
+
+function renderTimeOffModal(){
+  if(!TIME_OFF_MODAL_OPEN) return '';
+  const today = todayStr();
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeTimeOffModal()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:100%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,.25);">
+      <h2 style="margin:0 0 16px;">Request Time Off</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>Start date</label>
+          <input type="date" id="torm-start" value="${today}" style="width:100%;">
+        </div>
+        <div class="field-block" style="flex:1;min-width:140px;">
+          <label>End date <span style="font-weight:400;">(optional)</span></label>
+          <input type="date" id="torm-end" value="${today}" style="width:100%;">
+        </div>
+      </div>
+      <div class="field-block" style="margin-bottom:12px;">
+        <label>Reason <span style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="torm-reason" placeholder="e.g. Family event" style="width:100%;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Availability</label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="torm-type" value="full" checked onchange="document.getElementById('torm-time-row').style.display='none'"> Full day off
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="torm-type" value="morning" onchange="document.getElementById('torm-time-row').style.display='flex';document.getElementById('torm-time-label').textContent='Unavailable until';"> Unavailable until (morning)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="torm-type" value="afternoon" onchange="document.getElementById('torm-time-row').style.display='flex';document.getElementById('torm-time-label').textContent='Only available until';"> Only available until (afternoon)
+          </label>
+        </div>
+        <div id="torm-time-row" style="display:none;align-items:center;gap:8px;margin-top:8px;">
+          <span id="torm-time-label" style="font-size:13px;color:var(--text-light);"></span>
+          <input type="time" id="torm-time" value="12:00" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" onclick="submitTimeOffModal()">Submit Request</button>
+        <button class="btn-ghost" onclick="closeTimeOffModal()">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 function timeOffOnDate(date){
   return (DATA.timeOffRequests||[]).filter(r=>{
@@ -5978,6 +6136,7 @@ function renderShowCalendar(){
         <button onclick="calSetView('month')" style="padding:5px 14px;background:${isMonth?'var(--accent)':'transparent'};color:${isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;">Month</button>
         <button onclick="calSetView('day')" style="padding:5px 14px;background:${!isMonth?'var(--accent)':'transparent'};color:${!isMonth?'#fff':'inherit'};border:none;cursor:pointer;font-size:13px;border-left:1px solid var(--border);">Day</button>
       </div>
+      ${getWelcomeStaffName() ? `<button class="btn" style="margin-left:10px;font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:10px;">
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#1a5a8a;display:inline-block;"></span>Paid</span>
