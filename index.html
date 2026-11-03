@@ -834,6 +834,7 @@ function defaultData(){
     ],
     payStubs: [],
     mileagePayments: [],
+    timeOffRequests: [],
     roadTasks: [],
     supplyRequests: [],
     supplyInventory: [],
@@ -915,6 +916,8 @@ function normalizeData(d){
   (d.repairs||[]).forEach(r=>{ if(r.closedBy===undefined) r.closedBy = ""; });
   if(!Array.isArray(d.payStubs)) d.payStubs = [];
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
+  if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
+  d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
   (d.mileagePayments).forEach(mp=>{ if(!mp.legs) mp.legs=[]; if(mp.ratePerKm==null) mp.ratePerKm=0.50; });
   if(!d.roadTasks) d.roadTasks = [];
   if(!d.supplyRequests) d.supplyRequests = [];
@@ -3903,11 +3906,48 @@ function renderDashboard(){
   const _months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const _ord = (n) => n+(n===1?'st':n===2?'nd':n===3?'rd':'th');
   const _dateStr = `${_days[_now.getDay()]} ${_months[_now.getMonth()]} ${_ord(_now.getDate())} ${_now.getFullYear()}`;
+  const pendingTimeOff = isManagerLogin() ? (DATA.timeOffRequests||[]).filter(r=>r.status==='pending') : [];
+  const myDecidedNotifications = myName ? (DATA.timeOffRequests||[]).filter(r=>
+    r.staffName===myName &&
+    (r.status==='approved'||r.status==='denied') &&
+    !r.notificationDismissed
+  ) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</span>
       <span style="font-size:15px;color:var(--text-light);font-weight:500;">${_dateStr}</span>
     </div>
+    ${myDecidedNotifications.length ? `
+    <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
+      <h2 style="margin-bottom:10px;">📬 Time Off Update</h2>
+      ${myDecidedNotifications.map(r=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;color:${r.status==='approved'?'var(--green,#27ae60)':'var(--red)'};">
+              ${r.status==='approved'?'✅ Approved':'❌ Denied'}
+            </span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}</span>
+            ${r.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(r.reason)}"</span>`:''}
+          </div>
+          <button class="btn-sm" style="background:var(--border);color:var(--text);border:none;" onclick="dismissTimeOffNotification('${r.id}')">Dismiss</button>
+        </div>`).join('')}
+    </div>` : ''}
+    ${pendingTimeOff.length ? `
+    <div class="card" style="border-left:5px solid var(--amber,#c98a2a);">
+      <h2 style="margin-bottom:10px;">🗓 Time Off Requests <span style="font-size:14px;font-weight:400;color:var(--text-light);">(${pendingTimeOff.length} pending)</span></h2>
+      ${pendingTimeOff.map(r=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;color:var(--text);">${esc(r.staffName)}</span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text-light);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}</span>
+            ${r.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(r.reason)}"</span>`:''}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sm" style="background:var(--green,#27ae60);color:#fff;border:none;" onclick="approveTimeOffRequest('${r.id}')">Approve</button>
+            <button class="btn-sm" style="background:var(--red);color:#fff;border:none;" onclick="denyTimeOffRequest('${r.id}')">Deny</button>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
     ${renderBirthdayBanner(myName)}
     ${isManagerLogin() ? renderLiveStatusBoard() : ''}
     ${myShiftHtml}
@@ -5578,6 +5618,63 @@ function toggleShowStaffRow(key){
 }
 
 /* ============================================================
+   TIME OFF REQUESTS
+   ============================================================ */
+let TIME_OFF_FORM_DAY = null; // date string when form is open in day view
+
+function timeOffOnDate(date){
+  return (DATA.timeOffRequests||[]).filter(r=>{
+    const end = r.endDate || r.startDate;
+    return r.startDate <= date && end >= date;
+  });
+}
+
+function submitTimeOffRequest(startDate, endDate, reason){
+  const myName = getWelcomeStaffName();
+  if(!myName){ alert('No staff profile linked to your login.'); return; }
+  const id = nextId(DATA.timeOffRequests);
+  DATA.timeOffRequests.push({
+    id, staffName: myName,
+    startDate, endDate: endDate || startDate,
+    reason: reason||'',
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    decidedAt: null, decidedBy: null,
+    notificationDismissed: false
+  });
+  TIME_OFF_FORM_DAY = null;
+  saveData(); showTab('showcalendar');
+}
+
+function cancelTimeOffRequest(id){
+  const r = DATA.timeOffRequests.find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm('Cancel this time-off request?')) return;
+  DATA.timeOffRequests = DATA.timeOffRequests.filter(x=>x.id!==id);
+  saveData(); showTab(CURRENT_TAB);
+}
+
+function approveTimeOffRequest(id){
+  const r = DATA.timeOffRequests.find(x=>x.id===id); if(!r) return;
+  r.status='approved'; r.decidedAt=new Date().toISOString(); r.decidedBy=CURRENT_LOGIN?CURRENT_LOGIN.name:'Manager';
+  r.notificationDismissed=false;
+  saveData(); showTab(CURRENT_TAB);
+}
+
+function denyTimeOffRequest(id){
+  const r = DATA.timeOffRequests.find(x=>x.id===id); if(!r) return;
+  r.status='denied'; r.decidedAt=new Date().toISOString(); r.decidedBy=CURRENT_LOGIN?CURRENT_LOGIN.name:'Manager';
+  r.notificationDismissed=false;
+  saveData(); showTab(CURRENT_TAB);
+}
+
+function dismissTimeOffNotification(id){
+  const r = DATA.timeOffRequests.find(x=>x.id===id); if(!r) return;
+  r.notificationDismissed=true;
+  saveData(); showTab('dashboard');
+}
+
+/* ============================================================
    SHOW CALENDAR
    ============================================================ */
 let CAL_VIEW  = 'month';
@@ -5737,9 +5834,11 @@ function renderCalMonthView(){
     const evts=dayShows.slice(0,3).map(s=>eventPill(s,ds,dow)).join('');
     const more=dayShows.length>3?`<div style="font-size:11px;color:#888;padding-left:2px;">+${dayShows.length-3} more</div>`:'';
     const staffRow=staff.length?`<div style="font-size:10px;color:#1a4a7a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${staff.join(', ')}">${staff.join(', ')}</div>`:'';
+    const dayOff=timeOffOnDate(ds).filter(r=>r.status!=='denied');
+    const offDots=dayOff.length?`<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">${dayOff.map(r=>`<div title="${r.staffName}${r.reason?' — '+r.reason:''}" style="font-size:10px;padding:1px 5px;border-radius:10px;background:${r.status==='approved'?'#d4edda':'#fff3cd'};color:${r.status==='approved'?'#1a6b35':'#7a5000'};white-space:nowrap;overflow:hidden;max-width:60px;text-overflow:ellipsis;">${r.staffName.split(' ')[0]}</div>`).join('')}</div>`:'';
     cells+=`<div onclick="calGoDay('${ds}')" style="cursor:pointer;min-height:90px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;">
       <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${isToday?700:400};background:${isToday?'#e67e22':'transparent'};color:${isToday?'#fff':'inherit'};margin-bottom:3px;${isToday?'box-shadow:0 0 0 2px #fff,0 0 0 4px #e67e22;':''};">${d}</div>
-      ${evts}${more}${staffRow}
+      ${evts}${more}${staffRow}${offDots}
     </div>`;
   }
   const filled=(firstDow+daysInMonth)%7;
@@ -5757,6 +5856,60 @@ function renderCalDayView(){
   const HOURS=[];
   for(let h=6;h<=22;h++) HOURS.push(h);
   const staffHtml=staff.length?`<div style="background:#e8f0fb;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;"><strong>Staff working:</strong> ${staff.join(' · ')}</div>`:'';
+
+  // Time-off section
+  const myName = getWelcomeStaffName();
+  const dayOffReqs = timeOffOnDate(ds).sort((a,b)=>a.staffName.localeCompare(b.staffName));
+  const myReqToday = dayOffReqs.find(r=>r.staffName===myName);
+  const statusColor = s => s==='approved'?'#1a6b35':s==='denied'?'#c0392b':'#7a5000';
+  const statusBg    = s => s==='approved'?'#d4edda':s==='denied'?'#fde2e2':'#fff3cd';
+  const statusLabel = s => s==='approved'?'✓ Approved':s==='denied'?'✕ Denied':'⏳ Pending';
+  const offReqCards = dayOffReqs.map(r=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:8px;background:${statusBg(r.status)};margin-bottom:5px;flex-wrap:wrap;">
+      <span style="font-weight:600;font-size:13px;">${esc(r.staffName)}</span>
+      ${r.endDate&&r.endDate!==r.startDate?`<span style="font-size:12px;color:#555;">→ ${fmtShortDate(r.endDate)}</span>`:''}
+      ${r.reason?`<span style="font-size:12px;color:#555;font-style:italic;">${esc(r.reason)}</span>`:''}
+      <span style="margin-left:auto;font-size:12px;font-weight:700;color:${statusColor(r.status)};">${statusLabel(r.status)}</span>
+      ${r.status==='pending'&&r.staffName===myName?`<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--red);" onclick="cancelTimeOffRequest(${r.id})">Cancel</button>`:''}
+      ${r.status==='pending'&&isManagerLogin()?`
+        <button class="btn-small" style="background:#1a6b35;color:#fff;" onclick="approveTimeOffRequest(${r.id})">Approve</button>
+        <button class="btn-small" style="background:var(--red);color:#fff;" onclick="denyTimeOffRequest(${r.id})">Deny</button>`:''}
+    </div>`).join('');
+
+  const formOpen = TIME_OFF_FORM_DAY === ds;
+  const canRequest = myName && !myReqToday;
+  const timeOffHtml = `
+    <div style="background:#f8f8f8;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:${dayOffReqs.length||formOpen?'10px':'0'};">
+        <strong style="font-size:14px;">Time Off</strong>
+        ${canRequest&&!formOpen?`<button class="btn-ghost" style="font-size:12px;" onclick="TIME_OFF_FORM_DAY='${ds}';showTab('showcalendar')">+ Request Time Off</button>`:''}
+        ${!myName?'<span style="font-size:12px;color:var(--text-light);">Log in to request time off</span>':''}
+      </div>
+      ${offReqCards}
+      ${formOpen?`
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;">
+        <div class="add-row" style="flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+          <div class="field-block" style="flex:1;min-width:140px;">
+            <label>Start date</label>
+            <input type="date" id="tor-start" value="${ds}">
+          </div>
+          <div class="field-block" style="flex:1;min-width:140px;">
+            <label>End date <span style="font-weight:400;">(optional, for multi-day)</span></label>
+            <input type="date" id="tor-end" value="${ds}">
+          </div>
+          <div class="field-block" style="flex:2;min-width:200px;">
+            <label>Reason <span style="font-weight:400;">(optional)</span></label>
+            <input type="text" id="tor-reason" placeholder="e.g. Family event">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="submitTimeOffRequest(document.getElementById('tor-start').value,document.getElementById('tor-end').value,document.getElementById('tor-reason').value)">Submit Request</button>
+          <button class="btn-ghost" onclick="TIME_OFF_FORM_DAY=null;showTab('showcalendar')">Cancel</button>
+        </div>
+      </div>`:''}
+      ${!dayOffReqs.length&&!formOpen?`<div style="font-size:13px;color:var(--text-light);">No time-off requests for this day.</div>`:''}
+    </div>`;
+
   const noTime=dayShows.filter(s=>!s.startTime);
   const noTimeHtml=noTime.length?`<div style="margin-bottom:8px;">${noTime.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;${sel?'outline:2px solid #000;':''}">${s.title||'Show'} — all day${(s.staffNames||[]).length?' · '+(s.staffNames||[]).join(', '):''}</div>`;}).join('')}</div>`:'';
   const hourRows=HOURS.map(h=>{
@@ -5773,7 +5926,7 @@ function renderCalDayView(){
       <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${evts}</div>
     </div>`;
   }).join('');
-  return staffHtml+noTimeHtml+`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>`;
+  return timeOffHtml+staffHtml+noTimeHtml+`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>`;
 }
 
 function renderShowCalendar(){
@@ -5802,6 +5955,8 @@ function renderShowCalendar(){
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#d4900f;display:inline-block;"></span>Repeat client</span>
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#2a7a2a;display:inline-block;"></span>Completed</span>
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#7c3fad;display:inline-block;"></span>🇫🇷 No French speaker</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#d4edda;border:1px solid #1a6b35;display:inline-block;"></span>Time off approved</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#fff3cd;border:1px solid #c08000;display:inline-block;"></span>Time off pending</span>
       <span style="font-size:11px;color:#1a4a7a;">Blue text = staff names · Click event for details · Click date to switch to Day view</span>
     </div>
     <div id="cal-detail-panel">${renderCalDetail()}</div>
