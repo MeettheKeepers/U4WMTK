@@ -3920,33 +3920,33 @@ function renderDashboard(){
     ${myDecidedNotifications.length ? `
     <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
       <h2 style="margin-bottom:10px;">📬 Time Off Update</h2>
-      ${myDecidedNotifications.map(r=>`
+      ${myDecidedNotifications.map(r=>{const ttLabel=r.timeType==='morning'?` · 🌅 Unavailable until ${r.timeNote||'?'}`:r.timeType==='afternoon'?` · 🌇 Available until ${r.timeNote||'?'}`:'';return`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
           <div>
             <span style="font-weight:600;color:${r.status==='approved'?'var(--green,#27ae60)':'var(--red)'};">
               ${r.status==='approved'?'✅ Approved':'❌ Denied'}
             </span>
-            <span style="margin-left:8px;font-size:14px;color:var(--text);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}</span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}${ttLabel}</span>
             ${r.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(r.reason)}"</span>`:''}
           </div>
           <button class="btn-sm" style="background:var(--border);color:var(--text);border:none;" onclick="dismissTimeOffNotification('${r.id}')">Dismiss</button>
-        </div>`).join('')}
+        </div>`;}).join('')}
     </div>` : ''}
     ${pendingTimeOff.length ? `
     <div class="card" style="border-left:5px solid var(--amber,#c98a2a);">
       <h2 style="margin-bottom:10px;">🗓 Time Off Requests <span style="font-size:14px;font-weight:400;color:var(--text-light);">(${pendingTimeOff.length} pending)</span></h2>
-      ${pendingTimeOff.map(r=>`
+      ${pendingTimeOff.map(r=>{const ttLabel=r.timeType==='morning'?` · 🌅 Unavailable until ${r.timeNote||'?'}`:r.timeType==='afternoon'?` · 🌇 Available until ${r.timeNote||'?'}`:'';return`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
           <div>
             <span style="font-weight:600;color:var(--text);">${esc(r.staffName)}</span>
-            <span style="margin-left:8px;font-size:14px;color:var(--text-light);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}</span>
+            <span style="margin-left:8px;font-size:14px;color:var(--text-light);">${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}${ttLabel}</span>
             ${r.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(r.reason)}"</span>`:''}
           </div>
           <div style="display:flex;gap:8px;">
             <button class="btn-sm" style="background:var(--green,#27ae60);color:#fff;border:none;" onclick="approveTimeOffRequest('${r.id}')">Approve</button>
             <button class="btn-sm" style="background:var(--red);color:#fff;border:none;" onclick="denyTimeOffRequest('${r.id}')">Deny</button>
           </div>
-        </div>`).join('')}
+        </div>`;}).join('')}
     </div>` : ''}
     ${renderBirthdayBanner(myName)}
     ${isManagerLogin() ? renderLiveStatusBoard() : ''}
@@ -5629,7 +5629,7 @@ function timeOffOnDate(date){
   });
 }
 
-function submitTimeOffRequest(startDate, endDate, reason){
+function submitTimeOffRequest(startDate, endDate, reason, timeType, timeNote){
   const myName = getWelcomeStaffName();
   if(!myName){ alert('No staff profile linked to your login.'); return; }
   const id = nextId(DATA.timeOffRequests);
@@ -5637,6 +5637,8 @@ function submitTimeOffRequest(startDate, endDate, reason){
     id, staffName: myName,
     startDate, endDate: endDate || startDate,
     reason: reason||'',
+    timeType: timeType||'full',
+    timeNote: timeNote||'',
     status: 'pending',
     requestedAt: new Date().toISOString(),
     decidedAt: null, decidedBy: null,
@@ -5864,10 +5866,12 @@ function renderCalDayView(){
   const statusColor = s => s==='approved'?'#1a6b35':s==='denied'?'#c0392b':'#7a5000';
   const statusBg    = s => s==='approved'?'#d4edda':s==='denied'?'#fde2e2':'#fff3cd';
   const statusLabel = s => s==='approved'?'✓ Approved':s==='denied'?'✕ Denied':'⏳ Pending';
+  const fmtTimeType = r => r.timeType==='morning'?`🌅 Unavailable until ${r.timeNote||'?'}`:r.timeType==='afternoon'?`🌇 Available until ${r.timeNote||'?'}`:'';
   const offReqCards = dayOffReqs.map(r=>`
     <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:8px;background:${statusBg(r.status)};margin-bottom:5px;flex-wrap:wrap;">
       <span style="font-weight:600;font-size:13px;">${esc(r.staffName)}</span>
       ${r.endDate&&r.endDate!==r.startDate?`<span style="font-size:12px;color:#555;">→ ${fmtShortDate(r.endDate)}</span>`:''}
+      ${fmtTimeType(r)?`<span style="font-size:12px;color:#555;">${fmtTimeType(r)}</span>`:''}
       ${r.reason?`<span style="font-size:12px;color:#555;font-style:italic;">${esc(r.reason)}</span>`:''}
       <span style="margin-left:auto;font-size:12px;font-weight:700;color:${statusColor(r.status)};">${statusLabel(r.status)}</span>
       ${r.status==='pending'&&r.staffName===myName?`<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--red);" onclick="cancelTimeOffRequest(${r.id})">Cancel</button>`:''}
@@ -5902,8 +5906,26 @@ function renderCalDayView(){
             <input type="text" id="tor-reason" placeholder="e.g. Family event">
           </div>
         </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Availability</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="tor-type" value="full" checked onchange="document.getElementById('tor-time-row').style.display='none'"> Full day off
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="tor-type" value="morning" onchange="document.getElementById('tor-time-row').style.display='flex';document.getElementById('tor-time-label').textContent='Unavailable until';"> Unavailable until (morning)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="tor-type" value="afternoon" onchange="document.getElementById('tor-time-row').style.display='flex';document.getElementById('tor-time-label').textContent='Only available until';"> Only available until (afternoon)
+            </label>
+          </div>
+          <div id="tor-time-row" style="display:none;align-items:center;gap:8px;margin-top:8px;">
+            <span id="tor-time-label" style="font-size:13px;color:var(--text-light);"></span>
+            <input type="time" id="tor-time" value="12:00" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">
+          </div>
+        </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn" onclick="submitTimeOffRequest(document.getElementById('tor-start').value,document.getElementById('tor-end').value,document.getElementById('tor-reason').value)">Submit Request</button>
+          <button class="btn" onclick="(function(){const tt=document.querySelector('input[name=tor-type]:checked').value;const tn=tt!=='full'?document.getElementById('tor-time').value:'';submitTimeOffRequest(document.getElementById('tor-start').value,document.getElementById('tor-end').value,document.getElementById('tor-reason').value,tt,tn);})()">Submit Request</button>
           <button class="btn-ghost" onclick="TIME_OFF_FORM_DAY=null;showTab('showcalendar')">Cancel</button>
         </div>
       </div>`:''}
@@ -5914,14 +5936,22 @@ function renderCalDayView(){
   const noTimeHtml=noTime.length?`<div style="margin-bottom:8px;">${noTime.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;background:${c.bg};color:${c.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;${sel?'outline:2px solid #000;':''}">${s.title||'Show'} — all day${(s.staffNames||[]).length?' · '+(s.staffNames||[]).join(', '):''}</div>`;}).join('')}</div>`:'';
   const hourRows=HOURS.map(h=>{
     const slotStart=h*60, slotEnd=slotStart+60;
-    const slot=dayShows.filter(s=>{
+    // Only show event pill in the slot where the show STARTS
+    const startSlot=dayShows.filter(s=>{
+      if(!s.startTime) return false;
+      const sm=timeToMin(s.startTime);
+      return sm>=slotStart && sm<slotEnd;
+    });
+    // Tint rows where a show is ongoing (spans this hour) but didn't start here
+    const spanning=dayShows.filter(s=>{
       if(!s.startTime) return false;
       const sm=timeToMin(s.startTime), em=s.endTime?timeToMin(s.endTime):sm+60;
-      return sm<slotEnd && em>slotStart;
+      return sm<slotStart && em>slotStart;
     });
+    const occupied=startSlot.length||spanning.length;
     const label=h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
-    const evts=slot.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:${c.bg};color:${c.text};border-radius:5px;padding:3px 10px;margin-right:6px;font-size:13px;${sel?'outline:2px solid #000;':''}"><strong>${s.title||'Show'}</strong>${s.startTime?`<span style="opacity:.8;font-size:12px;">${s.startTime}–${s.endTime||'?'}</span>`:''}${(s.staffNames||[]).length?`<span style="opacity:.8;font-size:12px;">${s.staffNames.join(', ')}</span>`:''}</div>`;}).join('');
-    return `<div style="display:flex;border-bottom:1px solid var(--border);min-height:${slot.length?54:40}px;${slot.length?'background:#f6fff6;':''}">
+    const evts=startSlot.map(s=>{const c=calEventColor(s);const sel=CAL_DETAIL_ID===s.id;return `<div onclick="calToggleDetail(${s.id})" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:${c.bg};color:${c.text};border-radius:5px;padding:3px 10px;margin-right:6px;font-size:13px;${sel?'outline:2px solid #000;':''}"><strong>${s.title||'Show'}</strong>${s.startTime?`<span style="opacity:.8;font-size:12px;">${s.startTime}–${s.endTime||'?'}</span>`:''}${(s.staffNames||[]).length?`<span style="opacity:.8;font-size:12px;">${s.staffNames.join(', ')}</span>`:''}</div>`;}).join('');
+    return `<div style="display:flex;border-bottom:1px solid var(--border);min-height:${occupied?54:40}px;${occupied?'background:#f6fff6;':''}">
       <div style="width:64px;flex-shrink:0;font-size:12px;color:#888;padding:8px;border-right:1px solid var(--border);white-space:nowrap;">${label}</div>
       <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${evts}</div>
     </div>`;
