@@ -1074,6 +1074,7 @@ function saveData(){
   DATA._savedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
   localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
+  preloadInterShowTravel(); // recalculate if any new same-day show pairs appeared
   if(!sb) return;
   // Suppress realtime echoes immediately — not just inside pushCloudData — so that
   // an incoming event in the debounce window can't overwrite data we just saved.
@@ -1582,6 +1583,7 @@ function doLogin(){
     document.getElementById('app').style.display = 'block';
     buildTabs();
     showTab('dashboard');
+    preloadInterShowTravel(); // async — calculates actual show-to-show travel for same-day pairs
     // Check every 5 minutes for staff who need auto clock-out
     setInterval(autoClockOutStaff, 5*60*1000);
     // Chat
@@ -4938,6 +4940,63 @@ function staffSchedulingIssue(name, date, startTime, endTime, excludeShowId, tra
   }
   return null;
 }
+/* ── Inter-show travel time cache ──────────────────────────────────────────
+   When staff or a vehicle has 2+ shows on the same day we want the actual
+   drive time between consecutive show *addresses* (not home-to-show travel).
+   We fetch lazily via Nominatim (geocoding) + OSRM (routing) — both free/key-free.
+   Results are stored in _ITSC so each pair is only looked up once per session. */
+const _ITSC = {};  // "id1:id2" → minutes  |  "_geo:addr" → {lat,lon}
+
+async function _geocode(addr){
+  if(!addr) return null;
+  const k='_geo:'+addr.trim().toLowerCase();
+  if(_ITSC[k]) return _ITSC[k];
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(addr+', Ontario, Canada'),{headers:{'Accept-Language':'en','User-Agent':'U4WMTK-app'}});
+    const d=await r.json();
+    if(d&&d[0]){const v={lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon)};_ITSC[k]=v;return v;}
+  }catch(e){}
+  return null;
+}
+
+async function _calcInterShowTravel(s1,s2){
+  const k=`${s1.id}:${s2.id}`;
+  if(_ITSC[k]!=null) return _ITSC[k];
+  if(!s1.address||!s2.address){_ITSC[k]=null;return null;}
+  try{
+    const [g1,g2]=await Promise.all([_geocode(s1.address),_geocode(s2.address)]);
+    if(!g1||!g2){_ITSC[k]=null;return null;}
+    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${g1.lon},${g1.lat};${g2.lon},${g2.lat}?overview=false`);
+    const d=await r.json();
+    if(d.code==='Ok'&&d.routes&&d.routes[0]){const v=Math.ceil(d.routes[0].duration/60);_ITSC[k]=v;return v;}
+  }catch(e){}
+  _ITSC[k]=null;return null;
+}
+
+async function preloadInterShowTravel(){
+  const byDate={};
+  (DATA.shows||[]).forEach(s=>{if(!byDate[s.date])byDate[s.date]=[];byDate[s.date].push(s);});
+  const pairs=[];const seen=new Set();
+  Object.values(byDate).forEach(ds=>{
+    if(ds.length<2) return;
+    const sorted=ds.slice().sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
+    for(let i=1;i<sorted.length;i++){
+      const k=`${sorted[i-1].id}:${sorted[i].id}`;
+      if(!seen.has(k)&&_ITSC[k]==null){seen.add(k);pairs.push([sorted[i-1],sorted[i]]);}
+    }
+  });
+  if(!pairs.length) return;
+  let updated=false;
+  await Promise.all(pairs.map(async([s1,s2])=>{const v=await _calcInterShowTravel(s1,s2);if(v!=null)updated=true;}));
+  if(updated){try{buildTabs();showTab(CURRENT_TAB);}catch(e){}}
+}
+
+function _interShowTravel(prev,cur){
+  // Use actual cached show-to-show travel if available, else fall back to home-to-show travelMinutes
+  const cached=_ITSC[`${prev.id}:${cur.id}`];
+  return (cached!=null)?cached:(Number(cur.travelMinutes)||0);
+}
+
 /* Returns the set of show ids that are in conflict (overlapping or travel-infeasible)
    for a given staff member on a given date — used to turn those show cards red. */
 function staffDayConflictShowIds(name, date){
@@ -4953,7 +5012,7 @@ function staffDayConflictShowIds(name, date){
   for(let i=1;i<shows.length;i++){
     const prev = shows[i-1], cur = shows[i];
     const gap = timeToMin(cur.startTime) - timeToMin(prev.endTime);
-    const needed = (Number(cur.arrivalBufferMinutes)||0) + (Number(cur.travelMinutes)||0);
+    const needed = (Number(cur.arrivalBufferMinutes)||0) + _interShowTravel(prev, cur);
     if(gap < needed){
       conflictIds.add(prev.id); conflictIds.add(cur.id);
     }
@@ -5001,7 +5060,7 @@ function vehicleDayConflictShowIds(vehicle, date){
   for(let i=1;i<shows.length;i++){
     const prev = shows[i-1], cur = shows[i];
     const gap = timeToMin(cur.startTime) - timeToMin(prev.endTime);
-    const needed = (Number(cur.arrivalBufferMinutes)||0) + (Number(cur.travelMinutes)||0);
+    const needed = (Number(cur.arrivalBufferMinutes)||0) + _interShowTravel(prev, cur);
     if(gap < needed){
       conflictIds.add(prev.id); conflictIds.add(cur.id);
     }
