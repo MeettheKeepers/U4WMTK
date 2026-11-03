@@ -2412,6 +2412,9 @@ let WELCOME_TAB = 'about';
 function getAllWelcomeTabs(){
   const custom = (DATA.welcome && DATA.welcome.customTabs) || [];
   const tabs = [...WELCOME_TABS, ...custom.map(ct=>({id:'custom_'+ct.id, label:ct.title, customId:ct.id}))];
+  // Add Training tab for allowed roles
+  const tpRoles = (DATA.welcome && DATA.welcome.trainingPlanRoles) || ['owner','manager'];
+  if(tpRoles.includes(getLoginLevel())) tabs.push({id:'training', label:'📋 Training'});
   // Add Quiz tab for staff who need it or are currently taking it
   if(!isManagerLogin()){
     const staffName = getWelcomeStaffName();
@@ -2481,6 +2484,79 @@ function renderWelcome(){
       ${renderQuizWelcomeTab()}`;
   }
 
+  if(WELCOME_TAB === 'training'){
+    const tpRoles = (DATA.welcome && DATA.welcome.trainingPlanRoles) || ['owner','manager'];
+    const isMgr = getLoginLevel()==='owner'||getLoginLevel()==='manager';
+    const visControls = isMgr ? `
+      <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-light);">VISIBLE TO</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;opacity:.6;cursor:default;">
+            <input type="checkbox" checked disabled> Owners &amp; Managers (always)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" ${tpRoles.includes('supervisor')?'checked':''} onchange="toggleTrainingPlanRole('supervisor')"> Supervisors
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" ${tpRoles.includes('keeper')?'checked':''} onchange="toggleTrainingPlanRole('keeper')"> Keepers
+          </label>
+        </div>
+      </div>` : '';
+    return `
+      <div class="card">
+        <h2>Welcome</h2>
+        ${staffName ? `<div class="sub">Signed in as <strong>${esc(staffName)}</strong>.</div>` : ''}
+        <div class="detail-tabs">${tabsHtml}</div>
+      </div>
+      <div class="card">
+        <div class="welcome-content" style="font-size:14px;line-height:1.75;">
+          <p><strong>Date: _______________&nbsp;&nbsp;&nbsp;Location: ___________________</strong></p>
+          <p><strong>Attendees:</strong></p>
+          <ul><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li></ul>
+          <h3>Item 1 — Assign Logins for the App</h3>
+          <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
+          <p><strong>iPhone (Safari)</strong></p>
+          <ol>
+            <li>Open <strong>Safari</strong> and go to the website.</li>
+            <li>Tap <strong>Share</strong> (square with upward arrow), scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Turn on <strong>Open as Web App</strong> if it appears, then tap <strong>Add</strong>.</li>
+          </ol>
+          <p><strong>Android (Chrome)</strong></p>
+          <ol>
+            <li>Open <strong>Chrome</strong> and go to the website.</li>
+            <li>Tap the <strong>three-dot menu</strong>, then tap <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li>
+            <li>Choose <strong>Install</strong> if available, or <strong>Create shortcut</strong> and tap <strong>Add</strong>.</li>
+          </ol>
+          <p>Then walk through each tab one by one: <em>Welcome → Dashboard → Tasks → Animals → Shows → Calendar → Schedule → Supplies &amp; Repairs → Inventory → Incidents → Team → Wildlife Adventures Show</em></p>
+          <p><strong>Dashboard</strong> — Clock in/out for shifts and breaks from your phone. Breaks are assigned times unless on the road.</p>
+          <p><strong>Tasks</strong> — Show examples, explain when to check them off; more detail during animal care training.</p>
+          <p><strong>Animals</strong> — "Take" animals at show start, "return" at shift end. 3-day/week limit per animal (exceptions require supervisor approval). Approved animal list and approved crate categories apply. Diets and Scripts also live here.</p>
+          <p><strong>Shows</strong> — View shows assigned to you: client name, address, phone. Travel time includes 30-min load, drive time, and 20-min buffer. For 2 shows, travel is from show 1 to show 2. Always double-check addresses. If late, contact the client <em>and</em> the office. Check in on arrival, check out when leaving. On return: put away animals, clean habitats, complete "paperwork" (return animals in app, fill in occasion, record animals taken).</p>
+          <p><strong>Calendar</strong> — Upcoming shows and time-off requests. First come, first served, pending approval. Submit request → manager approves/denies → notification on your dashboard next sign-in.</p>
+          <p><strong>Schedule</strong> — Visible ~2 weeks out (ideally 1 month). Report errors to a supervisor ASAP. Schedule changes often.</p>
+          <p><strong>Supplies &amp; Repairs</strong> — Click "Take" for common items. Write repairs you can't fix yourself. Use Supply Request for non-common items.</p>
+          <p><strong>Inventory</strong> — Contents of each vehicle travel bag. If something is low or missing, submit a supply request.</p>
+          <p><strong>Incidents</strong> — Log any injury or minor incident here. For major incidents, contact a supervisor immediately.</p>
+          <p><strong>Team</strong> — Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.</p>
+          <p><strong>Wildlife Adventures</strong> — New episodes of our show appear here.</p>
+          <h3>Item 2 — Handling All the Animals</h3>
+          <p>At the scripts section, stand and stretch. Handle each animal one by one and introduce the ball trick with tarantula and scorpion. Cover proper handling of each animal.</p>
+          <h3>Item 3 — Shows</h3>
+          <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee deliver:</p>
+          <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
+          <p>Rate each on a 1–5 scale: <strong>Memory · Projection · Clarity · Confidence</strong></p>
+          <p>At a future event, we will film a presentation and review it like game film.</p>
+          <h3>Item 4 — Scripts</h3>
+          <p>Go over animal scripts — trainees are expected to memorize them. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
+          <h3>Item 4 — Quiz</h3>
+          <p>Finish the day with the quiz. Failing the first attempt is okay — 7-day cooldown, then eligible again. <strong>80% required to pass (20 randomized questions).</strong> Until passed, trainees cannot perform in front of a crowd. If unable to pass after 3 attempts (1 month), they may be reprimanded, moved to animal care only, or dismissed.</p>
+          <h3>Conclusion</h3>
+          <p>Open the floor for questions, comments, and concerns. Ensure everyone understands their roles and expectations.</p>
+        </div>
+        ${visControls}
+      </div>`;
+  }
+
   const isCustomTab = WELCOME_TAB.startsWith('custom_');
   let content = '';
   if(isCustomTab){
@@ -2541,84 +2617,6 @@ function renderWelcome(){
       ${content ? `<div class="welcome-content">${content}</div>` : '<div class="empty">Nothing posted here yet — check back soon.</div>'}
       <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:16px;">${ackHtml}</div>
     </div>
-    ${(()=>{
-      const tpRoles = DATA.welcome.trainingPlanRoles || ['owner','manager'];
-      const lvl = getLoginLevel();
-      const canSee = tpRoles.includes(lvl);
-      if(!canSee) return '';
-      const isMgr = lvl==='owner'||lvl==='manager';
-      const visControls = isMgr ? `
-        <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-light);">VISIBLE TO</div>
-          <div style="display:flex;flex-wrap:wrap;gap:12px;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;opacity:.6;cursor:default;">
-              <input type="checkbox" checked disabled> Owners &amp; Managers (always)
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" ${tpRoles.includes('supervisor')?'checked':''} onchange="toggleTrainingPlanRole('supervisor')"> Supervisors
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" ${tpRoles.includes('keeper')?'checked':''} onchange="toggleTrainingPlanRole('keeper')"> Keepers
-            </label>
-          </div>
-        </div>` : '';
-      return `
-      <div class="card" style="border-left:5px solid var(--accent);">
-        <h2 style="margin-bottom:4px;">📋 Plan for Training Day</h2>
-        <div class="sub" style="margin-bottom:16px;">Reference guide for onboarding sessions.</div>
-        <div class="welcome-content" style="font-size:14px;line-height:1.75;">
-          <p><strong>Date: _______________&nbsp;&nbsp;&nbsp;Location: ___________________</strong></p>
-          <p><strong>Attendees:</strong></p>
-          <ul><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li><li>_______________</li></ul>
-
-          <h3>Item 1 — Assign Logins for the App</h3>
-          <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
-          <p><strong>iPhone (Safari)</strong></p>
-          <ol>
-            <li>Open <strong>Safari</strong> and go to the website.</li>
-            <li>Tap <strong>Share</strong> (square with upward arrow), then scroll down and tap <strong>Add to Home Screen</strong>.</li>
-            <li>Turn on <strong>Open as Web App</strong> if it appears, then tap <strong>Add</strong>.</li>
-          </ol>
-          <p><strong>Android (Chrome)</strong></p>
-          <ol>
-            <li>Open <strong>Chrome</strong> and go to the website.</li>
-            <li>Tap the <strong>three-dot menu</strong>, then tap <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li>
-            <li>Choose <strong>Install</strong> if available, or <strong>Create shortcut</strong> and tap <strong>Add</strong>.</li>
-          </ol>
-          <p>Then walk through each tab one by one: <em>Welcome (About Us, Mission Statement, Your Role, What MTK Provides, Policies &amp; Procedures, Health &amp; Safety, Vehicles, Shows &amp; Presentations, Credit Cards, Quiz) → Dashboard → Tasks → Animals → Shows → Calendar → Schedule → Supplies &amp; Repairs → Inventory → Incidents → Team → Wildlife Adventures Show</em></p>
-          <p><strong>Dashboard</strong> — Clock in/out for shifts and breaks from your phone. Breaks are assigned times unless on the road.</p>
-          <p><strong>Tasks</strong> — Show examples, explain when to check them off; more detail during animal care training.</p>
-          <p><strong>Animals</strong> — "Take" animals at show start, "return" at shift end. 3-day/week limit per animal (exceptions require supervisor approval). Approved animal list and approved crate categories apply — if not approved, you can't take that animal. Diets and Scripts also live here.</p>
-          <p><strong>Shows</strong> — View shows assigned to you: client name, address, phone. Travel time includes 30-min load, drive time, and 20-min buffer. For 2 shows, travel is from show 1 to show 2. Always double-check addresses. If late, contact the client <em>and</em> the office. Check in on arrival, check out when leaving. On return: put away animals, clean habitats, complete "paperwork" (return animals in app, fill in occasion, record animals taken).</p>
-          <p><strong>Calendar</strong> — Upcoming shows and time-off requests. First come, first served, pending approval. Submit request → manager approves/denies → notification on your dashboard next sign-in.</p>
-          <p><strong>Schedule</strong> — Visible ~2 weeks out (ideally 1 month). Report errors to a supervisor ASAP. Schedule changes often as shows are added last-minute.</p>
-          <p><strong>Supplies &amp; Repairs</strong> — Click "Take" for common items (auto-reduces count). Write repairs you can't fix yourself. Use Supply Request for non-common items needing an order.</p>
-          <p><strong>Inventory</strong> — Contents of each vehicle travel bag. If something is low or missing, submit a supply request.</p>
-          <p><strong>Incidents</strong> — Log any injury or minor incident here. For major incidents, contact a supervisor immediately.</p>
-          <p><strong>Team</strong> — Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.</p>
-          <p><strong>Wildlife Adventures</strong> — New episodes of our show appear here.</p>
-
-          <h3>Item 2 — Handling All the Animals</h3>
-          <p>At the scripts section, stand and stretch. Handle each animal one by one and introduce the ball trick with tarantula and scorpion. Cover proper handling of each animal.</p>
-
-          <h3>Item 3 — Shows</h3>
-          <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee stand and deliver:</p>
-          <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
-          <p>Rate each on a 1–5 scale: <strong>Memory · Projection · Clarity · Confidence</strong></p>
-          <p>At a future event, we will film a presentation and review it like game film.</p>
-
-          <h3>Item 4 — Scripts</h3>
-          <p>Go over animal scripts — trainees are expected to memorize them. As experience grows, personality comes out more. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
-
-          <h3>Item 4 — Quiz</h3>
-          <p>Finish the day with the quiz. Failing the first attempt is okay — 7-day cooldown, then eligible again. <strong>80% required to pass (20 randomized questions).</strong> Until passed, trainees cannot perform in front of a crowd. If unable to pass after 3 attempts (1 month), they may be reprimanded, moved to animal care only, or dismissed.</p>
-
-          <h3>Conclusion</h3>
-          <p>Open the floor for questions, comments, and concerns. Ensure everyone understands their roles and expectations.</p>
-        </div>
-        ${visControls}
-      </div>`;
-    })()}
   `;
 }
 
