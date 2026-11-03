@@ -5278,11 +5278,13 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
   const prevShow = (dayShows && idx>1) ? dayShows[idx-2] : null;
   const nextShow = (dayShows && idx<total) ? dayShows[idx] : null;
   const chainArriveBy = timeToMin(es.startTime) - CHAINED_SHOW_MIN_BUFFER_MIN;
-  const chainLeaveBy = chainArriveBy - (Number(es.travelMinutes)||0);
+  const chainTravelMin = prevShow ? _interShowTravel(prevShow, s) : (Number(es.travelMinutes)||0);
+  const chainLeaveBy = chainArriveBy - chainTravelMin;
   const chainTooTight = prevShow && chainLeaveBy < timeToMin(prevShow.endTime);
   const travelHtml = prevShow ? `
           <div>Leave "${prevShow.title}" by: <strong>${fmtHM(chainLeaveBy)}</strong></div>
-          <div>Arrive by: ${fmtHM(chainArriveBy)} (${CHAINED_SHOW_MIN_BUFFER_MIN} min early minimum)</div>
+          <div>Arrive by: ${fmtHM(chainArriveBy)} (${CHAINED_SHOW_MIN_BUFFER_MIN} min early)</div>
+          <div style="font-size:12px;color:var(--text-light);margin-top:2px;">${chainTravelMin} min drive from previous show</div>
         ` : `
           <div>Pack/load at centre: ${fmtHM(plan.packLoad)}</div>
           <div>Leave centre: ${fmtHM(plan.leaveCentre)}</div>
@@ -5392,7 +5394,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
           ${travelHtml}
           ${packUpHtml}
         </div>
-        <div style="font-size:13px; color:var(--gray);">${es.travelMinutes||0} min travel${prevShow ? ' (from previous show)' : ` from ${SHOW_CENTRE_ADDRESS}`} • ${s.showTypes.join(' / ')||'Show'}${prevShow ? '' : `: arrive ${bufferLabel} before show`}</div>
+        <div style="font-size:13px; color:var(--gray);">${prevShow ? `${chainTravelMin} min from "${prevShow.title}"` : `${es.travelMinutes||0} min from ${SHOW_CENTRE_ADDRESS}`} • ${s.showTypes.join(' / ')||'Show'}${prevShow ? '' : `: arrive ${bufferLabel} before show`}</div>
       </div>
       ${overtime ? s.staffNames.map(n=>`<div class="notice">⚠ ${n}'s estimated day is ${fmtDuration(plan.totalMinutes)} (over 8 hours).</div>`).join('') : ''}
     </div>
@@ -7510,6 +7512,22 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const conflictInfo = showConflictInfo(s);
   const st = showStatus(s);
   const isPast = s.date < todayStr();
+  // Detect previous same-day show for any assigned staff member
+  const sameDayPrev = (() => {
+    if(!s.staffNames.length) return null;
+    for(const name of s.staffNames){
+      const earlier = DATA.shows
+        .filter(o=>o.id!==s.id && o.date===s.date && o.staffNames.includes(name))
+        .sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
+      const thisStart = timeToMin(es.startTime);
+      const p = earlier.filter(o=>timeToMin(o.endTime)<=thisStart).pop();
+      if(p) return p;
+    }
+    return null;
+  })();
+  const editInterTravel = sameDayPrev ? _interShowTravel(sameDayPrev, s) : null;
+  const editChainArriveBy = sameDayPrev ? timeToMin(es.startTime) - CHAINED_SHOW_MIN_BUFFER_MIN : null;
+  const editChainLeaveBy = sameDayPrev ? editChainArriveBy - editInterTravel : null;
   const missingMgr = !s.staffNames.length || !s.showTypes.length || !s.vehicle;
   const langMismatch = isLangMismatch(s);
   const repeatCountMgr = clientShowCount(s);
@@ -7642,14 +7660,26 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       <div class="medrecord-box">
         <div class="field-block" style="margin-bottom:8px;">
           <label>Travel / shift plan (auto-calculated)</label>
+          ${sameDayPrev ? `
+          <div>Leave "${sameDayPrev.title}" (${sameDayPrev.endTime}) by: <strong>${fmtHM(editChainLeaveBy)}</strong></div>
+          <div>Arrive by: ${fmtHM(editChainArriveBy)} (${CHAINED_SHOW_MIN_BUFFER_MIN} min early)</div>
+          <div>Pack up after show: ${fmtHM(plan.packUp)}</div>
+          <div>Back at centre: ${fmtHM(plan.backAtCentre)}</div>
+          <div>Unload finished: ${fmtHM(plan.unloadFinished)}</div>
+          ` : `
           <div>Pack/load at centre: ${fmtHM(plan.packLoad)}</div>
           <div>Leave centre: ${fmtHM(plan.leaveCentre)}</div>
           <div>Arrive by: ${fmtHM(plan.arriveBy)} (${bufferLabel} early)</div>
           <div>Pack up after show: ${fmtHM(plan.packUp)}</div>
           <div>Back at centre: ${fmtHM(plan.backAtCentre)}</div>
           <div>Unload finished: ${fmtHM(plan.unloadFinished)}</div>
+          `}
         </div>
-        <div style="font-size:13px; color:var(--gray);">${plan.travel} min from ${SHOW_CENTRE_ADDRESS}</div>
+        <div style="font-size:13px; color:var(--gray);">
+          ${sameDayPrev
+            ? `${editInterTravel} min from "${sameDayPrev.title}"${editInterTravel !== (Number(s.travelMinutes)||0) ? ` (home route: ${s.travelMinutes} min)` : ''}`
+            : `${plan.travel} min from ${SHOW_CENTRE_ADDRESS}`}
+        </div>
       </div>
       ${overtime ? s.staffNames.map(n=>`<div class="notice">⚠ ${n}'s estimated day is ${fmtDuration(plan.totalMinutes)} (over 8 hours).</div>`).join('') : ''}
       <div class="add-row" style="margin-top:0;">
