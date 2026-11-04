@@ -3693,8 +3693,6 @@ function renderEvaluations(){
     if(!m || m.archived){ EVAL_STAFF_ID=null; }
   }
 
-  const evalTabs = [{id:'training', label:'Training'}];
-
   if(!EVAL_STAFF_ID){
     // Show employee list
     const rows = active.map(m=>`
