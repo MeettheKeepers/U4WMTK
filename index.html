@@ -3519,6 +3519,134 @@ function renderEvalStars(memberId, field, currentVal){
     `</span>`;
 }
 
+/* ---------- PROGRESS REPORT ---------- */
+function normalizeProgressReport(m){
+  if(!m.evaluation) m.evaluation={};
+  if(!m.evaluation.progressReport) m.evaluation.progressReport={
+    meetingDate:'', supervisor:'', typeInitial:false, typeCheckin:false,
+    strengths:'',
+    goalRows:[
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''},
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''},
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''}
+    ],
+    employeeFeedback:'', nextCheckinDate:'',
+    needsAck:false, employeeAckedAt:null, managerAckedAt:null, updatedAt:null
+  };
+  if(!Array.isArray(m.evaluation.progressReport.goalRows)) m.evaluation.progressReport.goalRows=[];
+}
+function saveProgressReport(memberId, field, value){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  const pr=m.evaluation.progressReport;
+  pr[field]=value; pr.needsAck=true; pr.employeeAckedAt=null; pr.managerAckedAt=null; pr.updatedAt=todayStr();
+  saveData();
+}
+function saveProgressReportFeedback(memberId, value){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  m.evaluation.progressReport.employeeFeedback=value;
+  saveData();
+}
+function saveProgressReportRow(memberId, rowIdx, col, value){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  const pr=m.evaluation.progressReport;
+  if(!pr.goalRows[rowIdx]) return;
+  pr.goalRows[rowIdx][col]=value;
+  pr.needsAck=true; pr.employeeAckedAt=null; pr.managerAckedAt=null; pr.updatedAt=todayStr();
+  saveData();
+}
+function addProgressReportRow(memberId){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  m.evaluation.progressReport.goalRows.push({task:'',targetDate:'',progress:'',challenges:'',actionSteps:''});
+  saveData(); showTab(CURRENT_TAB);
+}
+function deleteProgressReportRow(memberId, rowIdx){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  m.evaluation.progressReport.goalRows.splice(rowIdx,1);
+  saveData(); showTab(CURRENT_TAB);
+}
+function ackProgressReport(memberId, role){
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  normalizeProgressReport(m);
+  const pr=m.evaluation.progressReport;
+  if(role==='employee') pr.employeeAckedAt=new Date().toISOString();
+  else pr.managerAckedAt=new Date().toISOString();
+  if(pr.employeeAckedAt && pr.managerAckedAt) pr.needsAck=false;
+  saveData(); showTab(CURRENT_TAB);
+}
+function renderProgressReportForm(m, canEdit){
+  normalizeProgressReport(m);
+  const pr=m.evaluation.progressReport;
+  const fs='width:100%;border:none;border-bottom:1.5px solid var(--border);padding:4px 2px;font-size:14px;background:transparent;color:var(--text);outline:none;';
+  const ro=canEdit?'':'readonly'; const dis=canEdit?'':'disabled';
+  const goalCols=['task','targetDate','progress','challenges','actionSteps'];
+  const goalHeaders=['Task or goal','Target date','Progress','Challenges','Action steps and who\'s responsible'];
+  const empAcked=!!pr.employeeAckedAt, mgrAcked=!!pr.managerAckedAt;
+  return `<div style="max-width:900px;">
+    <h3 style="margin:0 0 18px;font-size:17px;font-weight:800;">Employee Progress Report &amp; Accountability Form</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:18px;">
+      <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Meeting Date</label>
+        <input type="date" value="${esc(pr.meetingDate)}" style="${fs}" ${ro} ${canEdit?`onchange="saveProgressReport(${m.id},'meetingDate',this.value)"`:''}></div>
+      <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Supervisor</label>
+        <input type="text" value="${esc(pr.supervisor)}" style="${fs}" ${ro} placeholder="Name" ${canEdit?`onchange="saveProgressReport(${m.id},'supervisor',this.value)"`:''}></div>
+    </div>
+    <div style="margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Meeting Type</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;"><input type="checkbox" ${pr.typeInitial?'checked':''} ${dis} ${canEdit?`onchange="saveProgressReport(${m.id},'typeInitial',this.checked)"`:''}>Initial hiring review discussion</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;"><input type="checkbox" ${pr.typeCheckin?'checked':''} ${dis} ${canEdit?`onchange="saveProgressReport(${m.id},'typeCheckin',this.checked)"`:''}>Progress check-in</label>
+      </div>
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="font-size:13px;font-weight:700;display:block;margin-bottom:4px;">Strengths and progress to recognize</label>
+      <div style="font-size:12px;color:var(--text-light);line-height:1.5;margin-bottom:6px;">At the first meeting, discuss strengths from the hiring review. At later check-ins, note what's going well and give a specific example.</div>
+      <textarea rows="3" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" ${ro} placeholder="Specific strengths and examples…" ${canEdit?`onchange="saveProgressReport(${m.id},'strengths',this.value)"`:''} >${esc(pr.strengths||'')}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:700;display:block;margin-bottom:4px;">Development goals and follow-up</label>
+      <div style="font-size:12px;color:var(--text-light);line-height:1.5;margin-bottom:10px;">Agree on one to three goals with the employee. For each, write what successful performance looks like and set a target date. At each check-in, record what you observed, what got in the way, and who takes the next step.</div>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:600px;">
+        <thead><tr>${goalHeaders.map(h=>`<th style="background:#2d4a2d;color:#fff;padding:8px 10px;text-align:left;font-size:12px;">${h}</th>`).join('')}${canEdit?'<th style="background:#2d4a2d;width:30px;"></th>':''}</tr></thead>
+        <tbody>${(pr.goalRows||[]).map((row,i)=>`<tr style="border-bottom:1px solid var(--border);">
+          ${goalCols.map(col=>`<td style="padding:5px 8px;vertical-align:top;">${col==='targetDate'
+            ?`<input type="date" value="${esc(row[col]||'')}" style="width:100%;border:none;background:transparent;font-size:13px;padding:2px;" ${ro} ${canEdit?`onchange="saveProgressReportRow(${m.id},${i},'${col}',this.value)"`:''} >`
+            :`<textarea rows="2" style="width:100%;border:none;background:transparent;font-size:13px;resize:vertical;padding:2px;" ${ro} ${canEdit?`onchange="saveProgressReportRow(${m.id},${i},'${col}',this.value)"`:''} >${esc(row[col]||'')}</textarea>`
+          }</td>`).join('')}
+          ${canEdit?`<td style="padding:4px;vertical-align:middle;text-align:center;"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:2px 6px;" onclick="deleteProgressReportRow(${m.id},${i})">✕</button></td>`:''}
+        </tr>`).join('')}</tbody>
+      </table></div>
+      ${canEdit?`<button class="btn-ghost" style="font-size:13px;margin-top:8px;" onclick="addProgressReportRow(${m.id})">+ Add row</button>`:''}
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Employee feedback or support needed</label>
+      <textarea rows="2" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Employee's comments, concerns, or support requests…" onchange="${canEdit?`saveProgressReport(${m.id},'employeeFeedback',this.value)`:`saveProgressReportFeedback(${m.id},this.value)`}">${esc(pr.employeeFeedback||'')}</textarea>
+    </div>
+    <div style="margin-bottom:24px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Next Check-in Date</label>
+      <input type="date" value="${esc(pr.nextCheckinDate)}" style="${fs}" ${ro} ${canEdit?`onchange="saveProgressReport(${m.id},'nextCheckinDate',this.value)"`:''}>
+    </div>
+    <div style="border-top:2px solid var(--border);padding-top:18px;">
+      <div style="font-size:15px;font-weight:800;margin-bottom:8px;">Acknowledgment</div>
+      <div style="font-size:13px;color:var(--text-light);margin-bottom:14px;">Both the employee and manager must acknowledge that this form has been reviewed together.</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Employee</div>
+          ${empAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;">✅ Acknowledged ${new Date(pr.employeeAckedAt).toLocaleDateString()}</div>`:(!canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'employee')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending employee acknowledgment</div>`)}
+        </div>
+        <div style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Manager / Employer</div>
+          ${mgrAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;">✅ Acknowledged ${new Date(pr.managerAckedAt).toLocaleDateString()}</div>`:(canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'manager')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending manager acknowledgment</div>`)}
+        </div>
+      </div>
+      ${pr.updatedAt?`<div style="font-size:12px;color:var(--text-light);margin-top:10px;">Last updated ${pr.updatedAt}</div>`:''}
+    </div>
+  </div>`;
+}
+
 function saveEvalInterview(memberId, field, value){
   const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
   if(!m.evaluation) m.evaluation={};
@@ -3585,7 +3713,7 @@ function renderEvaluations(){
     </div>`;
   }
 
-  const evalTabs = [{id:'interview', label:'Interview'},{id:'training', label:'Training'}];
+  const evalTabs = [{id:'interview', label:'Interview'},{id:'progress', label:'Progress Report'},{id:'training', label:'Training'}];
 
   const m = DATA.team.find(x=>x.id===EVAL_STAFF_ID);
   if(!m) return '';
@@ -3736,13 +3864,22 @@ function renderEvaluations(){
     </div>
     ${tabNav}
     ${EVAL_TAB==='interview' ? interviewContent : ''}
+    ${EVAL_TAB==='progress' ? renderProgressReportForm(m, true) : ''}
     ${EVAL_TAB==='training' ? trainingContent : ''}
   </div>`;
 }
 
 function renderTeamSubNav(){
   const isMgr = isManagerLogin();
+  const myName = getWelcomeStaffName();
   const tabs=[{id:'team',label:'Team'},{id:'paystubs',label:'Pay Stubs'}];
+  if(!isMgr && myName){
+    const me = DATA.team.find(x=>x.name===myName && !x.archived);
+    if(me){ normalizeProgressReport(me); const pr=me.evaluation.progressReport;
+      const badge = pr.needsAck && !pr.employeeAckedAt ? ' 🔴' : '';
+      tabs.push({id:'progress', label:'Progress Report'+badge});
+    }
+  }
   if(isMgr) tabs.push({id:'evaluations',label:'Evaluations'});
   return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
     ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';EVAL_STAFF_ID=null;showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
@@ -3751,6 +3888,12 @@ function renderTeamSubNav(){
 function renderTeam(){
   if(TEAM_SUBTAB==='paystubs') return renderTeamSubNav() + renderPayStubs();
   if(TEAM_SUBTAB==='evaluations' && isManagerLogin()) return renderTeamSubNav() + renderEvaluations();
+  if(TEAM_SUBTAB==='progress'){
+    const myName = getWelcomeStaffName();
+    const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
+    if(me) return renderTeamSubNav() + `<div class="card">${renderProgressReportForm(me, false)}</div>`;
+    return renderTeamSubNav() + `<div class="card"><div class="empty">Progress report not found.</div></div>`;
+  }
   if(VIEWING_STAFF_FILE_ID){
     const preview = DATA.team.find(m=>m.id===VIEWING_STAFF_FILE_ID);
     if(preview) return renderStaffFileReadOnly(preview);
@@ -4260,6 +4403,15 @@ function renderDashboard(){
   const myRemovalNotifications = myName ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyStaff && r.staffName===myName && !r.staffDismissed) : [];
   const managerRemovalNotifications = isManagerLogin() ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyManager && !r.managerDismissed) : [];
   const myOutstandingMileage = myName ? (DATA.mileagePayments||[]).filter(m=>m.staffName===myName && !m.acknowledgedAt) : [];
+  // Progress report ack notifications
+  const myProgressAck = (() => {
+    if(!myName || isManagerLogin()) return null;
+    const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
+    if(!me.evaluation||!me.evaluation.progressReport) return null;
+    const pr=me.evaluation.progressReport;
+    return pr.needsAck && !pr.employeeAckedAt ? {memberId:me.id, updatedAt:pr.updatedAt} : null;
+  })();
+  const managerProgressAcks = isManagerLogin() ? DATA.team.filter(m=>!m.archived&&m.evaluation&&m.evaluation.progressReport&&m.evaluation.progressReport.needsAck&&!m.evaluation.progressReport.managerAckedAt) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</span>
@@ -4282,6 +4434,24 @@ function renderDashboard(){
         </div>`;
       }).join('')}
       <div style="font-size:12px;color:var(--text-light);margin-top:8px;">This reminder stays on your dashboard until all payments are acknowledged.</div>
+    </div>` : ''}
+    ${myProgressAck ? `
+    <div class="card" style="border-left:5px solid #2d4a2d;">
+      <h2 style="margin-bottom:6px;">📋 Progress Report Requires Your Acknowledgment</h2>
+      <div class="sub" style="margin-bottom:12px;">Your manager has updated your progress report${myProgressAck.updatedAt?' on '+myProgressAck.updatedAt:''}. Please review it and click Acknowledge.</div>
+      <button class="btn" onclick="TEAM_SUBTAB='progress';showTab('team')">View &amp; Acknowledge →</button>
+    </div>` : ''}
+    ${managerProgressAcks.length ? `
+    <div class="card" style="border-left:5px solid #2d4a2d;">
+      <h2 style="margin-bottom:10px;">📋 Progress Reports Awaiting Your Acknowledgment</h2>
+      ${managerProgressAcks.map(m=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;">${esc(m.name)}</span>
+            ${m.evaluation.progressReport.updatedAt?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">Updated ${m.evaluation.progressReport.updatedAt}</span>`:''}
+          </div>
+          <button class="btn-small" onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='progress';TEAM_SUBTAB='evaluations';showTab('team')">Review &amp; Acknowledge →</button>
+        </div>`).join('')}
     </div>` : ''}
     ${myDecidedNotifications.length ? `
     <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
