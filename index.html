@@ -8161,7 +8161,7 @@ const HISTORICAL_YEARS = [
   { year: 2022, income: 144937.04, expenses: 144690.14, net: 246.90,     shows: null, outreach: null, note: '' },
   { year: 2023, income: 161984.07, expenses: 162882.03, net: -897.96,    shows: 170,  outreach: { country: 68, continent: 50, custom: 47, free: 5 },  note: '' },
   { year: 2024, income: 223851.27, expenses: 222774.59, net: 1076.68,    shows: 218,  outreach: { country: 91, continent: 81, custom: 33, free: 13 }, note: '' },
-  { year: 2025, income: 291482.15, expenses: 298553.23, net: -7071.08,   shows: 39,   outreach: { country: 14, continent: 22, custom: 2,  free: 1  }, note: 'Show count Jan–Mar only (partial year)' },
+  { year: 2025, income: 291482.15, expenses: 298553.23, net: -7071.08,   shows: null, outreach: null, note: '' },
 ];
 let EXPENSES_EDIT_OPEN = false;
 let ASSETS_EDIT_OPEN = false;
@@ -10025,23 +10025,33 @@ function renderManager(){
           <button class="btn-small" onclick="addVehicle()">Add Vehicle</button>
         </div>` : ''}
       </div>
-      ${showGroups.length ? showGroups.map(g=>{
-        const collapsed = !!COLLAPSED_SHOW_DATES[g.date];
-        const dgs = showDateGroupStatus(g.instances);
-        const hasBorder = dgs.border !== 'transparent';
-        return `
-        <div class="card" style="${hasBorder ? `border-left:5px solid ${dgs.border};` : ''}">
-          <div class="detail-section-title" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;${hasBorder&&dgs.bg?`background:${dgs.bg};border-radius:10px;padding:8px 10px;margin:-4px -4px 10px;`:''};" onclick="toggleShowDateGroup('${g.date}')">
-            <span style="font-weight:700;">${collapsed ? '▸' : '▾'} ${fmtFullDate(g.date)}</span>
-            <div style="display:flex;align-items:center;gap:8px;">
-              ${hasBorder ? `<span style="font-size:11px;font-weight:700;color:${dgs.text};padding:2px 9px;border-radius:10px;border:1px solid ${dgs.border};background:${dgs.bg};">${dgs.label}</span>` : ''}
-              <span class="count-pill">${g.instances.length} show${g.instances.length===1?'':'s'}</span>
+      ${showGroups.length ? (()=>{
+        const renderGroup = g => {
+          const collapsed = !!COLLAPSED_SHOW_DATES[g.date];
+          const dgs = showDateGroupStatus(g.instances);
+          const hasBorder = dgs.border !== 'transparent';
+          return `
+          <div class="card" style="${hasBorder ? `border-left:5px solid ${dgs.border};` : ''}">
+            <div class="detail-section-title" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;${hasBorder&&dgs.bg?`background:${dgs.bg};border-radius:10px;padding:8px 10px;margin:-4px -4px 10px;`:''};" onclick="toggleShowDateGroup('${g.date}')">
+              <span style="font-weight:700;">${collapsed ? '▸' : '▾'} ${fmtFullDate(g.date)}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                ${hasBorder ? `<span style="font-size:11px;font-weight:700;color:${dgs.text};padding:2px 9px;border-radius:10px;border:1px solid ${dgs.border};background:${dgs.bg};">${dgs.label}</span>` : ''}
+                <span class="count-pill">${g.instances.length} show${g.instances.length===1?'':'s'}</span>
+              </div>
             </div>
-          </div>
-          ${collapsed ? '' : g.instances.map(inst=> renderShowManagerCard(inst.s, inst.date, inst.dayNum, inst.totalDays)).join('')}
-        </div>
-      `;
-      }).join('') : '<div class="card"><div class="empty">No shows in this view.</div></div>'}
+            ${collapsed ? '' : g.instances.map(inst=> renderShowManagerCard(inst.s, inst.date, inst.dayNum, inst.totalDays)).join('')}
+          </div>`;
+        };
+        if(SHOW_MGR_VIEW === 'archive'){
+          const byYear = {};
+          showGroups.forEach(g=>{ const yr=g.date.slice(0,4); if(!byYear[yr]) byYear[yr]=[]; byYear[yr].push(g); });
+          return Object.keys(byYear).sort((a,b)=>b-a).map(yr=>{
+            const total = byYear[yr].reduce((n,g)=>n+g.instances.length,0);
+            return `<div style="margin:20px 0 6px;font-size:17px;font-weight:700;color:var(--text);">${yr} <span class="count-pill">${total} show${total===1?'':'s'}</span></div>${byYear[yr].map(renderGroup).join('')}`;
+          }).join('');
+        }
+        return showGroups.map(renderGroup).join('');
+      })() : '<div class="card"><div class="empty">No shows in this view.</div></div>'}
       ${renderSupervisorAccessPanel('shows')}
     `;
   } else if(MANAGER_TAB === 'schedule'){
@@ -10667,7 +10677,7 @@ function renderManager(){
               <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
             </div>`)
         : `<div class="stat-row" style="margin-bottom:20px;">
-            <div class="stat-box"><div class="num">${allShows.length}</div><div class="lbl">Total shows (all time)</div></div>
+            <div class="stat-box"><div class="num">${HISTORICAL_YEARS.filter(y=>y.year>=2023&&y.shows).reduce((s,y)=>s+y.shows,0) + DATA.shows.length}</div><div class="lbl">Total shows (since 2023)</div></div>
             <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
             <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
           </div>`;
