@@ -1844,6 +1844,10 @@ function showTab(id){
   if(id==='supervisor' && (isManagerLogin() || !hasSupervisorAccess())) id = 'dashboard';
   SUPERVISOR_MODE_ACTIVE = (id === 'supervisor');
   if(id !== 'team') VIEWING_STAFF_FILE_ID = null;
+  // Collapse all shows when first entering manager/supervisor/owner tab from another tab
+  if((id === 'manager' || id === 'supervisor') && CURRENT_TAB !== 'manager' && CURRENT_TAB !== 'supervisor'){
+    if(MANAGER_TAB === 'shows') collapseShowDates(DATA.shows);
+  }
   CURRENT_TAB = id;
   refreshRecurringTasks();
   visibleTabs().forEach(t=>{
