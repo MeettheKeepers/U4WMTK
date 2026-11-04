@@ -3952,28 +3952,66 @@ function renderEvaluations(){
   </div>`;
 }
 
+function renderStaffEvalView(m){
+  if(!m.evaluation) m.evaluation={};
+  normalizeProgressReport(m);
+  const evalTabs = [{id:'progress', label:'Progress Report'},{id:'training', label:'Training'},{id:'interview', label:'Interview'}];
+  const tabNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
+    ${evalTabs.map(t=>`<button onclick="EVAL_TAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${EVAL_TAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${EVAL_TAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  </div>`;
+  const tr = m.evaluation.training||{memory:0,projection:0,clarity:0,confidence:0,notes:''};
+  const trainingContent = `<div style="max-width:520px;">
+    ${[['memory','Memory'],['projection','Projection'],['clarity','Clarity'],['confidence','Confidence']].map(([field,label])=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+      <span style="font-weight:600;font-size:15px;min-width:120px;">${label}</span>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span style="display:inline-flex;">${[1,2,3,4,5].map(n=>`<span style="font-size:22px;padding:2px;color:${n<=(tr[field]||0)?'#f4a800':'#ccc'};">★</span>`).join('')}</span>
+        <span style="margin-left:8px;font-size:14px;font-weight:600;color:${tr[field]?'var(--accent)':'#ccc'};">${tr[field]||'—'}/5</span>
+      </div>
+    </div>`).join('')}
+    ${tr.notes?`<div style="margin-top:16px;"><label style="font-weight:600;font-size:14px;display:block;margin-bottom:6px;">Notes</label><div style="font-size:14px;color:var(--text);white-space:pre-wrap;">${esc(tr.notes)}</div></div>`:''}
+  </div>`;
+  return `<div class="card">
+    <div style="margin-bottom:16px;">
+      <h2 style="margin:0 0 2px;">${esc(m.name)}</h2>
+      <span style="font-size:13px;color:var(--text-light);">${m.role||''}</span>
+    </div>
+    ${tabNav}
+    ${EVAL_TAB==='progress' ? renderProgressReportForm(m, false) : ''}
+    ${EVAL_TAB==='training' ? trainingContent : ''}
+    ${EVAL_TAB==='interview' ? '<div class="empty" style="padding:30px 0;">Interview notes are manager-only.</div>' : ''}
+  </div>`;
+}
 function renderTeamSubNav(){
   const isMgr = isManagerLogin();
   const myName = getWelcomeStaffName();
   const tabs=[{id:'team',label:'Team'},{id:'paystubs',label:'Pay Stubs'}];
-  const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
-  if(me){
-    const badge = me.evaluation && me.evaluation.progressReport && me.evaluation.progressReport.needsAck && !me.evaluation.progressReport.employeeAckedAt ? ' ' : '';
-    tabs.push({id:'progress', label:'Progress Report'+badge});
+  if(isMgr){
+    tabs.push({id:'evaluations',label:'Evaluations'});
+  } else {
+    const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
+    if(me){
+      const badge = me.evaluation && me.evaluation.progressReport && me.evaluation.progressReport.needsAck && !me.evaluation.progressReport.employeeAckedAt ? ' ' : '';
+      tabs.push({id:'evaluations', label:'Evaluations'+badge});
+    }
   }
-  if(isMgr) tabs.push({id:'evaluations',label:'Evaluations'});
   return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
     ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';EVAL_STAFF_ID=null;showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
   </div>`;
 }
 function renderTeam(){
   if(TEAM_SUBTAB==='paystubs') return renderTeamSubNav() + renderPayStubs();
-  if(TEAM_SUBTAB==='evaluations' && isManagerLogin()) return renderTeamSubNav() + renderEvaluations();
-  if(TEAM_SUBTAB==='progress'){
+  if(TEAM_SUBTAB==='evaluations'){
+    if(isManagerLogin()) return renderTeamSubNav() + renderEvaluations();
+    // Non-managers: jump straight to their own eval card
     const myName = getWelcomeStaffName();
     const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
-    if(me) return renderTeamSubNav() + `<div class="card">${renderProgressReportForm(me, false)}</div>`;
-    return renderTeamSubNav() + `<div class="card"><div class="empty">Progress report not found.</div></div>`;
+    if(me){
+      EVAL_STAFF_ID = me.id;
+      if(!EVAL_TAB || !['interview','training','progress','summary'].includes(EVAL_TAB)) EVAL_TAB = 'progress';
+      return renderTeamSubNav() + renderStaffEvalView(me);
+    }
+    return renderTeamSubNav() + `<div class="card"><div class="empty">Your account is not linked to a staff profile. Ask a manager to link your login.</div></div>`;
   }
   if(VIEWING_STAFF_FILE_ID){
     const preview = DATA.team.find(m=>m.id===VIEWING_STAFF_FILE_ID);
@@ -4488,7 +4526,7 @@ function renderDashboard(){
   // Quiz available notification
   const quizAvailable = !isManagerLogin() && myName && quizNeedsQuiz(myName) && quizCanTakeQuiz(myName);
   const myProgressAck = (() => {
-    if(!myName || isManagerLogin()) return null;
+    if(!myName) return null;
     const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
     if(!me.evaluation||!me.evaluation.progressReport) return null;
     const pr=me.evaluation.progressReport;
@@ -4522,7 +4560,7 @@ function renderDashboard(){
     <div class="card" style="border-left:5px solid #2d4a2d;">
       <h2 style="margin-bottom:6px;"> Progress Report Requires Your Acknowledgment</h2>
       <div class="sub" style="margin-bottom:12px;">Your manager has updated your progress report${myProgressAck.updatedAt?' on '+myProgressAck.updatedAt:''}. Please review it and click Acknowledge.</div>
-      <button class="btn" onclick="TEAM_SUBTAB='progress';showTab('team')">View &amp; Acknowledge →</button>
+      <button class="btn" onclick="TEAM_SUBTAB='evaluations';EVAL_TAB='progress';showTab('team')">View &amp; Acknowledge →</button>
     </div>` : ''}
     ${managerProgressAcks.length ? `
     <div class="card" style="border-left:5px solid #2d4a2d;">
