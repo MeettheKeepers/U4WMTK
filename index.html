@@ -1088,6 +1088,10 @@ let POLL_TIMER = null;
 
 const LOCAL_SAVED_AT_KEY = 'ufw_local_saved_at_v1';
 function saveData(){
+  if(!CLOUD_READY && sb){
+    console.warn('[saveData] BLOCKED — cloud sync not complete yet. Call saveData() only after CLOUD_READY is true.');
+    return;
+  }
   DATA._savedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
   localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
