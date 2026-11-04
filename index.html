@@ -3515,7 +3515,7 @@ function saveEvalTraining(memberId, field, value){
 
 function renderEvalStars(memberId, field, currentVal){
   return `<span id="eval-stars-${memberId}-${field}" style="display:inline-flex;">` +
-    [1,2,3,4,5].map(n=>`<button data-star="${n}" onclick="saveEvalTraining(${memberId},'${field}',${n})" title="${n}" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px;color:${n<=currentVal?'#f4a800':'#ccc'};"></button>`).join('') +
+    [1,2,3,4,5].map(n=>`<button data-star="${n}" onclick="saveEvalTraining(${memberId},'${field}',${n})" title="${n}" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px;color:${n<=currentVal?'#f4a800':'#ccc'};">★</button>`).join('') +
     `</span>`;
 }
 
@@ -3652,11 +3652,11 @@ function renderProgressReportForm(m, canEdit){
       <div style="display:flex;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:14px;">
           <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Employee</div>
-          ${empAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;"> Acknowledged ${new Date(pr.employeeAckedAt).toLocaleDateString()}</div>`:(!canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'employee')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending employee acknowledgment</div>`)}
+          ${empAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;">Acknowledged ${new Date(pr.employeeAckedAt).toLocaleDateString()}</div>`:(!canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'employee')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending employee acknowledgment</div>`)}
         </div>
         <div style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:14px;">
           <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Manager / Employer</div>
-          ${mgrAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;"> Acknowledged ${new Date(pr.managerAckedAt).toLocaleDateString()}</div>`:(canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'manager')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending manager acknowledgment</div>`)}
+          ${mgrAcked?`<div style="color:var(--green,#27ae60);font-weight:600;font-size:14px;">Acknowledged ${new Date(pr.managerAckedAt).toLocaleDateString()}</div>`:(canEdit?`<button class="btn" style="width:100%;" onclick="ackProgressReport(${m.id},'manager')">I Acknowledge</button>`:`<div style="font-size:13px;color:var(--text-light);">Pending manager acknowledgment</div>`)}
         </div>
       </div>
       ${pr.updatedAt?`<div style="font-size:12px;color:var(--text-light);margin-top:10px;">Last updated ${pr.updatedAt}</div>`:''}
@@ -4555,13 +4555,13 @@ function renderDashboard(){
     </div>` : ''}
     ${myProgressAck ? `
     <div class="card" style="border-left:5px solid #2d4a2d;">
-      <h2 style="margin-bottom:6px;"> Progress Report Requires Your Acknowledgment</h2>
+      <h2 style="margin-bottom:6px;">Progress Report Requires Your Acknowledgment</h2>
       <div class="sub" style="margin-bottom:12px;">Your manager has updated your progress report${myProgressAck.updatedAt?' on '+myProgressAck.updatedAt:''}. Please review it and click Acknowledge.</div>
       <button class="btn" onclick="TEAM_SUBTAB='evaluations';EVAL_TAB='progress';showTab('team')">View &amp; Acknowledge →</button>
     </div>` : ''}
     ${managerProgressAcks.length ? `
     <div class="card" style="border-left:5px solid #2d4a2d;">
-      <h2 style="margin-bottom:10px;"> Progress Reports Awaiting Your Acknowledgment</h2>
+      <h2 style="margin-bottom:10px;">Progress Reports Awaiting Your Acknowledgment</h2>
       ${managerProgressAcks.map(m=>`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
           <div>
@@ -8137,6 +8137,8 @@ function renderAnimalManagerCard(a){
 
 /* ---------- MANAGER ---------- */
 let MANAGER_TAB = 'overview';
+let MANAGER_WELCOME_SUBTAB = 'content';
+let MANAGER_U4W_SUBTAB = 'nonprofit';
 let ANALYTICS_TAB = 'shows';
 let FINANCIALS_SUB_TAB = 'income';
 let SHOWS_YEAR_DRILL = null; // year string when drilling into a year's show types
@@ -9583,21 +9585,19 @@ function renderFamilyFunFest(){
 }
 
 const MANAGER_TABS = [
+  {id:'welcome', label:'Welcome'},
   {id:'overview', label:'Overview'},
   {id:'tasks', label:'Tasks'},
-  {id:'shows', label:'Shows'},
-  {id:'analytics', label:'Analytics'},
-  {id:'schedule', label:'Team Schedule'},
   {id:'animals', label:'Animals'},
-  {id:'staff', label:'Staff'},
+  {id:'shows', label:'Shows'},
+  {id:'schedule', label:'Schedule'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
   {id:'incidents', label:'Incidents'},
-  {id:'welcome', label:'Welcome'},
-  {id:'quiz', label:'Quiz'},
+  {id:'staff', label:'Team'},
   {id:'admin', label:'Admin'},
-  {id:'nonprofit', label:'U4W Non-Profit Org.'},
-  {id:'foundation', label:'U4W Charity Foundation'},
+  {id:'u4w', label:'Unite for Wildlife'},
+  {id:'analytics', label:'Analytics'},
   {id:'data', label:'Data Tools'}
 ];
 const WELCOME_EDIT_SECTIONS = [
@@ -9610,6 +9610,91 @@ const WELCOME_EDIT_SECTIONS = [
   {key:'vehicles', label:'Vehicles'},
   {key:'shows', label:'Shows & Presentations'}
 ];
+function renderManagerQuizBody(){
+  if(QUIZ_STAFF_VIEW) return renderManagerQuizStaffDetail();
+  const quiz = DATA.quiz;
+  const questions = quiz.questions || [];
+  return `
+    <div class="card">
+      <h2>Quiz Settings</h2>
+      <div class="sub">Staff see a randomized 20-question quiz in their Welcome tab. Once submitted (pass or fail), the quiz tab disappears so they cannot review the answers.</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+        <label class="checkbox-line" style="font-size:15px;font-weight:600;">
+          <input type="checkbox" ${quiz.enabled?'checked':''} onchange="DATA.quiz.enabled=this.checked;saveData();showTab('manager');">
+          Quiz Enabled
+        </label>
+        ${!quiz.enabled ? '<span class="tag" style="background:#fde2e2;color:#c0392b;">Quiz is OFF — staff will not see the quiz tab</span>' : '<span class="tag" style="background:#d7f0dc;color:#1e6b2e;">Quiz is ON</span>'}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:16px;">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
+          Passing Score (%)
+          <input type="number" min="1" max="100" value="${quiz.passingPct||80}" style="font-size:15px;"
+            onchange="DATA.quiz.passingPct=Math.min(100,Math.max(1,parseInt(this.value)||80));saveData();">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
+          Fail Cooldown (days)
+          <input type="number" min="1" value="${quiz.cooldownDays||7}" style="font-size:15px;"
+            onchange="DATA.quiz.cooldownDays=Math.max(1,parseInt(this.value)||7);saveData();">
+        </label>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--text-light);">
+          Pass Validity
+          <span style="font-size:14px;font-weight:400;color:var(--text);">Until Jan 1 of next year</span>
+        </div>
+      </div>
+      <div class="sub" style="margin-top:8px;">Questions in bank: <strong>${questions.length}</strong> ${questions.length < 20 ? '<span style="color:var(--red);">(need at least 20 to enable quiz)</span>' : ''}</div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h2 style="margin:0;flex:1;">Question Bank <span style="font-size:13px;font-weight:400;color:var(--text-light);">(${questions.length} question${questions.length===1?'':'s'})</span></h2>
+        <button class="btn-ghost" onclick="QUIZ_BANK_OPEN=!QUIZ_BANK_OPEN;showTab('manager');">${QUIZ_BANK_OPEN?'▾ Collapse':'▸ Expand'}</button>
+      </div>
+      ${QUIZ_BANK_OPEN ? `
+      <div class="sub" style="margin-top:6px;">For each question, the first answer is the correct one — the quiz randomizes their order for staff. Add as many as you like; staff always get a random 20.</div>
+      <div style="margin-top:12px;"><button class="btn-small" onclick="addQuizQuestion()">+ Add Question</button></div>
+      ${questions.length === 0 ? '<div class="empty" style="margin-top:12px;">No questions yet. Click "+ Add Question" to get started.</div>' : ''}
+      ${questions.map((q,qi)=>`
+        <div id="quiz-q-mgr-${q.id}" style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
+          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
+            <span style="font-weight:700;color:var(--text-light);min-width:26px;">${qi+1}.</span>
+            <textarea id="quiz-qtxt-${q.id}" rows="2" style="flex:1;font-size:14px;" onchange="saveQuizQuestion(${q.id})">${esc(q.question)}</textarea>
+            <button class="btn-ghost" style="color:var(--red);flex-shrink:0;" onclick="deleteQuizQuestion(${q.id})">Delete</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding-left:34px;">
+            <label style="font-size:11px;font-weight:700;color:#2a9d5c;text-transform:uppercase;letter-spacing:.5px;">Correct Answer</label>
+            <input type="text" id="quiz-qa0-${q.id}" value="${esc(q.answers[0]||'')}" placeholder="Correct answer" style="border-color:#2a9d5c;" onchange="saveQuizQuestion(${q.id})">
+            <label style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">Wrong Answers</label>
+            <input type="text" id="quiz-qa1-${q.id}" value="${esc(q.answers[1]||'')}" placeholder="Wrong answer 1" onchange="saveQuizQuestion(${q.id})">
+            <input type="text" id="quiz-qa2-${q.id}" value="${esc(q.answers[2]||'')}" placeholder="Wrong answer 2" onchange="saveQuizQuestion(${q.id})">
+            <input type="text" id="quiz-qa3-${q.id}" value="${esc(q.answers[3]||'')}" placeholder="Wrong answer 3" onchange="saveQuizQuestion(${q.id})">
+          </div>
+        </div>`).join('')}
+      ` : ''}
+    </div>
+    <div class="card">
+      <h2>Staff Quiz Status</h2>
+      <table>
+        <tr><th>Name</th><th>Attempts</th><th>Last Score</th><th>Pass Valid Until</th><th>Override Date</th><th>Actions</th></tr>
+        ${DATA.team.filter(m=>!m.archived).map(m=>{
+          const attempts = m.quizAttempts||[];
+          const last = attempts.length ? attempts[attempts.length-1] : null;
+          const passedUntil = m.quizPassedUntil;
+          const needsQuiz = quizNeedsQuiz(m.name);
+          return `<tr>
+            <td>${attempts.length ? `<button class="btn-ghost" style="font-weight:600;padding:2px 0;" onclick="openQuizStaffDetail(${m.id})">${esc(m.name)}</button>` : esc(m.name)}</td>
+            <td>${attempts.length}</td>
+            <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
+            <td>${passedUntil ? `<span style="color:${passedUntil>=todayStr()?'#2a9d5c':'var(--red)'};">${fmtShortDate(passedUntil)}</span>` : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
+            <td><input type="date" value="${passedUntil||''}" style="font-size:12px;" onchange="setStaffQuizPassedUntil(${m.id},this.value)"></td>
+            <td style="white-space:nowrap;">
+              <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="resetStaffQuiz(${m.id})">Reset Quiz</button>
+              <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;margin-left:4px;" onclick="fullResetStaffQuiz(${m.id})">Full Reset</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+      <div class="sub" style="margin-top:8px;">Reset Quiz clears their pass status and removes any fail cooldown so they can retake immediately. Attempt history is preserved.</div>
+    </div>`;
+}
 function renderManager(){
   const openRepairs = DATA.repairs.filter(r=>r.status!=='Done').length;
   const openIncidents = DATA.incidents.filter(i=>i.status==='Open').length;
@@ -10436,7 +10521,13 @@ function renderManager(){
     `;
   } else if(MANAGER_TAB === 'welcome'){
     const customTabs = (DATA.welcome && DATA.welcome.customTabs) || [];
-    body = `
+    const welcomeSubNav = `<div style="display:flex;gap:8px;margin-bottom:18px;">
+      ${[{id:'content',label:'Content'},{id:'quiz',label:'Quiz'}].map(t=>`<button onclick="MANAGER_WELCOME_SUBTAB='${t.id}';showTab('manager')" style="padding:9px 22px;background:${MANAGER_WELCOME_SUBTAB===t.id?'#2d4a2d':'#e8ede8'};color:${MANAGER_WELCOME_SUBTAB===t.id?'#fff':'#444'};border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">${t.label}</button>`).join('')}
+    </div>`;
+    if(MANAGER_WELCOME_SUBTAB === 'quiz'){
+      body = welcomeSubNav + renderManagerQuizBody();
+    } else {
+      body = welcomeSubNav + `
       <div class="card">
         <h2>Welcome Tab Content</h2>
         <div class="sub">This is exactly what staff see on their Welcome tab. Paste directly from your Word handbook — bold text, headings, and bullet lists will carry over. Click Save under a section to publish your changes; nothing goes live until you save it.</div>
@@ -10475,102 +10566,7 @@ function renderManager(){
       </div>
       ${renderSupervisorAccessPanel('welcome')}
     `;
-  } else if(MANAGER_TAB === 'quiz'){
-    if(QUIZ_STAFF_VIEW) return `
-      <div class="card">
-        <h2>Manager</h2>
-        <div class="sub">Manage tasks, animals, staff, and settings. Staff only ever see the read-only views in their own tabs.</div>
-        <div class="detail-tabs">${tabsHtml}</div>
-      </div>
-      ${renderManagerQuizStaffDetail()}`;
-    const quiz = DATA.quiz;
-    const questions = quiz.questions || [];
-    const staffWithQuiz = DATA.team.filter(m=>Array.isArray(m.quizAttempts) && (m.quizAttempts.length > 0 || m.quizPassedUntil));
-    body = `
-      <div class="card">
-        <h2>Quiz Settings</h2>
-        <div class="sub">Staff see a randomized 20-question quiz in their Welcome tab. Once submitted (pass or fail), the quiz tab disappears so they cannot review the answers.</div>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
-          <label class="checkbox-line" style="font-size:15px;font-weight:600;">
-            <input type="checkbox" ${quiz.enabled?'checked':''} onchange="DATA.quiz.enabled=this.checked;saveData();showTab('manager');">
-            Quiz Enabled
-          </label>
-          ${!quiz.enabled ? '<span class="tag" style="background:#fde2e2;color:#c0392b;">Quiz is OFF — staff will not see the quiz tab</span>' : '<span class="tag" style="background:#d7f0dc;color:#1e6b2e;">Quiz is ON</span>'}
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:16px;">
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
-            Passing Score (%)
-            <input type="number" min="1" max="100" value="${quiz.passingPct||80}" style="font-size:15px;"
-              onchange="DATA.quiz.passingPct=Math.min(100,Math.max(1,parseInt(this.value)||80));saveData();">
-          </label>
-          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;">
-            Fail Cooldown (days)
-            <input type="number" min="1" value="${quiz.cooldownDays||7}" style="font-size:15px;"
-              onchange="DATA.quiz.cooldownDays=Math.max(1,parseInt(this.value)||7);saveData();">
-          </label>
-          <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--text-light);">
-            Pass Validity
-            <span style="font-size:14px;font-weight:400;color:var(--text);">Until Jan 1 of next year</span>
-          </div>
-        </div>
-        <div class="sub" style="margin-top:8px;">Questions in bank: <strong>${questions.length}</strong> ${questions.length < 20 ? '<span style="color:var(--red);">(need at least 20 to enable quiz)</span>' : ''}</div>
-      </div>
-
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <h2 style="margin:0;flex:1;">Question Bank <span style="font-size:13px;font-weight:400;color:var(--text-light);">(${questions.length} question${questions.length===1?'':'s'})</span></h2>
-          <button class="btn-ghost" onclick="QUIZ_BANK_OPEN=!QUIZ_BANK_OPEN;showTab('manager');">${QUIZ_BANK_OPEN?'▾ Collapse':'▸ Expand'}</button>
-        </div>
-        ${QUIZ_BANK_OPEN ? `
-        <div class="sub" style="margin-top:6px;">For each question, the first answer is the correct one — the quiz randomizes their order for staff. Add as many as you like; staff always get a random 20.</div>
-        <div style="margin-top:12px;">
-          <button class="btn-small" onclick="addQuizQuestion()">+ Add Question</button>
-        </div>
-        ${questions.length === 0 ? '<div class="empty" style="margin-top:12px;">No questions yet. Click "+ Add Question" to get started.</div>' : ''}
-        ${questions.map((q,qi)=>`
-          <div id="quiz-q-mgr-${q.id}" style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
-            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
-              <span style="font-weight:700;color:var(--text-light);min-width:26px;">${qi+1}.</span>
-              <textarea id="quiz-qtxt-${q.id}" rows="2" style="flex:1;font-size:14px;" onchange="saveQuizQuestion(${q.id})">${esc(q.question)}</textarea>
-              <button class="btn-ghost" style="color:var(--red);flex-shrink:0;" onclick="deleteQuizQuestion(${q.id})">Delete</button>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px;padding-left:34px;">
-              <label style="font-size:11px;font-weight:700;color:#2a9d5c;text-transform:uppercase;letter-spacing:.5px;"> Correct Answer</label>
-              <input type="text" id="quiz-qa0-${q.id}" value="${esc(q.answers[0]||'')}" placeholder="Correct answer" style="border-color:#2a9d5c;" onchange="saveQuizQuestion(${q.id})">
-              <label style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">Wrong Answers</label>
-              <input type="text" id="quiz-qa1-${q.id}" value="${esc(q.answers[1]||'')}" placeholder="Wrong answer 1" onchange="saveQuizQuestion(${q.id})">
-              <input type="text" id="quiz-qa2-${q.id}" value="${esc(q.answers[2]||'')}" placeholder="Wrong answer 2" onchange="saveQuizQuestion(${q.id})">
-              <input type="text" id="quiz-qa3-${q.id}" value="${esc(q.answers[3]||'')}" placeholder="Wrong answer 3" onchange="saveQuizQuestion(${q.id})">
-            </div>
-          </div>`).join('')}
-        ` : ''}
-      </div>
-
-      <div class="card">
-        <h2>Staff Quiz Status</h2>
-        <table>
-          <tr><th>Name</th><th>Attempts</th><th>Last Score</th><th>Pass Valid Until</th><th>Override Date</th><th>Actions</th></tr>
-          ${DATA.team.filter(m=>!m.archived).map(m=>{
-            const attempts = m.quizAttempts||[];
-            const last = attempts.length ? attempts[attempts.length-1] : null;
-            const passedUntil = m.quizPassedUntil;
-            const needsQuiz = quizNeedsQuiz(m.name);
-            return `<tr>
-              <td>${attempts.length ? `<button class="btn-ghost" style="font-weight:600;padding:2px 0;" onclick="openQuizStaffDetail(${m.id})">${esc(m.name)}</button>` : esc(m.name)}</td>
-              <td>${attempts.length}</td>
-              <td>${last ? `${last.score}/${last.total||20} (${last.pct}%) — <span style="color:${last.passed?'#2a9d5c':'var(--red)'};">${last.passed?'Passed':'Failed'}</span>` : '—'}</td>
-              <td>${passedUntil ? `<span style="color:${passedUntil>=todayStr()?'#2a9d5c':'var(--red)'};">${fmtShortDate(passedUntil)}</span>` : (needsQuiz ? '<span style="color:var(--red);">Needs quiz</span>' : '—')}</td>
-              <td><input type="date" value="${passedUntil||''}" style="font-size:12px;" onchange="setStaffQuizPassedUntil(${m.id},this.value)"></td>
-              <td style="white-space:nowrap;">
-                <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;" onclick="resetStaffQuiz(${m.id})">Reset Quiz</button>
-                <button class="btn-ghost" style="color:var(--red);font-size:12px;padding:3px 8px;margin-left:4px;" onclick="fullResetStaffQuiz(${m.id})">Full Reset</button>
-              </td>
-            </tr>`;
-          }).join('')}
-        </table>
-        <div class="sub" style="margin-top:8px;">Reset Quiz clears their pass status and removes any fail cooldown so they can retake immediately. Attempt history is preserved.</div>
-      </div>
-    `;
+    } // end else (content subtab)
   } else if(MANAGER_TAB === 'analytics'){
     const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'}];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
@@ -11475,72 +11471,74 @@ function renderManager(){
         `).join('')}
       </div>
     `;
-  } else if(MANAGER_TAB === 'nonprofit'){
+  } else if(MANAGER_TAB === 'u4w'){
     const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
-    const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
-    body = `
-      <div class="card">
-        <h2 style="margin-bottom:6px;">Who Can See U4W Non-Profit Organization</h2>
-        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Non-Profit Organization tab.</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;">
-          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-            <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
-            ${esc(m.name)}
-          </label>`).join('')}
+    const u4wSubNav = `<div style="display:flex;gap:8px;margin-bottom:18px;">
+      ${[{id:'nonprofit',label:'Non-Profit Org.'},{id:'foundation',label:'Charity Foundation'}].map(t=>`<button onclick="MANAGER_U4W_SUBTAB='${t.id}';showTab('manager')" style="padding:9px 22px;background:${MANAGER_U4W_SUBTAB===t.id?'#2d4a2d':'#e8ede8'};color:${MANAGER_U4W_SUBTAB===t.id?'#fff':'#444'};border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">${t.label}</button>`).join('')}
+    </div>`;
+    if(MANAGER_U4W_SUBTAB === 'foundation'){
+      const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
+      const faccess = DATA.foundation.access || [];
+      body = u4wSubNav + `
+        <div class="card">
+          <h2 style="margin-bottom:6px;">Who Can See U4W Charity Foundation</h2>
+          <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Charity Foundation tab.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:0;">
+            ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+              <input type="checkbox" ${faccess.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
+              ${esc(m.name)}
+            </label>`).join('')}
+          </div>
         </div>
-      </div>
-      <div class="card">
-        <h2 style="margin-bottom:6px;">By-laws</h2>
-        <div class="sub" style="margin-bottom:10px;">Edit the by-laws content here. Staff see it as read-only in the Unite for Wildlife tab.</div>
-        <div class="rich-editor-wrap">
-          ${richToolbarFull('np-bylaws-editor-mgr')}
-          <div class="welcome-editor" id="np-bylaws-editor-mgr" contenteditable="true" onblur="saveNonprofitBylaws()" style="min-height:300px;">${(DATA.nonprofit && DATA.nonprofit.bylaws)||''}</div>
+        <div class="card">
+          <h2 style="margin-bottom:12px;">Tabs</h2>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+            <input type="text" id="new-foundation-tab-title-mgr" placeholder="New tab title" style="flex:1;">
+            <button class="btn-small" onclick="addFoundationTabFromManager()">Add Tab</button>
+          </div>
+          ${ftabs.length ? ftabs.map(ct=>`
+            <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                <input type="text" value="${esc(ct.title)}" style="font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:14px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
+                <button class="btn-ghost" style="color:var(--red);padding:2px 8px;" onclick="deleteFoundationTab(${ct.id})">Delete</button>
+              </div>
+              <div style="font-weight:600;font-size:12px;color:#666;margin-bottom:6px;">Content:</div>
+              <div class="rich-editor-wrap" style="margin-bottom:12px;">
+                ${richToolbarFull('foundation-edit-'+ct.id)}
+                <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})" style="min-height:160px;">${ct.content||''}</div>
+              </div>
+              <div style="font-weight:600;font-size:12px;color:#666;margin-bottom:6px;">Who can see this tab:</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+                  <input type="checkbox" ${((DATA.foundation.tabAccess||{})['ft_'+ct.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('ft_${ct.id}','${esc(m.name)}',this.checked)">
+                  ${esc(m.name)}
+                </label>`).join('')}
+              </div>
+            </div>`).join('')
+          : '<div class="empty">No tabs yet — add one above.</div>'}
+        </div>`;
+    } else {
+      const access = (DATA.nonprofit && DATA.nonprofit.access) || [];
+      body = u4wSubNav + `
+        <div class="card">
+          <h2 style="margin-bottom:6px;">Who Can See U4W Non-Profit Organization</h2>
+          <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Non-Profit Organization tab.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;">
+            ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+              <input type="checkbox" ${access.includes(m.name)?'checked':''} onchange="toggleNonProfitAccess('${esc(m.name)}',this.checked)">
+              ${esc(m.name)}
+            </label>`).join('')}
+          </div>
         </div>
-      </div>
-    `;
-  } else if(MANAGER_TAB === 'foundation'){
-    const ftabs = (DATA.foundation && DATA.foundation.customTabs) || [];
-    const faccess = DATA.foundation.access || [];
-    const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
-    body = `
-      <div class="card">
-        <h2 style="margin-bottom:6px;">Who Can See U4W Charity Foundation</h2>
-        <div class="sub" style="margin-bottom:12px;">Staff checked here will see the U4W Charity Foundation tab.</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:0;">
-          ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-            <input type="checkbox" ${faccess.includes(m.name)?'checked':''} onchange="toggleFoundationAccess('${esc(m.name)}',this.checked)">
-            ${esc(m.name)}
-          </label>`).join('')}
-        </div>
-      </div>
-      <div class="card">
-        <h2 style="margin-bottom:12px;">Tabs</h2>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
-          <input type="text" id="new-foundation-tab-title-mgr" placeholder="New tab title" style="flex:1;">
-          <button class="btn-small" onclick="addFoundationTabFromManager()">Add Tab</button>
-        </div>
-        ${ftabs.length ? ftabs.map(ct=>`
-          <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-              <input type="text" value="${esc(ct.title)}" style="font-weight:700;flex:1;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:14px;" onchange="saveFoundationTabTitle(${ct.id},this.value)">
-              <button class="btn-ghost" style="color:var(--red);padding:2px 8px;" onclick="deleteFoundationTab(${ct.id})">Delete</button>
-            </div>
-            <div style="font-weight:600;font-size:12px;color:#666;margin-bottom:6px;">Content:</div>
-            <div class="rich-editor-wrap" style="margin-bottom:12px;">
-              ${richToolbarFull('foundation-edit-'+ct.id)}
-              <div class="welcome-editor" id="foundation-edit-${ct.id}" contenteditable="true" onblur="saveFoundationTabContent(${ct.id})" style="min-height:160px;">${ct.content||''}</div>
-            </div>
-            <div style="font-weight:600;font-size:12px;color:#666;margin-bottom:6px;">Who can see this tab:</div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;">
-              ${nonMgr.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-                <input type="checkbox" ${((DATA.foundation.tabAccess||{})['ft_'+ct.id]||[]).includes(m.name)?'checked':''} onchange="toggleFoundationTabAccess('ft_${ct.id}','${esc(m.name)}',this.checked)">
-                ${esc(m.name)}
-              </label>`).join('')}
-            </div>
-          </div>`).join('')
-        : '<div class="empty">No tabs yet — add one above.</div>'}
-      </div>
-    `;
+        <div class="card">
+          <h2 style="margin-bottom:6px;">By-laws</h2>
+          <div class="sub" style="margin-bottom:10px;">Edit the by-laws content here. Staff see it as read-only in the Unite for Wildlife tab.</div>
+          <div class="rich-editor-wrap">
+            ${richToolbarFull('np-bylaws-editor-mgr')}
+            <div class="welcome-editor" id="np-bylaws-editor-mgr" contenteditable="true" onblur="saveNonprofitBylaws()" style="min-height:300px;">${(DATA.nonprofit && DATA.nonprofit.bylaws)||''}</div>
+          </div>
+        </div>`;
+    }
   } else if(MANAGER_TAB === 'data'){
     body = `
       <div class="card">
