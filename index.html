@@ -4511,6 +4511,7 @@ function renderDashboard(){
   const _ord = (n) => n+(n===1?'st':n===2?'nd':n===3?'rd':'th');
   const _dateStr = `${_days[_now.getDay()]} ${_months[_now.getMonth()]} ${_ord(_now.getDate())} ${_now.getFullYear()}`;
   const pendingTimeOff = isManagerLogin() ? (DATA.timeOffRequests||[]).filter(r=>r.status==='pending') : [];
+  const myPendingTimeOff = !isManagerLogin() && myName ? (DATA.timeOffRequests||[]).filter(r=>r.staffName===myName && r.status==='pending') : [];
   const myDecidedNotifications = myName ? (DATA.timeOffRequests||[]).filter(r=>
     r.staffName===myName &&
     (r.status==='approved'||r.status==='denied') &&
@@ -4576,6 +4577,18 @@ function renderDashboard(){
       <h2 style="margin-bottom:6px;"> Quiz Available</h2>
       <div class="sub" style="margin-bottom:12px;">Your quiz is ready to take. Head to the Welcome tab to begin.</div>
       <button class="btn" onclick="setWelcomeTab('quiz');showTab('welcome')">Take Quiz →</button>
+    </div>` : ''}
+    ${myPendingTimeOff.length ? `
+    <div class="card" style="border-left:5px solid var(--amber,#c98a2a);">
+      <h2 style="margin-bottom:6px;">Time Off Request${myPendingTimeOff.length>1?'s':''} Pending</h2>
+      <div class="sub" style="margin-bottom:10px;">Your request${myPendingTimeOff.length>1?'s are':' is'} awaiting manager approval. You will be notified once a decision is made.</div>
+      ${myPendingTimeOff.map(r=>{
+        const ttLabel = r.timeType==='morning'?` · Unavailable until ${r.timeNote||'?'}`:r.timeType==='afternoon'?` · Available until ${r.timeNote||'?'}`:'';
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;color:var(--text);">
+          ${r.startDate===r.endDate?r.startDate:r.startDate+' – '+r.endDate}${ttLabel}
+          ${r.reason?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">"${esc(r.reason)}"</span>`:''}
+        </div>`;
+      }).join('')}
     </div>` : ''}
     ${myDecidedNotifications.length ? `
     <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
