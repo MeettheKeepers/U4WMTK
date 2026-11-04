@@ -3647,6 +3647,115 @@ function renderProgressReportForm(m, canEdit){
   </div>`;
 }
 
+function renderEvalSummary(m){
+  if(!m.evaluation) m.evaluation={};
+  const iv = m.evaluation.interview || {};
+  const tr = m.evaluation.training || {};
+  const pr = m.evaluation.progressReport || {};
+
+  // --- Interview section ---
+  const recMap = {hire:'✅ Hire', followup:'⚠️ Follow up before deciding', nohire:'❌ Do not hire'};
+  const stagesCompleted = [iv.stageVideo&&'Video interview', iv.stageInPerson&&'In-person interview', iv.stageWorking&&'Working interview'].filter(Boolean);
+  const prosRows = (iv.prosConsRows||[]).filter(r=>r.pro||r.con);
+
+  // --- Training section ---
+  const starLabel = v => v ? '★'.repeat(v)+'☆'.repeat(5-v)+` (${v}/5)` : 'Not rated';
+  const trainingFields = [['Memory','memory'],['Projection','projection'],['Clarity','clarity'],['Confidence','confidence']];
+
+  // --- Progress Report section ---
+  const goalRows = (pr.goalRows||[]).filter(r=>r.task||r.progress||r.challenges||r.actionSteps);
+
+  const section = (title, color, content) => `
+    <div style="margin-bottom:28px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;height:2px;background:${color};"></div>
+        <span style="font-size:16px;font-weight:800;color:${color};white-space:nowrap;">${title}</span>
+        <div style="flex:1;height:2px;background:${color};"></div>
+      </div>
+      ${content}
+    </div>`;
+
+  const row = (label, value) => value ? `
+    <div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:700;color:var(--text-light);min-width:160px;flex-shrink:0;">${label}</div>
+      <div style="font-size:14px;color:var(--text);line-height:1.5;">${value}</div>
+    </div>` : '';
+
+  const interviewSection = section('Interview', '#2d4a2d', `
+    ${row('Position', esc(iv.position))}
+    ${row('Interviewers', esc(iv.interviewers))}
+    ${row('Review date', esc(iv.reviewDate))}
+    ${stagesCompleted.length ? row('Stages completed', stagesCompleted.join(', ')) : ''}
+    ${prosRows.length ? `
+    <div style="margin-top:12px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:8px;">INTERVIEWER OBSERVATIONS</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="background:#2d4a2d;color:#fff;padding:7px 10px;font-size:12px;text-align:left;">Pros — Strengths</th>
+          <th style="background:#2d4a2d;color:#fff;padding:7px 10px;font-size:12px;text-align:left;">Cons — Concerns</th>
+        </tr></thead>
+        <tbody>${prosRows.map(r=>`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.pro||'—')}</td>
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.con||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : ''}
+    ${row('Training needs', esc(iv.trainingNeeds))}
+    ${row('Follow-up requirements', esc(iv.followUp))}
+  `);
+
+  const trainingSection = section('Training Assessment', '#1a4a7a', `
+    ${trainingFields.map(([label,field])=>row(label, starLabel(tr[field]||0))).join('')}
+    ${tr.notes ? row('Notes', esc(tr.notes)) : ''}
+  `);
+
+  const progressSection = section('Progress Report', '#5a2d82', `
+    ${row('Meeting date', esc(pr.meetingDate))}
+    ${row('Supervisor', esc(pr.supervisor))}
+    ${row('Meeting type', [pr.typeInitial&&'Initial hiring review discussion', pr.typeCheckin&&'Progress check-in'].filter(Boolean).join(', '))}
+    ${row('Strengths recognized', esc(pr.strengths))}
+    ${goalRows.length ? `
+    <div style="margin-top:12px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text-light);margin-bottom:8px;">DEVELOPMENT GOALS</div>
+      <table style="width:100%;border-collapse:collapse;min-width:500px;">
+        <thead><tr>
+          ${['Goal','Target Date','Progress','Challenges','Action Steps'].map(h=>`<th style="background:#5a2d82;color:#fff;padding:7px 10px;font-size:11px;text-align:left;">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${goalRows.map(r=>`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.task||'—')}</td>
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;white-space:nowrap;">${esc(r.targetDate||'—')}</td>
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.progress||'—')}</td>
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.challenges||'—')}</td>
+          <td style="padding:6px 10px;font-size:13px;vertical-align:top;">${esc(r.actionSteps||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : ''}
+    ${row('Employee feedback', esc(pr.employeeFeedback))}
+    ${row('Next check-in date', esc(pr.nextCheckinDate))}
+    <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;padding:6px 12px;border-radius:20px;background:${pr.employeeAckedAt?'#e6f4ea':'#f5f5f5'};color:${pr.employeeAckedAt?'#1e6b2e':'#888'};">
+        ${pr.employeeAckedAt?'✅ Employee acknowledged '+new Date(pr.employeeAckedAt).toLocaleDateString():'⏳ Employee acknowledgment pending'}
+      </div>
+      <div style="font-size:13px;padding:6px 12px;border-radius:20px;background:${pr.managerAckedAt?'#e6f4ea':'#f5f5f5'};color:${pr.managerAckedAt?'#1e6b2e':'#888'};">
+        ${pr.managerAckedAt?'✅ Manager acknowledged '+new Date(pr.managerAckedAt).toLocaleDateString():'⏳ Manager acknowledgment pending'}
+      </div>
+    </div>
+  `);
+
+  return `<div style="max-width:860px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">${esc(m.name)}</div>
+        <div style="font-size:13px;color:var(--text-light);">${esc(m.role||'')} · Full evaluation summary</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-light);">Manager view only</div>
+    </div>
+    ${interviewSection}
+    ${trainingSection}
+    ${progressSection}
+  </div>`;
+}
+
 function saveEvalInterview(memberId, field, value){
   const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
   if(!m.evaluation) m.evaluation={};
@@ -3711,7 +3820,7 @@ function renderEvaluations(){
     </div>`;
   }
 
-  const evalTabs = [{id:'interview', label:'Interview'},{id:'progress', label:'Progress Report'},{id:'training', label:'Training'}];
+  const evalTabs = [{id:'interview', label:'Interview'},{id:'training', label:'Training'},{id:'progress', label:'Progress Report'},{id:'summary', label:'Summary'}];
 
   const m = DATA.team.find(x=>x.id===EVAL_STAFF_ID);
   if(!m) return '';
@@ -3760,20 +3869,16 @@ function renderEvaluations(){
       <h3 style="margin:0 0 18px;font-size:17px;font-weight:800;">Candidate Hiring Review</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:18px;">
         <div>
-          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Candidate Name</label>
-          <input type="text" value="${esc(iv.candidateName)}" style="${fldStyle}" placeholder="Full name" onchange="saveEvalInterview(${m.id},'candidateName',this.value)">
-        </div>
-        <div>
           <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Position</label>
           <input type="text" value="${esc(iv.position)}" style="${fldStyle}" placeholder="Role applied for" onchange="saveEvalInterview(${m.id},'position',this.value)">
         </div>
         <div>
-          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Interviewers</label>
-          <input type="text" value="${esc(iv.interviewers)}" style="${fldStyle}" placeholder="Names" onchange="saveEvalInterview(${m.id},'interviewers',this.value)">
-        </div>
-        <div>
           <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Review Date</label>
           <input type="date" value="${esc(iv.reviewDate)}" style="${fldStyle}" onchange="saveEvalInterview(${m.id},'reviewDate',this.value)">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Interviewers</label>
+          <input type="text" value="${esc(iv.interviewers)}" style="${fldStyle}" placeholder="Names" onchange="saveEvalInterview(${m.id},'interviewers',this.value)">
         </div>
       </div>
 
@@ -3823,34 +3928,13 @@ function renderEvaluations(){
       <button class="btn-ghost" style="font-size:13px;margin-bottom:20px;" onclick="addEvalInterviewRow(${m.id})">+ Add row</button>
 
       <div style="margin-bottom:14px;">
-        <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Training needs if hired</label>
+        <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Training needs</label>
         <textarea rows="2" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="List any areas that will need additional training or support…" onchange="saveEvalInterview(${m.id},'trainingNeeds',this.value)">${esc(iv.trainingNeeds||'')}</textarea>
       </div>
 
       <div style="margin-bottom:20px;">
         <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Requirements to verify or questions to follow up on</label>
         <textarea rows="2" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Reference checks, certifications, follow-up questions…" onchange="saveEvalInterview(${m.id},'followUp',this.value)">${esc(iv.followUp||'')}</textarea>
-      </div>
-
-      <div style="border-top:2px solid var(--border);padding-top:16px;">
-        <div style="font-size:15px;font-weight:800;margin-bottom:14px;">Manager Review</div>
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Reviewing Manager</label>
-          <input type="text" value="${esc(iv.reviewingManager)}" style="${fldStyle}" placeholder="Manager name" onchange="saveEvalInterview(${m.id},'reviewingManager',this.value)">
-        </div>
-        <div style="margin-bottom:14px;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Recommendation</div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;">
-            ${[['hire','Hire'],['followup','Follow up before deciding'],['nohire','Do not hire']].map(([val,label])=>`
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
-              <input type="radio" name="eval-rec-${m.id}" value="${val}" ${iv.recommendation===val?'checked':''} onchange="saveEvalInterview(${m.id},'recommendation',this.value)"> ${label}
-            </label>`).join('')}
-          </div>
-        </div>
-        <div>
-          <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Reason for recommendation</label>
-          <textarea rows="3" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Summarize the key reasons for your recommendation…" onchange="saveEvalInterview(${m.id},'recommendationReason',this.value)">${esc(iv.recommendationReason||'')}</textarea>
-        </div>
       </div>
     </div>`;
 
@@ -3862,8 +3946,9 @@ function renderEvaluations(){
     </div>
     ${tabNav}
     ${EVAL_TAB==='interview' ? interviewContent : ''}
-    ${EVAL_TAB==='progress' ? renderProgressReportForm(m, true) : ''}
     ${EVAL_TAB==='training' ? trainingContent : ''}
+    ${EVAL_TAB==='progress' ? renderProgressReportForm(m, true) : ''}
+    ${EVAL_TAB==='summary' ? renderEvalSummary(m) : ''}
   </div>`;
 }
 
