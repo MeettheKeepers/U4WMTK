@@ -8172,13 +8172,24 @@ let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
+let ARCHIVE_YEAR = null; // which year tab is selected in archive view
 function setShowMgrView(v){
   SHOW_MGR_VIEW = v;
   if(v === 'archive'){
-    // Collapse all date groups by default when switching to archive — prevents browser hang on large lists
+    // Default to the most recent year that has past shows
     const pastShows = DATA.shows.filter(s=>!isShowUpcoming(s));
+    const years = [...new Set(pastShows.map(s=>(s.date||'').slice(0,4)))].filter(Boolean).sort().reverse();
+    ARCHIVE_YEAR = years[0] || null;
+    // Collapse all date groups by default — prevents browser hang on large lists
     pastShows.forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
   }
+  showTab('manager');
+}
+function setArchiveYear(yr){
+  ARCHIVE_YEAR = yr;
+  // Collapse all groups for this year by default
+  DATA.shows.filter(s=>!isShowUpcoming(s)&&(s.date||'').startsWith(yr))
+    .forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
   showTab('manager');
 }
 let SHOW_MGR_ADD_FORM = false;
@@ -9975,7 +9986,17 @@ function renderManager(){
   } else if(MANAGER_TAB === 'shows'){
     const upcomingShows = DATA.shows.filter(isShowUpcoming);
     const pastShows = DATA.shows.filter(s=>!isShowUpcoming(s));
-    const list = SHOW_MGR_VIEW === 'upcoming' ? upcomingShows : pastShows;
+    // Build archive year tabs
+    const archiveYears = [...new Set(pastShows.map(s=>(s.date||'').slice(0,4)))].filter(Boolean).sort().reverse();
+    // Ensure ARCHIVE_YEAR is set to a valid year when in archive mode
+    if(SHOW_MGR_VIEW === 'archive' && archiveYears.length && !archiveYears.includes(ARCHIVE_YEAR)){
+      ARCHIVE_YEAR = archiveYears[0];
+    }
+    // Filter to selected year when in archive mode
+    const archiveList = SHOW_MGR_VIEW === 'archive' && ARCHIVE_YEAR
+      ? pastShows.filter(s=>(s.date||'').startsWith(ARCHIVE_YEAR))
+      : pastShows;
+    const list = SHOW_MGR_VIEW === 'upcoming' ? upcomingShows : archiveList;
     // Expand multi-day shows into per-day instances for manager view
     const mgrInstances = [];
     list.forEach(s=>{
@@ -9993,6 +10014,14 @@ function renderManager(){
     });
     const showGroups = mgrDateOrder.map(d=>({date:d, instances:mgrByDate[d]}));
     const groupDates = showGroups.map(g=>g.date);
+    const archiveYearTabsHtml = SHOW_MGR_VIEW === 'archive' && archiveYears.length > 1
+      ? `<div class="detail-tabs" style="margin-top:8px;">
+          ${archiveYears.map(yr=>{
+            const cnt = pastShows.filter(s=>(s.date||'').startsWith(yr)).length;
+            return `<button class="detail-tab-btn ${ARCHIVE_YEAR===yr?'active':''}" onclick="setArchiveYear('${yr}')">${yr} (${cnt})</button>`;
+          }).join('')}
+        </div>`
+      : '';
     body = `
       <div class="card">
         <h2>Show Management</h2>
@@ -10001,6 +10030,7 @@ function renderManager(){
           <button class="detail-tab-btn ${SHOW_MGR_VIEW==='upcoming'?'active':''}" onclick="setShowMgrView('upcoming')">Upcoming (${upcomingShows.length} show${upcomingShows.length===1?'':'s'})</button>
           <button class="detail-tab-btn ${SHOW_MGR_VIEW==='archive'?'active':''}" onclick="setShowMgrView('archive')">Archive / Past (${pastShows.length} show${pastShows.length===1?'':'s'})</button>
         </div>
+        ${archiveYearTabsHtml}
         <button class="collapsible-toggle" onclick="toggleShowAddForm()">${SHOW_MGR_ADD_FORM ? '▾' : '▸'} Add show</button>
         ${SHOW_MGR_ADD_FORM ? renderShowForm() : ''}
         ${groupDates.length ? `
@@ -10048,14 +10078,6 @@ function renderManager(){
             ${collapsed ? '' : g.instances.map(inst=> renderShowManagerCard(inst.s, inst.date, inst.dayNum, inst.totalDays)).join('')}
           </div>`;
         };
-        if(SHOW_MGR_VIEW === 'archive'){
-          const byYear = {};
-          showGroups.forEach(g=>{ const yr=g.date.slice(0,4); if(!byYear[yr]) byYear[yr]=[]; byYear[yr].push(g); });
-          return Object.keys(byYear).sort((a,b)=>b-a).map(yr=>{
-            const total = byYear[yr].reduce((n,g)=>n+g.instances.length,0);
-            return `<div style="margin:20px 0 6px;font-size:17px;font-weight:700;color:var(--text);">${yr} <span class="count-pill">${total} show${total===1?'':'s'}</span></div>${byYear[yr].map(renderGroup).join('')}`;
-          }).join('');
-        }
         return showGroups.map(renderGroup).join('');
       })() : '<div class="card"><div class="empty">No shows in this view.</div></div>'}
       ${renderSupervisorAccessPanel('shows')}
