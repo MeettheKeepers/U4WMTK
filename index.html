@@ -2228,17 +2228,17 @@ function removeMileageLeg(id,idx){
 function deleteMileagePayment(id){
   if(!confirm('Delete this mileage payment record?')) return;
   DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.id!==id);
-  saveData(); showTab('admin');
+  saveData(); showTab('manager');
 }
 function deleteMileageArchivedPayment(id){
   if(!confirm('Delete this archived mileage payment?')) return;
   DATA.mileageArchivedPayments=DATA.mileageArchivedPayments.filter(m=>m.id!==id);
-  saveData(); showTab('admin');
+  saveData(); showTab('manager');
 }
 function clearMileageYear(year){
   if(!confirm(`Remove all mileage payment records from ${year}? This cannot be undone.`)) return;
   DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.year!==year);
-  saveData(); showTab('admin');
+  saveData(); showTab('manager');
 }
 let MILEAGE_ADMIN_VIEW = 'active'; // 'active' | 'archived'
 const _mileageExpandedIds = new Set();
