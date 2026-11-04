@@ -3956,9 +3956,9 @@ function renderTeamSubNav(){
   const isMgr = isManagerLogin();
   const myName = getWelcomeStaffName();
   const tabs=[{id:'team',label:'Team'},{id:'paystubs',label:'Pay Stubs'}];
-  if(!isMgr){
-    const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
-    const badge = me && me.evaluation && me.evaluation.progressReport && me.evaluation.progressReport.needsAck && !me.evaluation.progressReport.employeeAckedAt ? ' ' : '';
+  const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
+  if(me){
+    const badge = me.evaluation && me.evaluation.progressReport && me.evaluation.progressReport.needsAck && !me.evaluation.progressReport.employeeAckedAt ? ' ' : '';
     tabs.push({id:'progress', label:'Progress Report'+badge});
   }
   if(isMgr) tabs.push({id:'evaluations',label:'Evaluations'});
