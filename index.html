@@ -3569,6 +3569,23 @@ function deleteProgressReportRow(memberId, rowIdx){
   m.evaluation.progressReport.goalRows.splice(rowIdx,1);
   saveData(); showTab(CURRENT_TAB);
 }
+function resetProgressReport(memberId){
+  if(!confirm('Reset this progress report? All fields will be cleared and acknowledgments removed.')) return;
+  const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation) m.evaluation={};
+  m.evaluation.progressReport={
+    meetingDate:'', supervisor:'', typeInitial:false, typeCheckin:false,
+    strengths:'',
+    goalRows:[
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''},
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''},
+      {task:'',targetDate:'',progress:'',challenges:'',actionSteps:''}
+    ],
+    employeeFeedback:'', nextCheckinDate:'',
+    needsAck:false, employeeAckedAt:null, managerAckedAt:null, updatedAt:null
+  };
+  saveData(); showTab(CURRENT_TAB);
+}
 function ackProgressReport(memberId, role){
   const m=DATA.team.find(x=>x.id===memberId); if(!m) return;
   normalizeProgressReport(m);
@@ -3643,6 +3660,7 @@ function renderProgressReportForm(m, canEdit){
         </div>
       </div>
       ${pr.updatedAt?`<div style="font-size:12px;color:var(--text-light);margin-top:10px;">Last updated ${pr.updatedAt}</div>`:''}
+      ${canEdit?`<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;"><button class="btn-ghost" style="color:var(--red,#c0392b);font-size:13px;" onclick="resetProgressReport(${m.id})">Reset Progress Report</button></div>`:''}
     </div>
   </div>`;
 }
@@ -3955,31 +3973,12 @@ function renderEvaluations(){
 function renderStaffEvalView(m){
   if(!m.evaluation) m.evaluation={};
   normalizeProgressReport(m);
-  const evalTabs = [{id:'progress', label:'Progress Report'},{id:'training', label:'Training'},{id:'interview', label:'Interview'}];
-  const tabNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
-    ${evalTabs.map(t=>`<button onclick="EVAL_TAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${EVAL_TAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${EVAL_TAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
-  </div>`;
-  const tr = m.evaluation.training||{memory:0,projection:0,clarity:0,confidence:0,notes:''};
-  const trainingContent = `<div style="max-width:520px;">
-    ${[['memory','Memory'],['projection','Projection'],['clarity','Clarity'],['confidence','Confidence']].map(([field,label])=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
-      <span style="font-weight:600;font-size:15px;min-width:120px;">${label}</span>
-      <div style="display:flex;align-items:center;gap:4px;">
-        <span style="display:inline-flex;">${[1,2,3,4,5].map(n=>`<span style="font-size:22px;padding:2px;color:${n<=(tr[field]||0)?'#f4a800':'#ccc'};">★</span>`).join('')}</span>
-        <span style="margin-left:8px;font-size:14px;font-weight:600;color:${tr[field]?'var(--accent)':'#ccc'};">${tr[field]||'—'}/5</span>
-      </div>
-    </div>`).join('')}
-    ${tr.notes?`<div style="margin-top:16px;"><label style="font-weight:600;font-size:14px;display:block;margin-bottom:6px;">Notes</label><div style="font-size:14px;color:var(--text);white-space:pre-wrap;">${esc(tr.notes)}</div></div>`:''}
-  </div>`;
   return `<div class="card">
     <div style="margin-bottom:16px;">
       <h2 style="margin:0 0 2px;">${esc(m.name)}</h2>
       <span style="font-size:13px;color:var(--text-light);">${m.role||''}</span>
     </div>
-    ${tabNav}
-    ${EVAL_TAB==='progress' ? renderProgressReportForm(m, false) : ''}
-    ${EVAL_TAB==='training' ? trainingContent : ''}
-    ${EVAL_TAB==='interview' ? '<div class="empty" style="padding:30px 0;">Interview notes are manager-only.</div>' : ''}
+    ${renderProgressReportForm(m, false)}
   </div>`;
 }
 function renderTeamSubNav(){
@@ -4007,8 +4006,6 @@ function renderTeam(){
     const myName = getWelcomeStaffName();
     const me = myName ? DATA.team.find(x=>x.name===myName && !x.archived) : null;
     if(me){
-      EVAL_STAFF_ID = me.id;
-      if(!EVAL_TAB || !['interview','training','progress','summary'].includes(EVAL_TAB)) EVAL_TAB = 'progress';
       return renderTeamSubNav() + renderStaffEvalView(me);
     }
     return renderTeamSubNav() + `<div class="card"><div class="empty">Your account is not linked to a staff profile. Ask a manager to link your login.</div></div>`;
