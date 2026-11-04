@@ -893,6 +893,8 @@ function normalizeData(d){
   if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases.";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
+    if(!m.evaluation) m.evaluation = {};
+    if(!m.evaluation.training) m.evaluation.training = {memory:0, projection:0, clarity:0, confidence:0, notes:''};
     if(!m.welcomeAck) m.welcomeAck = blankWelcomeAck();
     if(!m.welcomeAck.custom) m.welcomeAck.custom = {};
     const extras = blankStaffExtras();
@@ -917,10 +919,16 @@ function normalizeData(d){
   (d.repairs||[]).forEach(r=>{ if(r.closedBy===undefined) r.closedBy = ""; });
   if(!Array.isArray(d.payStubs)) d.payStubs = [];
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
+  if(!Array.isArray(d.mileageArchivedPayments)) d.mileageArchivedPayments = [];
   if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
   d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
   if(!Array.isArray(d.timeOffRemovals)) d.timeOffRemovals = [];
   (d.mileagePayments).forEach(mp=>{ if(!mp.legs) mp.legs=[]; if(mp.ratePerKm==null) mp.ratePerKm=0.50; });
+  (d.mileageArchivedPayments).forEach(mp=>{ if(!mp.legs) mp.legs=[]; if(mp.ratePerKm==null) mp.ratePerKm=0.50; });
+  // Auto-delete archived mileage payments older than 6 months
+  const _sixMoAgo = new Date(); _sixMoAgo.setMonth(_sixMoAgo.getMonth()-6);
+  const _sixMoStr = _sixMoAgo.toISOString().slice(0,10);
+  d.mileageArchivedPayments = d.mileageArchivedPayments.filter(mp=>(mp.archivedAt||mp.acknowledgedAt||'') >= _sixMoStr);
   if(!d.roadTasks) d.roadTasks = [];
   if(!d.supplyRequests) d.supplyRequests = [];
   if(!d.supplyInventory) d.supplyInventory = [];
@@ -1785,7 +1793,9 @@ let VIEWING_STAFF_FILE_ID = null; // manager previewing a staff member's read-on
 function toggleHoursSection(){ HOURS_SECTION_OPEN = !HOURS_SECTION_OPEN; showTab(CURRENT_TAB); }
 // Sub-tab state for Animals and Team
 let ANIMALS_SUBTAB = 'animals'; // 'animals' | 'diets' | 'scripts'
-let TEAM_SUBTAB    = 'team';    // 'team' | 'paystubs'
+let TEAM_SUBTAB    = 'team';    // 'team' | 'paystubs' | 'evaluations'
+let EVAL_STAFF_ID  = null;      // which employee is open in evaluations
+let EVAL_TAB       = 'training'; // sub-tab within an evaluation
 let U4W_SUBTAB     = 'nonprofit'; // 'nonprofit' | 'foundation'
 
 function showTab(id){
@@ -1800,7 +1810,7 @@ function showTab(id){
   if(id==='foundation') { U4W_SUBTAB='foundation'; id='u4w'; }
   // Ensure sub-tab state is valid
   if(id==='animals' && !['animals','diets','scripts'].includes(ANIMALS_SUBTAB)) ANIMALS_SUBTAB='animals';
-  if(id==='team'    && !['team','paystubs'].includes(TEAM_SUBTAB)) TEAM_SUBTAB='team';
+  if(id==='team'    && !['team','paystubs','evaluations'].includes(TEAM_SUBTAB)) TEAM_SUBTAB='team';
   // Manager tab: redirect non-managers to supervisor if eligible, else dashboard
   if(id==='manager' && !isManagerLogin()){
     id = hasSupervisorAccess() ? 'supervisor' : 'dashboard';
@@ -2224,88 +2234,142 @@ function clearMileageYear(year){
   DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.year!==year);
   saveData(); showTab('admin');
 }
+let MILEAGE_ADMIN_VIEW = 'active'; // 'active' | 'archived'
+const _mileageExpandedIds = new Set();
+function setMileageAdminView(v){ MILEAGE_ADMIN_VIEW=v; showTab('manager'); }
+function toggleMileageArchiveExpand(id){
+  if(_mileageExpandedIds.has(id)) _mileageExpandedIds.delete(id);
+  else _mileageExpandedIds.add(id);
+  showTab('manager');
+}
+
 function acknowledgeMileagePayment(id){
   const mp=DATA.mileagePayments.find(m=>m.id===id); if(!mp) return;
-  mp.acknowledgedAt=todayStr(); saveData(); showTab('team');
+  mp.acknowledgedAt=todayStr();
+  mp.archivedAt=todayStr();
+  if(!Array.isArray(DATA.mileageArchivedPayments)) DATA.mileageArchivedPayments=[];
+  DATA.mileageArchivedPayments.push({...mp});
+  DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.id!=id);
+  saveData(); showTab('team');
 }
 
 function renderMileageAdmin(){
   const payments = DATA.mileagePayments||[];
+  const archived = DATA.mileageArchivedPayments||[];
   const roster = getShowStaffRoster();
-  // Group by year descending
-  const years=[...new Set(payments.map(m=>m.year))].sort((a,b)=>b-a);
-  const yearGroups = years.map(yr=>{
-    const yp=payments.filter(m=>m.year===yr);
-    const cards=yp.map(mp=>{
-      const totalKm=mileageTotalKm(mp);
-      const totalOwed=mileageTotalOwed(mp);
-      return `<div class="medrecord-box" style="margin-bottom:12px;">
-        <div class="add-row" style="margin-bottom:10px;flex-wrap:wrap;">
-          <div class="field-block" style="flex:1;min-width:140px;">
-            <label>Date</label>
-            <input type="date" value="${mp.date||''}" onchange="saveMileageField(${mp.id},'date',this.value)">
+  const isArchive = MILEAGE_ADMIN_VIEW==='archived';
+
+  // --- ACTIVE TAB ---
+  const activeBody = (()=>{
+    const years=[...new Set(payments.map(m=>m.year))].sort((a,b)=>b-a);
+    if(!years.length) return '<div class="empty" style="margin-top:16px;">No mileage payments on file. Click "+ New Payment" to add one.</div>';
+    return years.map(yr=>{
+      const yp=payments.filter(m=>m.year===yr);
+      const cards=yp.map(mp=>{
+        const totalKm=mileageTotalKm(mp);
+        const totalOwed=mileageTotalOwed(mp);
+        return `<div class="medrecord-box" style="margin-bottom:12px;">
+          <div class="add-row" style="margin-bottom:10px;flex-wrap:wrap;">
+            <div class="field-block" style="flex:1;min-width:140px;">
+              <label>Date</label>
+              <input type="date" value="${mp.date||''}" onchange="saveMileageField(${mp.id},'date',this.value)">
+            </div>
+            <div class="field-block" style="flex:1;min-width:160px;">
+              <label>Staff member</label>
+              <select onchange="saveMileageField(${mp.id},'staffName',this.value)">
+                <option value="">— Select —</option>
+                ${roster.map(n=>`<option value="${n}" ${mp.staffName===n?'selected':''}>${n}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field-block" style="flex:1;min-width:140px;">
+              <label>Rate per km</label>
+              <input type="number" step="0.01" min="0" value="${mp.ratePerKm||0.50}" onchange="saveMileageField(${mp.id},'ratePerKm',parseFloat(this.value)||0.50)">
+            </div>
+            <div class="field-block" style="flex:1;min-width:140px;">
+              <label>Mode of payment</label>
+              <select onchange="saveMileageField(${mp.id},'modeOfPayment',this.value)">
+                ${MILEAGE_PAYMENT_MODES.map(m=>`<option value="${m}" ${mp.modeOfPayment===m?'selected':''}>${m}</option>`).join('')}
+              </select>
+            </div>
           </div>
-          <div class="field-block" style="flex:1;min-width:160px;">
-            <label>Staff member</label>
-            <select onchange="saveMileageField(${mp.id},'staffName',this.value)">
-              <option value="">— Select —</option>
-              ${roster.map(n=>`<option value="${n}" ${mp.staffName===n?'selected':''}>${n}</option>`).join('')}
-            </select>
+          <div class="field-block" style="margin-bottom:10px;">
+            <label>Route legs</label>
+            ${(mp.legs||[]).map((leg,i)=>`
+            <div class="add-row" style="align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+              <input type="text" style="flex:2;min-width:140px;" placeholder="From" value="${esc(leg.from||'')}" onchange="saveMileageLeg(${mp.id},${i},'from',this.value)">
+              <span style="color:var(--text-light);">→</span>
+              <input type="text" style="flex:2;min-width:140px;" placeholder="To" value="${esc(leg.to||'')}" onchange="saveMileageLeg(${mp.id},${i},'to',this.value)">
+              <input type="number" step="0.1" min="0" style="flex:0.5;min-width:70px;" placeholder="km" value="${leg.km||''}" onchange="saveMileageLeg(${mp.id},${i},'km',this.value)">
+              <span style="color:var(--text-light);font-size:12px;">km</span>
+              ${mp.legs.length>1?`<button class="btn-ghost" style="font-size:11px;padding:2px 7px;color:var(--red);" onclick="removeMileageLeg(${mp.id},${i})">✕</button>`:''}
+            </div>`).join('')}
+            <button class="btn-ghost" style="font-size:12px;margin-top:4px;" onclick="addMileageLeg(${mp.id})">+ Add leg</button>
           </div>
-          <div class="field-block" style="flex:1;min-width:140px;">
-            <label>Rate per km</label>
-            <input type="number" step="0.01" min="0" value="${mp.ratePerKm||0.50}" onchange="saveMileageField(${mp.id},'ratePerKm',parseFloat(this.value)||0.50)">
+          <div class="add-row" style="align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:15px;">Total: ${totalKm.toFixed(1)} km × $${(mp.ratePerKm||0.50).toFixed(2)} = <span style="color:var(--green-dark);">$${totalOwed.toFixed(2)}</span></div>
+            <div style="color:#c08000;font-weight:600;">⏳ Awaiting acknowledgement from ${mp.staffName||'—'}</div>
           </div>
-          <div class="field-block" style="flex:1;min-width:140px;">
-            <label>Mode of payment</label>
-            <select onchange="saveMileageField(${mp.id},'modeOfPayment',this.value)">
-              ${MILEAGE_PAYMENT_MODES.map(m=>`<option value="${m}" ${mp.modeOfPayment===m?'selected':''}>${m}</option>`).join('')}
-            </select>
+          <div class="field-block" style="margin-bottom:10px;">
+            <label>Notes</label>
+            <input type="text" value="${esc(mp.notes||'')}" placeholder="Optional notes" onchange="saveMileageField(${mp.id},'notes',this.value)">
           </div>
+          <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="deleteMileagePayment(${mp.id})">🗑 Delete</button>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h3 style="margin:0;">${yr}</h3>
+          <button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="clearMileageYear(${yr})">Clear ${yr} records</button>
         </div>
-        <div class="field-block" style="margin-bottom:10px;">
-          <label>Route legs</label>
-          ${(mp.legs||[]).map((leg,i)=>`
-          <div class="add-row" style="align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-            <input type="text" style="flex:2;min-width:140px;" placeholder="From" value="${esc(leg.from||'')}" onchange="saveMileageLeg(${mp.id},${i},'from',this.value)">
-            <span style="color:var(--text-light);">→</span>
-            <input type="text" style="flex:2;min-width:140px;" placeholder="To" value="${esc(leg.to||'')}" onchange="saveMileageLeg(${mp.id},${i},'to',this.value)">
-            <input type="number" step="0.1" min="0" style="flex:0.5;min-width:70px;" placeholder="km" value="${leg.km||''}" onchange="saveMileageLeg(${mp.id},${i},'km',this.value)">
-            <span style="color:var(--text-light);font-size:12px;">km</span>
-            ${mp.legs.length>1?`<button class="btn-ghost" style="font-size:11px;padding:2px 7px;color:var(--red);" onclick="removeMileageLeg(${mp.id},${i})">✕</button>`:''}
-          </div>`).join('')}
-          <button class="btn-ghost" style="font-size:12px;margin-top:4px;" onclick="addMileageLeg(${mp.id})">+ Add leg</button>
-        </div>
-        <div class="add-row" style="align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
-          <div style="font-weight:700;font-size:15px;">Total: ${totalKm.toFixed(1)} km × $${(mp.ratePerKm||0.50).toFixed(2)} = <span style="color:var(--green-dark);">$${totalOwed.toFixed(2)}</span></div>
-          <div style="${mp.acknowledgedAt?'color:#1e6b2e;font-weight:600;':'color:#c08000;font-weight:600;'}">
-            ${mp.acknowledgedAt ? `✓ Received by ${mp.staffName} on ${fmtShortDate(mp.acknowledgedAt)}` : '⏳ Awaiting acknowledgement'}
-          </div>
-        </div>
-        <div class="field-block" style="margin-bottom:10px;">
-          <label>Notes</label>
-          <input type="text" value="${esc(mp.notes||'')}" placeholder="Optional notes" onchange="saveMileageField(${mp.id},'notes',this.value)">
-        </div>
-        <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="deleteMileagePayment(${mp.id})">🗑 Delete</button>
+        ${cards||'<div class="empty">No records.</div>'}
       </div>`;
     }).join('');
-    return `<div style="margin-bottom:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <h3 style="margin:0;">${yr}</h3>
-        <button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="clearMileageYear(${yr})">Clear ${yr} records</button>
-      </div>
-      ${cards||'<div class="empty">No records.</div>'}
-    </div>`;
-  }).join('');
+  })();
+
+  // --- ARCHIVE TAB ---
+  const archiveBody = (()=>{
+    if(!archived.length) return '<div class="empty" style="margin-top:16px;">No archived payments yet. Acknowledged payments are kept here for 6 months.</div>';
+    const sorted=[...archived].sort((a,b)=>(b.archivedAt||'').localeCompare(a.archivedAt||''));
+    return sorted.map(mp=>{
+      const totalOwed=mileageTotalOwed(mp);
+      const expanded=_mileageExpandedIds.has(mp.id);
+      const route=(mp.legs||[]).map(l=>`${l.from||'?'} → ${l.to||'?'}${l.km?` (${l.km} km)`:''}`).join(', ');
+      const detail = expanded ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--text-light);">
+          <div><strong>Staff:</strong> ${esc(mp.staffName||'—')}</div>
+          <div><strong>Route:</strong> ${esc(route)}</div>
+          <div><strong>Rate:</strong> $${(mp.ratePerKm||0.50).toFixed(2)}/km · ${mp.modeOfPayment||'—'}</div>
+          ${mp.notes?`<div><strong>Notes:</strong> ${esc(mp.notes)}</div>`:''}
+          <div><strong>Received:</strong> ${mp.acknowledgedAt?fmtShortDate(mp.acknowledgedAt):'—'}</div>
+          <div style="font-size:11px;color:var(--text-light);margin-top:4px;">Auto-deletes 6 months after ${mp.archivedAt?fmtShortDate(mp.archivedAt):'archival'}.</div>
+        </div>` : '';
+      return `<div class="medrecord-box" style="margin-bottom:8px;cursor:pointer;" onclick="toggleMileageArchiveExpand(${mp.id})">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <span style="font-weight:700;font-size:14px;color:var(--green-dark);">$${totalOwed.toFixed(2)}</span>
+            <span style="margin-left:10px;font-size:13px;">${esc(mp.staffName||'—')}</span>
+            <span style="margin-left:10px;font-size:12px;color:var(--text-light);">paid ${mp.acknowledgedAt?fmtShortDate(mp.acknowledgedAt):'—'}</span>
+          </div>
+          <span style="font-size:12px;color:var(--text-light);">${expanded?'▲ Less':'▼ More'}</span>
+        </div>
+        ${detail}
+      </div>`;
+    }).join('');
+  })();
+
   return `<div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       <div>
         <h2>Mileage Payments</h2>
-        <div class="sub">Track mileage reimbursements for staff. Staff acknowledge receipt from their employee file.</div>
+        <div class="sub">Track mileage reimbursements for staff. Staff acknowledge receipt from their employee file — acknowledged payments are automatically archived.</div>
       </div>
-      <button class="btn" onclick="addMileagePayment()">+ New Payment</button>
+      ${!isArchive?`<button class="btn" onclick="addMileagePayment()">+ New Payment</button>`:''}
     </div>
-    ${years.length ? yearGroups : '<div class="empty" style="margin-top:16px;">No mileage payments on file. Click "+ New Payment" to add one.</div>'}
+    <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:18px;width:fit-content;">
+      <button onclick="setMileageAdminView('active')" style="padding:6px 18px;background:${!isArchive?'#222':'transparent'};color:${!isArchive?'#fff':'#333'};border:none;cursor:pointer;font-size:13px;font-weight:600;">Active</button>
+      <button onclick="setMileageAdminView('archived')" style="padding:6px 18px;background:${isArchive?'#222':'transparent'};color:${isArchive?'#fff':'#333'};border:none;border-left:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;">Archived ${archived.length?`(${archived.length})`:''}</button>
+    </div>
+    ${isArchive ? archiveBody : activeBody}
   </div>`;
 }
 
@@ -2542,7 +2606,6 @@ function renderWelcome(){
           <h3>Item 3 — Shows</h3>
           <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee deliver:</p>
           <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
-          <p>Rate each on a 1–5 scale: <strong>Memory · Projection · Clarity · Confidence</strong></p>
           <p>At a future event, we will film a presentation and review it like game film.</p>
           <h3>Item 4 — Scripts</h3>
           <p>Go over animal scripts — trainees are expected to memorize them. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
@@ -3488,14 +3551,101 @@ function renderStaffFileReadOnly(m){
     </div>
     ${renderStaffMileageCard(m.name, false)}`;
 }
+function saveEvalTraining(memberId, field, value){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation) m.evaluation={};
+  if(!m.evaluation.training) m.evaluation.training={memory:0,projection:0,clarity:0,confidence:0,notes:''};
+  m.evaluation.training[field] = value;
+  saveData();
+}
+
+function renderEvalStars(memberId, field, currentVal){
+  return [1,2,3,4,5].map(n=>`
+    <button onclick="saveEvalTraining(${memberId},'${field}',${n})" title="${n}" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px;color:${n<=currentVal?'#f4a800':'#ccc'};">★</button>
+  `).join('');
+}
+
+function renderEvaluations(){
+  const isMgr = isManagerLogin();
+  if(!isMgr) return '';
+  const active = DATA.team.filter(m=>!m.archived);
+
+  if(EVAL_STAFF_ID){
+    const m = DATA.team.find(x=>x.id===EVAL_STAFF_ID);
+    if(!m || m.archived){ EVAL_STAFF_ID=null; }
+  }
+
+  const evalTabs = [{id:'training', label:'Training'}];
+
+  if(!EVAL_STAFF_ID){
+    // Show employee list
+    const rows = active.map(m=>`
+      <div onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='training';showTab('team')"
+           style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:8px;background:var(--bg-card);">
+        <div>
+          <span style="font-weight:600;font-size:15px;">${esc(m.name)}</span>
+          <span style="margin-left:10px;font-size:13px;color:var(--text-light);">${m.role||'—'}</span>
+        </div>
+        <span style="font-size:18px;color:var(--text-light);">›</span>
+      </div>`).join('');
+    return `<div class="card">
+      <h2>Evaluations</h2>
+      <div class="sub">Manager-only. Click an employee to view and edit their evaluation.</div>
+      ${active.length ? rows : '<div class="empty">No active staff.</div>'}
+    </div>`;
+  }
+
+  const m = DATA.team.find(x=>x.id===EVAL_STAFF_ID);
+  if(!m) return '';
+  if(!m.evaluation) m.evaluation={};
+  if(!m.evaluation.training) m.evaluation.training={memory:0,projection:0,clarity:0,confidence:0,notes:''};
+  const tr = m.evaluation.training;
+
+  const tabNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
+    ${evalTabs.map(t=>`<button onclick="EVAL_TAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${EVAL_TAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${EVAL_TAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+  </div>`;
+
+  const trainingContent = `
+    <div style="max-width:520px;">
+      <div style="background:#f8f8f8;border-left:4px solid var(--accent);border-radius:6px;padding:12px 16px;margin-bottom:20px;font-style:italic;font-size:14px;line-height:1.6;color:#444;">
+        "Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"
+      </div>
+      ${[['memory','Memory'],['projection','Projection'],['clarity','Clarity'],['confidence','Confidence']].map(([field,label])=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+        <span style="font-weight:600;font-size:15px;min-width:120px;">${label}</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${renderEvalStars(m.id, field, tr[field]||0)}
+          <span style="margin-left:8px;font-size:14px;font-weight:600;color:${tr[field]?'var(--accent)':'#ccc'};">${tr[field]||'—'}/5</span>
+        </div>
+      </div>`).join('')}
+      <div style="margin-top:16px;">
+        <label style="font-weight:600;font-size:14px;display:block;margin-bottom:6px;">Notes</label>
+        <textarea rows="4" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Training observations, strengths, areas to improve…" onchange="saveEvalTraining(${m.id},'notes',this.value)">${esc(tr.notes||'')}</textarea>
+      </div>
+    </div>`;
+
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <button class="btn-ghost" onclick="EVAL_STAFF_ID=null;showTab('team')" style="font-size:13px;">← Back</button>
+      <h2 style="margin:0;">${esc(m.name)}</h2>
+      <span style="font-size:13px;color:var(--text-light);">${m.role||''}</span>
+    </div>
+    ${tabNav}
+    ${EVAL_TAB==='training' ? trainingContent : ''}
+  </div>`;
+}
+
 function renderTeamSubNav(){
+  const isMgr = isManagerLogin();
   const tabs=[{id:'team',label:'Team'},{id:'paystubs',label:'Pay Stubs'}];
+  if(isMgr) tabs.push({id:'evaluations',label:'Evaluations'});
   return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
-    ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+    ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';EVAL_STAFF_ID=null;showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
   </div>`;
 }
 function renderTeam(){
   if(TEAM_SUBTAB==='paystubs') return renderTeamSubNav() + renderPayStubs();
+  if(TEAM_SUBTAB==='evaluations' && isManagerLogin()) return renderTeamSubNav() + renderEvaluations();
   if(VIEWING_STAFF_FILE_ID){
     const preview = DATA.team.find(m=>m.id===VIEWING_STAFF_FILE_ID);
     if(preview) return renderStaffFileReadOnly(preview);
@@ -4004,6 +4154,7 @@ function renderDashboard(){
   ) : [];
   const myRemovalNotifications = myName ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyStaff && r.staffName===myName && !r.staffDismissed) : [];
   const managerRemovalNotifications = isManagerLogin() ? (DATA.timeOffRemovals||[]).filter(r=>r.notifyManager && !r.managerDismissed) : [];
+  const myOutstandingMileage = myName ? (DATA.mileagePayments||[]).filter(m=>m.staffName===myName && !m.acknowledgedAt) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! 👋</span>
@@ -4012,6 +4163,21 @@ function renderDashboard(){
         ${myName ? `<button class="btn" style="font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
       </div>
     </div>
+    ${myOutstandingMileage.length ? `
+    <div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
+      <h2 style="margin-bottom:10px;">💵 Mileage Payment${myOutstandingMileage.length>1?'s':''} Outstanding</h2>
+      ${myOutstandingMileage.map(mp=>{
+        const totalOwed=mileageTotalOwed(mp);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:700;font-size:15px;color:var(--green-dark,#1e6b2e);">$${totalOwed.toFixed(2)}</span>
+            <span style="margin-left:10px;font-size:13px;color:var(--text-light);">${fmtShortDate(mp.date)} · ${mp.modeOfPayment||'—'}</span>
+          </div>
+          <button class="btn-small" style="background:var(--green-dark,#1e6b2e);color:#fff;" onclick="acknowledgeMileagePayment(${mp.id})">✓ Mark as Received</button>
+        </div>`;
+      }).join('')}
+      <div style="font-size:12px;color:var(--text-light);margin-top:8px;">This reminder stays on your dashboard until all payments are acknowledged.</div>
+    </div>` : ''}
     ${myDecidedNotifications.length ? `
     <div class="card" style="border-left:5px solid var(--green,#27ae60);background:var(--bg-card);">
       <h2 style="margin-bottom:10px;">📬 Time Off Update</h2>
