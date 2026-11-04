@@ -2229,6 +2229,11 @@ function deleteMileagePayment(id){
   DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.id!==id);
   saveData(); showTab('admin');
 }
+function deleteMileageArchivedPayment(id){
+  if(!confirm('Delete this archived mileage payment?')) return;
+  DATA.mileageArchivedPayments=DATA.mileageArchivedPayments.filter(m=>m.id!==id);
+  saveData(); showTab('admin');
+}
 function clearMileageYear(year){
   if(!confirm(`Remove all mileage payment records from ${year}? This cannot be undone.`)) return;
   DATA.mileagePayments=DATA.mileagePayments.filter(m=>m.year!==year);
@@ -2342,6 +2347,7 @@ function renderMileageAdmin(){
           ${mp.notes?`<div><strong>Notes:</strong> ${esc(mp.notes)}</div>`:''}
           <div><strong>Received:</strong> ${mp.acknowledgedAt?fmtShortDate(mp.acknowledgedAt):'—'}</div>
           <div style="font-size:11px;color:var(--text-light);margin-top:4px;">Auto-deletes 6 months after ${mp.archivedAt?fmtShortDate(mp.archivedAt):'archival'}.</div>
+          <button class="btn-ghost" style="color:var(--red);font-size:12px;margin-top:8px;" onclick="event.stopPropagation();deleteMileageArchivedPayment(${mp.id})">🗑 Delete</button>
         </div>` : '';
       return `<div class="medrecord-box" style="margin-bottom:8px;cursor:pointer;" onclick="toggleMileageArchiveExpand(${mp.id})">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
