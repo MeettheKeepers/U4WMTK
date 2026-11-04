@@ -4308,8 +4308,11 @@ function bizTag(biz){
 
 /* ---------- DASHBOARD ---------- */
 function completedShowsTotal(){
+  // Historical years with show counts + live shows from years NOT in HISTORICAL_YEARS
   const historical = HISTORICAL_YEARS.reduce((sum, y) => sum + (y.shows || 0), 0);
-  return historical + DATA.shows.filter(s=> showStatus(s)==='completed').length;
+  const histYears = new Set(HISTORICAL_YEARS.map(y=>String(y.year)));
+  const liveCompleted = DATA.shows.filter(s=> showStatus(s)==='completed' && !histYears.has((s.date||'').slice(0,4))).length;
+  return historical + liveCompleted;
 }
 function completedShowsLast3Months(){
   const cutoff = addDays(todayStr(), -90);
@@ -10712,7 +10715,7 @@ function renderManager(){
               <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
             </div>`)
         : `<div class="stat-row" style="margin-bottom:20px;">
-            <div class="stat-box"><div class="num">${HISTORICAL_YEARS.filter(y=>y.year>=2023&&y.shows).reduce((s,y)=>s+y.shows,0) + allCompleted.length}</div><div class="lbl">Total shows (since 2023)</div></div>
+            <div class="stat-box"><div class="num">${HISTORICAL_YEARS.filter(y=>y.year>=2023&&y.shows).reduce((s,y)=>s+y.shows,0) + allCompleted.filter(s=>!new Set(HISTORICAL_YEARS.map(h=>String(h.year))).has((s.date||'').slice(0,4))).length}</div><div class="lbl">Total shows (since 2023)</div></div>
             <div class="stat-box"><div class="num">${completedShows.length}</div><div class="lbl">Completed</div></div>
             <div class="stat-box"><div class="num">${upcomingShows.length}</div><div class="lbl">Upcoming</div></div>
           </div>`;
@@ -11393,8 +11396,11 @@ function renderManager(){
       const histInc = HISTORICAL_YEARS.reduce((s,y)=>s+(y.income||0),0);
       const histExp = HISTORICAL_YEARS.filter(y=>y.expenses!=null).reduce((s,y)=>s+(y.expenses||0),0);
       // Live 2026+ show revenue using same pricing as Income analytics tab
+      // Only count shows from years not already in HISTORICAL_YEARS (avoid double-counting)
+      const historicalYearSet = new Set(HISTORICAL_YEARS.map(y=>String(y.year)));
+      const liveOnlyShows = (DATA.shows||[]).filter(s=>showStatus(s)==='completed' && !historicalYearSet.has((s.date||'').slice(0,4)));
       const TOTALS_PRICES = {'Country':350,'Continent':475,'Display':2500,'MTK Racing':2000,'Archeology':299,'Battle Match':350,'Science':299,'Fairs/Festivals':1400};
-      const liveShowIncome = (DATA.shows||[]).filter(s=>showStatus(s)==='completed').reduce((sum,s)=>{
+      const liveShowIncome = liveOnlyShows.reduce((sum,s)=>{
         const days = getShowDays(s).length;
         return sum + (s.showTypes||[]).reduce((t,type)=>{
           if(type==='Character Walkaround'){ const nc=(s.characters||[]).length; return t+(nc>=3?1800:nc===2?1500:1200)*days; }
@@ -11407,8 +11413,8 @@ function renderManager(){
       const liveAnnualExp = liveMonthlyExp * 12;
       const totalInc = histInc + liveShowIncome;
       const totalExp = histExp + liveAnnualExp;
-      // Live 2026 completed show count
-      const live2026 = (DATA.shows||[]).filter(s=>showStatus(s)==='completed').length;
+      // Live 2026+ completed show count (excludes years already in HISTORICAL_YEARS)
+      const live2026 = liveOnlyShows.length;
       const totalHistShows = HISTORICAL_YEARS.filter(y=>y.shows).reduce((s,y)=>s+y.shows,0) + live2026;
       analyticsBody = `
         <h3 style="margin:0 0 4px;">Year-over-Year Totals</h3>
