@@ -8193,7 +8193,15 @@ let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
-function setShowMgrView(v){ SHOW_MGR_VIEW = v; showTab('manager'); }
+function setShowMgrView(v){
+  SHOW_MGR_VIEW = v;
+  if(v === 'archive'){
+    // Collapse all date groups by default when switching to archive — prevents browser hang on large lists
+    const pastShows = DATA.shows.filter(s=>!isShowUpcoming(s));
+    pastShows.forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
+  }
+  showTab('manager');
+}
 let SHOW_MGR_ADD_FORM = false;
 // Hardcoded origin coords for 19799 County Road 24, Dunvegan, ON (avoids geocoding a rural road)
 const CENTRE_LAT = 45.3472;
