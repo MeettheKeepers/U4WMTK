@@ -920,6 +920,7 @@ function normalizeData(d){
   if(!Array.isArray(d.payStubs)) d.payStubs = [];
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
   if(!Array.isArray(d.mileageArchivedPayments)) d.mileageArchivedPayments = [];
+  if(!Array.isArray(d.animalScripts)) d.animalScripts = [];
   if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
   d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
   if(!Array.isArray(d.timeOffRemovals)) d.timeOffRemovals = [];
@@ -3279,85 +3280,27 @@ function renderFoundation(){
 }
 
 /* ---------- SCRIPTS TAB ---------- */
-let SCRIPT_LANG = 'en';
 let SCRIPT_SEARCH = '';
-let SCRIPT_SELECTED = []; // up to 10 animal names
-let SCRIPT_DROPDOWN_OPEN = false;
-function setScriptLang(lang){ SCRIPT_LANG = lang; showTab('scripts'); }
-function toggleScriptDropdown(){ SCRIPT_DROPDOWN_OPEN = !SCRIPT_DROPDOWN_OPEN; showTab('scripts'); }
-function toggleScriptAnimal(name){
-  const idx = SCRIPT_SELECTED.indexOf(name);
-  if(idx >= 0){ SCRIPT_SELECTED.splice(idx,1); }
-  else if(SCRIPT_SELECTED.length < 10){ SCRIPT_SELECTED.push(name); }
-  showTab('scripts');
-}
-function clearScriptFilter(){ SCRIPT_SELECTED = []; SCRIPT_SEARCH = ''; showTab('scripts'); }
 function renderScripts(){
-  const isMgr = isManagerLogin();
-  const allActive = (DATA.animals||[]).filter(a=>!a.archived);
-  // Filter list
+  const scripts = (DATA.animalScripts||[]);
   const search = SCRIPT_SEARCH.toLowerCase().trim();
-  let filtered = allActive;
-  if(SCRIPT_SELECTED.length > 0){
-    filtered = filtered.filter(a=>SCRIPT_SELECTED.includes(a.name));
-  }
-  if(search){ filtered = filtered.filter(a=>a.name.toLowerCase().includes(search) || a.species.toLowerCase().includes(search)); }
-  // Dropdown animal list
-  const dropdownHtml = SCRIPT_DROPDOWN_OPEN ? `
-    <div style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.13);z-index:200;max-height:260px;overflow-y:auto;margin-top:4px;">
-      ${allActive.length === 0 ? '<div style="padding:12px;color:var(--gray);font-size:13px;">No animals found.</div>' :
-        allActive.map(a=>{
-          const checked = SCRIPT_SELECTED.includes(a.name);
-          const disabled = !checked && SCRIPT_SELECTED.length >= 10;
-          return `<label style="display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:${disabled?'default':'pointer'};border-bottom:1px solid #f5f3ed;${disabled?'opacity:.45':''}">
-            <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''} onchange="toggleScriptAnimal('${esc(a.name)}')">
-            <span style="font-weight:600;font-size:14px;">${esc(a.name)}</span>
-            <span style="font-size:12px;color:var(--gray);">${esc(a.species)}</span>
-          </label>`;
-        }).join('')}
-    </div>` : '';
-  const selectedLabel = SCRIPT_SELECTED.length > 0
-    ? `${SCRIPT_SELECTED.length} selected (max 10)`
-    : 'Filter by animal';
+  const filtered = search ? scripts.filter(s=>s.species.toLowerCase().includes(search)) : scripts;
   return `
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
         <h2 style="margin:0;">Scripts</h2>
-        <div style="display:flex;gap:6px;">
-          <button onclick="setScriptLang('en')" style="padding:6px 16px;border-radius:20px;border:2px solid var(--green);background:${SCRIPT_LANG==='en'?'var(--green)':'transparent'};color:${SCRIPT_LANG==='en'?'#fff':'var(--green)'};font-weight:700;cursor:pointer;font-size:13px;">🇨🇦 English</button>
-          <button onclick="setScriptLang('fr')" style="padding:6px 16px;border-radius:20px;border:2px solid var(--green);background:${SCRIPT_LANG==='fr'?'var(--green)':'transparent'};color:${SCRIPT_LANG==='fr'?'#fff':'var(--green)'};font-weight:700;cursor:pointer;font-size:13px;">🇫🇷 Français</button>
-        </div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${SCRIPT_SELECTED.length?'8':'16'}px;align-items:center;">
-        <input type="text" placeholder="Search animal or species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('scripts')" style="flex:1;min-width:160px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;">
-        <div style="position:relative;min-width:180px;">
-          <button onclick="toggleScriptDropdown()" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:14px;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;">
-            <span>${selectedLabel}</span><span>▾</span>
-          </button>
-          ${dropdownHtml}
-        </div>
-        ${(SCRIPT_SELECTED.length > 0 || SCRIPT_SEARCH) ? `<button class="btn-ghost" onclick="clearScriptFilter()">Clear</button>` : ''}
-      </div>
-      ${SCRIPT_SELECTED.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${SCRIPT_SELECTED.map(n=>`<span style="background:var(--green-light);color:var(--green-dark);padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${esc(n)}</span>`).join('')}</div>` : ''}
-      ${isMgr ? `<div style="font-size:12px;color:var(--gray);margin-bottom:12px;">Edit scripts in Manager → animal card.</div>` : ''}
+      <input type="text" placeholder="Search species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('animals')" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:4px;">
     </div>
-    ${filtered.length === 0 ? `<div class="card"><div class="empty">No animals match your filter.</div></div>` :
-      filtered.map(a=>{
-        const scriptText = SCRIPT_LANG === 'fr' ? (a.scriptFr||'') : (a.script||'');
-        const noScript = !scriptText.trim();
-        return `<div class="card" style="margin-bottom:0;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
-            <div>
-              <div style="font-size:18px;font-weight:700;">${esc(a.name)}</div>
-              <div style="font-size:13px;color:var(--gray);">${esc(a.species)}</div>
-            </div>
-          </div>
-          ${noScript
-            ? `<div class="empty" style="font-style:italic;">${SCRIPT_LANG==='fr'?'Aucun script en français encore ajouté.':'No script added yet.'}</div>`
-            : `<div style="white-space:pre-wrap;font-size:15px;line-height:1.65;color:var(--text);">${esc(scriptText)}</div>`
+    ${filtered.length === 0 ? `<div class="card"><div class="empty">${scripts.length===0?'No scripts have been added yet. Managers can add them under Manager → Animals → Scripts.':'No scripts match your search.'}</div></div>` :
+      filtered.map(s=>`
+        <div class="card">
+          <div style="font-size:18px;font-weight:700;margin-bottom:10px;">${esc(s.species)}</div>
+          ${s.content && s.content.trim()
+            ? `<div style="font-size:15px;line-height:1.7;color:var(--text);">${s.content}</div>`
+            : `<div class="empty" style="font-style:italic;">No script content yet.</div>`
           }
-        </div>`;
-      }).join('')
+        </div>`).join('')
     }`;
 }
 
@@ -3563,12 +3506,45 @@ function saveEvalTraining(memberId, field, value){
   if(!m.evaluation.training) m.evaluation.training={memory:0,projection:0,clarity:0,confidence:0,notes:''};
   m.evaluation.training[field] = value;
   saveData();
+  // Update star colors instantly in the DOM — no re-render needed
+  const container = document.getElementById('eval-stars-'+memberId+'-'+field);
+  if(container) container.querySelectorAll('button[data-star]').forEach(btn=>{
+    btn.style.color = parseInt(btn.dataset.star) <= value ? '#f4a800' : '#ccc';
+  });
 }
 
 function renderEvalStars(memberId, field, currentVal){
-  return [1,2,3,4,5].map(n=>`
-    <button onclick="saveEvalTraining(${memberId},'${field}',${n})" title="${n}" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px;color:${n<=currentVal?'#f4a800':'#ccc'};">★</button>
-  `).join('');
+  return `<span id="eval-stars-${memberId}-${field}" style="display:inline-flex;">` +
+    [1,2,3,4,5].map(n=>`<button data-star="${n}" onclick="saveEvalTraining(${memberId},'${field}',${n})" title="${n}" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px;color:${n<=currentVal?'#f4a800':'#ccc'};">★</button>`).join('') +
+    `</span>`;
+}
+
+function saveEvalInterview(memberId, field, value){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation) m.evaluation={};
+  if(!m.evaluation.interview) m.evaluation.interview={};
+  m.evaluation.interview[field] = value;
+  saveData();
+}
+function saveEvalInterviewRow(memberId, rowIdx, col, value){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation||!m.evaluation.interview||!m.evaluation.interview.prosConsRows) return;
+  if(!m.evaluation.interview.prosConsRows[rowIdx]) return;
+  m.evaluation.interview.prosConsRows[rowIdx][col] = value;
+  saveData();
+}
+function addEvalInterviewRow(memberId){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation||!m.evaluation.interview) return;
+  if(!Array.isArray(m.evaluation.interview.prosConsRows)) m.evaluation.interview.prosConsRows=[];
+  m.evaluation.interview.prosConsRows.push({pro:'',con:''});
+  saveData(); showTab('team');
+}
+function deleteEvalInterviewRow(memberId, rowIdx){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
+  if(!m.evaluation||!m.evaluation.interview||!m.evaluation.interview.prosConsRows) return;
+  m.evaluation.interview.prosConsRows.splice(rowIdx,1);
+  saveData(); showTab('team');
 }
 
 function renderEvaluations(){
@@ -3594,7 +3570,7 @@ function renderEvaluations(){
   if(!EVAL_STAFF_ID){
     // Show employee list
     const rows = active.map(m=>`
-      <div onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='training';showTab('team')"
+      <div onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='interview';showTab('team')"
            style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:8px;background:var(--bg-card);">
         <div>
           <span style="font-weight:600;font-size:15px;">${esc(m.name)}</span>
@@ -3609,11 +3585,24 @@ function renderEvaluations(){
     </div>`;
   }
 
+  const evalTabs = [{id:'interview', label:'Interview'},{id:'training', label:'Training'}];
+
   const m = DATA.team.find(x=>x.id===EVAL_STAFF_ID);
   if(!m) return '';
   if(!m.evaluation) m.evaluation={};
   if(!m.evaluation.training) m.evaluation.training={memory:0,projection:0,clarity:0,confidence:0,notes:''};
+  if(!m.evaluation.interview) m.evaluation.interview={
+    candidateName:'', position:'', interviewers:'', reviewDate:'',
+    stageVideo:false, stageInPerson:false, stageWorking:false,
+    prosConsRows:[
+      {pro:'Example (working interview) — Explained the safety rules clearly and checked that the group understood before starting.',con:'Example (working interview) — Needed a reminder to check that each participant had a vest before starting.'},
+      {pro:'',con:''},{pro:'',con:''},{pro:'',con:''}
+    ],
+    trainingNeeds:'', followUp:'',
+    reviewingManager:'', recommendation:'', recommendationReason:''
+  };
   const tr = m.evaluation.training;
+  const iv = m.evaluation.interview;
 
   const tabNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
     ${evalTabs.map(t=>`<button onclick="EVAL_TAB='${t.id}';showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${EVAL_TAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${EVAL_TAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
@@ -3638,6 +3627,107 @@ function renderEvaluations(){
       </div>
     </div>`;
 
+  const fldStyle = 'width:100%;border:none;border-bottom:1.5px solid var(--border);padding:4px 2px;font-size:14px;background:transparent;color:var(--text);outline:none;';
+  const prosConsRows = iv.prosConsRows||[];
+  const interviewContent = `
+    <div style="max-width:700px;">
+      <h3 style="margin:0 0 18px;font-size:17px;font-weight:800;">Candidate Hiring Review</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:18px;">
+        <div>
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Candidate Name</label>
+          <input type="text" value="${esc(iv.candidateName)}" style="${fldStyle}" placeholder="Full name" onchange="saveEvalInterview(${m.id},'candidateName',this.value)">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Position</label>
+          <input type="text" value="${esc(iv.position)}" style="${fldStyle}" placeholder="Role applied for" onchange="saveEvalInterview(${m.id},'position',this.value)">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Interviewers</label>
+          <input type="text" value="${esc(iv.interviewers)}" style="${fldStyle}" placeholder="Names" onchange="saveEvalInterview(${m.id},'interviewers',this.value)">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Review Date</label>
+          <input type="date" value="${esc(iv.reviewDate)}" style="${fldStyle}" onchange="saveEvalInterview(${m.id},'reviewDate',this.value)">
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Stages Completed</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" ${iv.stageVideo?'checked':''} onchange="saveEvalInterview(${m.id},'stageVideo',this.checked)"> Video interview
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" ${iv.stageInPerson?'checked':''} onchange="saveEvalInterview(${m.id},'stageInPerson',this.checked)"> In-person interview
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" ${iv.stageWorking?'checked':''} onchange="saveEvalInterview(${m.id},'stageWorking',this.checked)"> Working interview
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:6px;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px;">Interviewer Summary</div>
+        <div style="font-size:13px;color:var(--text-light);line-height:1.5;margin-bottom:12px;">Record specific, job-related observations and identify the interview stage for each one. Use the same criteria for each candidate, such as safety, communication with children, teamwork, and following instructions. If a skill wasn't assessed, mark it as <strong>Not assessed</strong>.</div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+        <thead>
+          <tr>
+            <th style="background:#2d4a2d;color:#fff;padding:9px 12px;text-align:left;font-size:13px;border-radius:6px 0 0 0;">Pros — Strengths demonstrated</th>
+            <th style="background:#2d4a2d;color:#fff;padding:9px 12px;text-align:left;font-size:13px;border-radius:0 6px 0 0;">Cons — Concerns observed</th>
+            <th style="background:#2d4a2d;width:32px;border-radius:0 6px 0 0;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${prosConsRows.map((row,i)=>`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:6px 8px;vertical-align:top;">
+              <textarea rows="2" style="width:100%;border:none;background:transparent;font-size:13px;resize:vertical;padding:2px;color:var(--text);outline:none;" placeholder="${i===0?'Strength observed…':''}" onchange="saveEvalInterviewRow(${m.id},${i},'pro',this.value)">${esc(row.pro||'')}</textarea>
+            </td>
+            <td style="padding:6px 8px;vertical-align:top;">
+              <textarea rows="2" style="width:100%;border:none;background:transparent;font-size:13px;resize:vertical;padding:2px;color:var(--text);outline:none;" placeholder="${i===0?'Concern observed…':''}" onchange="saveEvalInterviewRow(${m.id},${i},'con',this.value)">${esc(row.con||'')}</textarea>
+            </td>
+            <td style="padding:4px;vertical-align:middle;text-align:center;">
+              ${i>0?`<button class="btn-ghost" style="color:var(--red);font-size:12px;padding:2px 6px;" onclick="deleteEvalInterviewRow(${m.id},${i})">✕</button>`:''}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn-ghost" style="font-size:13px;margin-bottom:20px;" onclick="addEvalInterviewRow(${m.id})">+ Add row</button>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Training needs if hired</label>
+        <textarea rows="2" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="List any areas that will need additional training or support…" onchange="saveEvalInterview(${m.id},'trainingNeeds',this.value)">${esc(iv.trainingNeeds||'')}</textarea>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Requirements to verify or questions to follow up on</label>
+        <textarea rows="2" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Reference checks, certifications, follow-up questions…" onchange="saveEvalInterview(${m.id},'followUp',this.value)">${esc(iv.followUp||'')}</textarea>
+      </div>
+
+      <div style="border-top:2px solid var(--border);padding-top:16px;">
+        <div style="font-size:15px;font-weight:800;margin-bottom:14px;">Manager Review</div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-light);display:block;margin-bottom:3px;">Reviewing Manager</label>
+          <input type="text" value="${esc(iv.reviewingManager)}" style="${fldStyle}" placeholder="Manager name" onchange="saveEvalInterview(${m.id},'reviewingManager',this.value)">
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Recommendation</div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap;">
+            ${[['hire','Hire'],['followup','Follow up before deciding'],['nohire','Do not hire']].map(([val,label])=>`
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+              <input type="radio" name="eval-rec-${m.id}" value="${val}" ${iv.recommendation===val?'checked':''} onchange="saveEvalInterview(${m.id},'recommendation',this.value)"> ${label}
+            </label>`).join('')}
+          </div>
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:700;display:block;margin-bottom:5px;">Reason for recommendation</label>
+          <textarea rows="3" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:14px;resize:vertical;" placeholder="Summarize the key reasons for your recommendation…" onchange="saveEvalInterview(${m.id},'recommendationReason',this.value)">${esc(iv.recommendationReason||'')}</textarea>
+        </div>
+      </div>
+    </div>`;
+
   return `<div class="card">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
       <button class="btn-ghost" onclick="EVAL_STAFF_ID=null;showTab('team')" style="font-size:13px;">← Back</button>
@@ -3645,6 +3735,7 @@ function renderEvaluations(){
       <span style="font-size:13px;color:var(--text-light);">${m.role||''}</span>
     </div>
     ${tabNav}
+    ${EVAL_TAB==='interview' ? interviewContent : ''}
     ${EVAL_TAB==='training' ? trainingContent : ''}
   </div>`;
 }
@@ -7390,6 +7481,89 @@ function wireTaskGroupDrag(){
     });
   });
 }
+let MGR_ANIMALS_SUBTAB = 'profiles'; // 'profiles' | 'scripts'
+let EDITING_SCRIPT_ID = null;
+function setMgrAnimalsSubTab(v){ MGR_ANIMALS_SUBTAB = v; EDITING_SCRIPT_ID = null; showTab('manager'); }
+function addAnimalScript(){
+  const species = (document.getElementById('new-script-species')||{}).value||'';
+  if(!species.trim()){ alert('Enter a species/group name.'); return; }
+  if(!Array.isArray(DATA.animalScripts)) DATA.animalScripts = [];
+  DATA.animalScripts.push({ id: nextId(DATA.animalScripts), species: species.trim(), content: '', updatedAt: todayStr() });
+  saveData(); EDITING_SCRIPT_ID = DATA.animalScripts[DATA.animalScripts.length-1].id;
+  showTab('manager');
+}
+function deleteAnimalScript(id){
+  if(!confirm('Delete this script?')) return;
+  DATA.animalScripts = DATA.animalScripts.filter(s=>s.id!==id);
+  if(EDITING_SCRIPT_ID===id) EDITING_SCRIPT_ID=null;
+  saveData(); showTab('manager');
+}
+function saveAnimalScriptContent(id){
+  const s = (DATA.animalScripts||[]).find(x=>x.id===id); if(!s) return;
+  const el = document.getElementById('script-editor-'+id); if(!el) return;
+  s.content = el.innerHTML; s.updatedAt = todayStr(); saveData();
+}
+function scriptFormat(id, cmd, val){
+  document.getElementById('script-editor-'+id).focus();
+  if(cmd==='fontSize'){
+    document.execCommand('styleWithCSS',false,true);
+    document.execCommand('fontSize',false,'7');
+    // Replace the font size 7 spans with inline style spans
+    const sel=window.getSelection(); if(!sel.rangeCount) return;
+    // Use a wrapper instead
+    document.execCommand('styleWithCSS',false,false);
+    document.execCommand('fontSize',false,val);
+  } else {
+    document.execCommand(cmd,false,val||null);
+  }
+  saveAnimalScriptContent(id);
+}
+function renderMgrAnimalScripts(){
+  const scripts = DATA.animalScripts||[];
+  const rows = scripts.map(s=>{
+    const isEditing = EDITING_SCRIPT_ID===s.id;
+    return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);cursor:pointer;" onclick="EDITING_SCRIPT_ID=${isEditing?'null':s.id};showTab('manager')">
+        <span style="font-weight:700;font-size:15px;">${esc(s.species)}</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:12px;color:var(--text-light);">Updated ${s.updatedAt||''}</span>
+          <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="event.stopPropagation();deleteAnimalScript(${s.id})">🗑 Delete</button>
+          <span style="font-size:14px;color:var(--text-light);">${isEditing?'▾':'▸'}</span>
+        </div>
+      </div>
+      ${isEditing ? `
+      <div style="padding:14px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-light);">Format:</span>
+          <button onclick="scriptFormat(${s.id},'bold')" title="Bold" style="font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">B</button>
+          <button onclick="scriptFormat(${s.id},'underline')" title="Underline" style="text-decoration:underline;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">U</button>
+          <button onclick="scriptFormat(${s.id},'italic')" title="Italic" style="font-style:italic;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">I</button>
+          <select onchange="document.getElementById('script-editor-${s.id}').focus();document.execCommand('styleWithCSS',false,true);document.execCommand('fontSize',false,this.value);saveAnimalScriptContent(${s.id});this.value=''" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;">
+            <option value="">Font size…</option>
+            <option value="1">Small</option>
+            <option value="3">Normal</option>
+            <option value="5">Large</option>
+            <option value="7">Extra Large</option>
+          </select>
+        </div>
+        <div id="script-editor-${s.id}" contenteditable="true"
+          style="min-height:180px;border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.65;background:#fff;color:#222;outline:none;"
+          oninput="saveAnimalScriptContent(${s.id})"
+        >${s.content||''}</div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <h2>Scripts</h2>
+    <div class="sub" style="margin-bottom:14px;">One script per species/group. Click to expand and edit. Use the toolbar for bold, underline, italic and font size.</div>
+    ${rows || '<div class="empty">No scripts yet. Add one below.</div>'}
+    <div class="add-row" style="margin-top:14px;">
+      <input type="text" id="new-script-species" placeholder="Species/group name (e.g. Tortoises, Snakes…)">
+      <button class="btn-small" onclick="addAnimalScript()">+ Add Script</button>
+    </div>
+  </div>`;
+}
+
 let SHOW_ADD_ANIMAL_FORM = false;
 function toggleAddAnimalForm(){
   SHOW_ADD_ANIMAL_FORM = !SHOW_ADD_ANIMAL_FORM;
@@ -7415,8 +7589,6 @@ function saveAnimalCard(id){
   a.range = val(`m-range-${id}`);
   a.rescueStory = val(`m-rescue-${id}`);
   a.overviewNotes = val(`m-overview-${id}`);
-  a.script = val(`m-script-${id}`);
-  a.scriptFr = val(`m-script-fr-${id}`);
   a.funFacts = val(`m-funfacts-${id}`);
   a.medicalNotes = val(`m-mednotes-${id}`);
   a.bowlCode = val(`m-bowlcode-${id}`);
@@ -7576,14 +7748,6 @@ function renderAnimalManagerCard(a){
       <div class="field-block">
         <label>Overview notes</label>
         <textarea id="m-overview-${a.id}" placeholder="General notes shown on the animal's overview page." oninput="saveAnimalCard(${a.id})">${a.overviewNotes||''}</textarea>
-      </div>
-      <div class="field-block">
-        <label>Scripts / presentation talking points (English)</label>
-        <textarea id="m-script-${a.id}" style="min-height:120px;" placeholder="Add animal script here." oninput="saveAnimalCard(${a.id})">${a.script||''}</textarea>
-      </div>
-      <div class="field-block">
-        <label>Script (Français)</label>
-        <textarea id="m-script-fr-${a.id}" style="min-height:120px;" placeholder="Ajoutez le script en français ici." oninput="saveAnimalCard(${a.id})">${a.scriptFr||''}</textarea>
       </div>
       <div class="field-block">
         <label>Fun facts</label>
@@ -9558,9 +9722,19 @@ function renderManager(){
       ${renderSupervisorAccessPanel('schedule')}
     `;
   } else if(MANAGER_TAB === 'animals'){
+    if(MGR_ANIMALS_SUBTAB === 'scripts'){
+      body = `<div style="display:flex;gap:8px;margin-bottom:18px;">
+        <button onclick="setMgrAnimalsSubTab('profiles')" style="padding:9px 22px;background:#e8ede8;color:#444;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">Animal Profiles</button>
+        <button onclick="setMgrAnimalsSubTab('scripts')" style="padding:9px 22px;background:#2d4a2d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">Scripts</button>
+      </div>` + renderMgrAnimalScripts();
+      return `<div class="detail-tabs">${tabsHtml}</div>${body}`;
+    }
     const activeAnimals = DATA.animals.filter(a=>!a.archived).slice().sort((a,b)=>a.name.localeCompare(b.name));
     const archivedAnimals = DATA.animals.filter(a=>a.archived);
-    body = `
+    body = `<div style="display:flex;gap:8px;margin-bottom:18px;">
+      <button onclick="setMgrAnimalsSubTab('profiles')" style="padding:9px 22px;background:#2d4a2d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">Animal Profiles</button>
+      <button onclick="setMgrAnimalsSubTab('scripts')" style="padding:9px 22px;background:#e8ede8;color:#444;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">Scripts</button>
+    </div>`+`
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <h2 style="margin:0;">Animal Profiles</h2>
