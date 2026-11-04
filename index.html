@@ -4304,7 +4304,8 @@ function bizTag(biz){
 
 /* ---------- DASHBOARD ---------- */
 function completedShowsTotal(){
-  return DATA.shows.filter(s=> showStatus(s)==='completed').length;
+  const historical = HISTORICAL_YEARS.reduce((sum, y) => sum + (y.shows || 0), 0);
+  return historical + DATA.shows.filter(s=> showStatus(s)==='completed').length;
 }
 function completedShowsLast3Months(){
   const cutoff = addDays(todayStr(), -90);
