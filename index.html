@@ -8173,23 +8173,24 @@ let MGR_ALL_TASKS_OPEN = true; // All Tasks card expanded by default
 /* ---------- MANAGER: SHOWS ---------- */
 let SHOW_MGR_VIEW = 'upcoming';
 let ARCHIVE_YEAR = null; // which year tab is selected in archive view
+function collapseShowDates(showList){
+  showList.forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
+}
 function setShowMgrView(v){
   SHOW_MGR_VIEW = v;
   if(v === 'archive'){
-    // Default to the most recent year that has past shows
     const pastShows = DATA.shows.filter(s=>!isShowUpcoming(s));
     const years = [...new Set(pastShows.map(s=>(s.date||'').slice(0,4)))].filter(Boolean).sort().reverse();
     ARCHIVE_YEAR = years[0] || null;
-    // Collapse all date groups by default — prevents browser hang on large lists
-    pastShows.forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
+    collapseShowDates(pastShows);
+  } else {
+    collapseShowDates(DATA.shows.filter(isShowUpcoming));
   }
   showTab('manager');
 }
 function setArchiveYear(yr){
   ARCHIVE_YEAR = yr;
-  // Collapse all groups for this year by default
-  DATA.shows.filter(s=>!isShowUpcoming(s)&&(s.date||'').startsWith(yr))
-    .forEach(s=>{ COLLAPSED_SHOW_DATES[s.date] = true; });
+  collapseShowDates(DATA.shows.filter(s=>!isShowUpcoming(s)&&(s.date||'').startsWith(yr)));
   showTab('manager');
 }
 let SHOW_MGR_ADD_FORM = false;
@@ -9071,6 +9072,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
 }
 function setManagerTab(tab){
   MANAGER_TAB = tab;
+  // Collapse all show date groups when entering the shows tab
+  if(tab === 'shows') collapseShowDates(DATA.shows);
   // When a supervisor is using their supervisor tab, keep them there
   showTab(CURRENT_TAB === 'supervisor' ? 'supervisor' : 'manager');
 }
