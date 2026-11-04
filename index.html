@@ -11592,6 +11592,11 @@ function renderManager(){
         <div class="sub">Restores all tabs back to the original sample data.</div>
         <button class="btn-small" style="background:var(--red)" onclick="resetData()">Reset to Sample Data</button>
       </div>
+      <div class="card">
+        <h2>Export Backup</h2>
+        <div class="sub">Download a full backup of all app data as a JSON file. Keep this somewhere safe — it can be used to restore everything if something goes wrong.</div>
+        <button class="btn-small" onclick="exportBackup()">Download Backup</button>
+      </div>
     `;
   }
 
@@ -12078,6 +12083,20 @@ function resetData(){
     saveData();
     showTab('manager');
   }
+}
+
+function exportBackup(){
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  const json = JSON.stringify(DATA, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'u4w-backup-' + ts + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function val(id){ const el = document.getElementById(id); if(!el) return ''; return el.value.trim ? el.value.trim() : el.value; }
