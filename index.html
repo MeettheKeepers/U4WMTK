@@ -1436,12 +1436,27 @@ async function initCloudSync(){
       localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
       localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt || cloudTime);
     } else if(_isValidCloudData(cloud) && localTime > cloudTime){
-      // Local is newer — push it to cloud so other devices get our changes
+      // Local claims to be newer — but only push to cloud if local has at least as many
+      // shows as cloud. This prevents a corrupted/empty localStorage from ever
+      // overwriting good cloud data just because its timestamp is newer.
+      const localShowCount = (DATA.shows||[]).length;
+      const cloudShowCount = (cloud.shows||[]).length;
+      if(localShowCount < cloudShowCount){
+        // Cloud has more shows — trust cloud over local timestamp
+        const localTC = DATA.timeClock;
+        DATA = normalizeData(cloud);
+        const mergedTC = mergeTimeClock(DATA.timeClock, localTC);
+        DATA.timeClock = mergedTC.tc;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+        localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt || cloudTime);
+      } else {
+      // Local is newer and has at least as many shows — push it to cloud
       DATA._savedAt = localTime;
       DATA = normalizeData(DATA);
       await sb.from('app_state').update({ data: DATA, updated_at: new Date(localTime).toISOString() }).eq('id', 1);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
       localStorage.setItem(LOCAL_SAVED_AT_KEY, localTime);
+      }
     } else {
       // Cloud empty/invalid — seed it from local
       DATA._savedAt = Date.now();
