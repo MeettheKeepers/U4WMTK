@@ -959,6 +959,12 @@ function normalizeData(d){
   if(!d.admin.training) d.admin.training = { notes: '' };
   if(!d.admin.training.notes) d.admin.training.notes = '';
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
+  if(!Array.isArray(d.contracts)) d.contracts = [];
+  d.contracts.forEach(c=>{
+    if(!c.pendingChanges) c.pendingChanges = [];
+    if(c.acknowledged===undefined) c.acknowledged = false;
+    if(!c.fields) c.fields = {};
+  });
   if(d.admin.grantsEnabled === undefined) d.admin.grantsEnabled = true;
   if(!d.admin.grantsLog) d.admin.grantsLog = [];
   (d.admin.grantsLog||[]).forEach(e=>{ if(e.archived===undefined) e.archived=false; });
@@ -3493,6 +3499,184 @@ function renderWildlifeShow(){
     ${accessPanel}`;
 }
 
+/* ── EMPLOYMENT CONTRACTS ──────────────────────────────────────────────── */
+const CONTRACT_TEXT_KEYS = [
+  'agreementDate','employerLegalName','employerAddress','employerContactName','employerPhone',
+  'jobTitle','workLocation','hoursSchedule','duty1','duty2','duty3',
+  'startDate','termEndDate','probationLength','basePay','firstPayday',
+  'workDate1','workDate2','workDate3','workDate4',
+  'employeeInitials','employerInitials','employerRepName','signatureDate'
+];
+const CONTRACT_BOOL_KEYS = [
+  'fullTime','partTime','termIndefinite','termFixed','noProbation',
+  'probationWeeks','probationMonths','payPerHour','payPerWeek','payPerMonth',
+  'payPerYear','payPeriodWeekly','payPeriodBiweekly','handbookAck','confidentialityAck','vacationPayEach'
+];
+const CONTRACT_ALL_KEYS = [...CONTRACT_TEXT_KEYS, ...CONTRACT_BOOL_KEYS];
+
+function getContractForMember(memberId){
+  return (DATA.contracts||[]).find(c=>c.employeeId===memberId)||null;
+}
+function createContractForMember(memberId){
+  if(!Array.isArray(DATA.contracts)) DATA.contracts=[];
+  if(DATA.contracts.find(c=>c.employeeId===memberId)){ alert('A contract already exists for this employee.'); return; }
+  const fields = {};
+  CONTRACT_TEXT_KEYS.forEach(k=>{ fields[k]=''; });
+  CONTRACT_BOOL_KEYS.forEach(k=>{ fields[k]=false; });
+  DATA.contracts.push({ id:nextId(DATA.contracts), employeeId:memberId, assignedAt:todayStr(), fields, acknowledged:false, acknowledgedAt:null, pendingChanges:[] });
+  saveData(); showTab('team');
+}
+function saveContractFields(contractId){
+  const c = (DATA.contracts||[]).find(x=>x.id===contractId); if(!c) return;
+  const newFields = {};
+  CONTRACT_TEXT_KEYS.forEach(k=>{
+    const el=document.getElementById('cf-'+contractId+'-'+k);
+    if(el) newFields[k]=el.value;
+  });
+  CONTRACT_BOOL_KEYS.forEach(k=>{
+    const el=document.getElementById('cf-'+contractId+'-'+k);
+    if(el) newFields[k]=el.checked;
+  });
+  if(!Object.keys(newFields).length) return;
+  if(c.acknowledged){
+    const changed = CONTRACT_ALL_KEYS.filter(k=>String(c.fields[k]??'')!==String(newFields[k]??''));
+    const existing = new Set(c.pendingChanges||[]);
+    changed.forEach(k=>existing.add(k));
+    c.pendingChanges = [...existing];
+  }
+  c.fields = { ...c.fields, ...newFields };
+  saveData();
+  const flag = document.getElementById('contract-saved-'+contractId);
+  if(flag){ flag.style.display='inline'; setTimeout(()=>flag.style.display='none',2000); }
+}
+function acknowledgeContract(contractId){
+  const c=(DATA.contracts||[]).find(x=>x.id===contractId); if(!c) return;
+  c.acknowledged=true; c.acknowledgedAt=new Date().toISOString(); c.pendingChanges=[];
+  saveData(); showTab('team');
+}
+function deleteContract(contractId){
+  if(!confirm('Delete this contract? This cannot be undone.')) return;
+  DATA.contracts=(DATA.contracts||[]).filter(c=>c.id!==contractId);
+  saveData(); showTab('team');
+}
+function _cF(cid, f, pc, editable, key, placeholder, w){
+  const val=f[key]||''; const changed=(pc||[]).includes(key);
+  if(editable) return `<input type="text" id="cf-${cid}-${key}" value="${esc(val)}" placeholder="${esc(placeholder||'')}" style="border:none;border-bottom:1.5px solid #888;background:transparent;padding:1px 4px;font-size:inherit;font-family:inherit;min-width:${w||'80px'};max-width:100%;">`;
+  if(val) return `<span style="${changed?'color:#c0392b;font-weight:600;':''}">${esc(val)}</span>`;
+  return `<span style="display:inline-block;min-width:${w||'100px'};border-bottom:1px solid #bbb;">&nbsp;</span>`;
+}
+function _cC(cid, f, pc, editable, key){
+  const checked=!!f[key]; const changed=(pc||[]).includes(key);
+  if(editable) return `<input type="checkbox" id="cf-${cid}-${key}" ${checked?'checked':''} style="width:15px;height:15px;cursor:pointer;vertical-align:middle;">`;
+  const sym=checked?'☑':'☐';
+  return `<span style="${changed?'color:#c0392b;font-weight:600;':''}font-size:15px;">${sym}</span>`;
+}
+function renderContractDocument(contract, editable){
+  const f=contract.fields||{}; const pc=contract.pendingChanges||[]; const id=contract.id;
+  const empName=(DATA.team.find(m=>m.id===contract.employeeId)||{}).name||'—';
+  const CF=(key,ph,w)=>_cF(id,f,pc,editable,key,ph,w);
+  const CC=(key)=>_cC(id,f,pc,editable,key);
+  const H=`font-size:14px;font-weight:700;margin:16px 0 5px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #ccc;padding-bottom:3px;`;
+  const P=`margin:5px 0;font-size:14px;line-height:1.85;`;
+  return `<div style="font-family:Georgia,serif;font-size:14px;line-height:1.85;color:#222;padding:4px 0;">
+    <div style="text-align:center;font-size:16px;font-weight:700;margin-bottom:14px;">Meet the Keepers &amp; Unite for Wildlife</div>
+    <div style="${P}"><strong>Agreement date</strong> ${CF('agreementDate','e.g. June 1, 2025','150px')} &nbsp;&nbsp; <strong>Employee name</strong> <span style="font-weight:600;">${esc(empName)}</span></div>
+    <div style="${P}"><strong>Employer legal name</strong> ${CF('employerLegalName','Legal name','220px')} <span style="font-size:13px;color:#666;">(the "Employer")</span></div>
+    <div style="${P}"><strong>Operating name, if different</strong> Meet the Keepers &amp; Unite for Wildlife</div>
+    <div style="${P}"><strong>Employer address</strong> ${CF('employerAddress','Street, City, Province, Postal Code','300px')}</div>
+    <div style="${P}"><strong>Employer contact name</strong> ${CF('employerContactName','Contact name','160px')} &nbsp; <strong>Phone</strong> ${CF('employerPhone','Phone number','130px')}</div>
+    <div style="${H}">1 Employment</div>
+    <div style="${P}"><strong>Job title</strong> ${CF('jobTitle','e.g. Animal Keeper','200px')} &nbsp;&nbsp; ${CC('fullTime')} Full-time &nbsp;&nbsp; ${CC('partTime')} Part-time</div>
+    <div style="${P}"><strong>Initial work location</strong> ${CF('workLocation','Address or region','300px')}</div>
+    <div style="${P}"><strong>Expected hours and schedule</strong> ${CF('hoursSchedule','e.g. 20 hrs/week, Sat–Sun','280px')}</div>
+    <div style="${P}"><strong>Primary duties and responsibilities</strong></div>
+    <div style="${P}">1. ${CF('duty1','Duty description','380px')}</div>
+    <div style="${P}">2. ${CF('duty2','Duty description','380px')}</div>
+    <div style="${P}">3. ${CF('duty3','Duty description','380px')}</div>
+    <div style="${P}">The Employee will also perform related duties normally performed in similar roles and other reasonable duties assigned from time to time. The Employee will follow the Employer's lawful policies and procedures as communicated to them.</div>
+    <div style="${H}">2 Performance of Duties</div>
+    <div style="${P}">The Employee will perform assigned duties professionally, in good faith and to the best of their skills, abilities and experience.</div>
+    <div style="${H}">3 Term and Probation</div>
+    <div style="${P}"><strong>Start date</strong> ${CF('startDate','e.g. June 1, 2025','140px')} &nbsp; Select one employment term below.</div>
+    <div style="${P}">${CC('termIndefinite')} Indefinite employment. Employment continues until ended in accordance with section 8.</div>
+    <div style="${P}">${CC('termFixed')} Fixed-term employment. The scheduled end date is ${CF('termEndDate','End date','130px')}. Any expiry or earlier termination is subject to applicable law and section 8.</div>
+    <div style="${P}">${CC('noProbation')} No probation period. &nbsp;&nbsp; Probation of ${CF('probationLength','e.g. 3','40px')} ${CC('probationWeeks')} weeks &nbsp; ${CC('probationMonths')} months from the start date.</div>
+    <div style="${P}">During probation, the Employer will assess suitability in good faith and give the Employee a reasonable opportunity to demonstrate suitability. Any dismissal is subject to section 8.</div>
+    <div style="${H}">4 Compensation</div>
+    <div style="${P}"><strong>Base pay</strong> $${CF('basePay','e.g. 17.20','70px')} &nbsp; ${CC('payPerHour')} per hour &nbsp; ${CC('payPerWeek')} per week &nbsp; ${CC('payPerMonth')} per month &nbsp; ${CC('payPerYear')} per year</div>
+    <div style="${P}"><strong>Pay period and payday</strong> &nbsp; ${CC('payPeriodWeekly')} Weekly, every Friday &nbsp;&nbsp; ${CC('payPeriodBiweekly')} Biweekly, every other Friday</div>
+    <div style="${P}"><strong>First scheduled payday</strong> ${CF('firstPayday','e.g. June 7, 2025','150px')}. Minimum wage, overtime and public holiday entitlements apply in accordance with the Employment Standards Act, 2000 (ESA).</div>
+    <div style="border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:8px 0;margin:10px 0;${P}"><strong>Employee initials</strong> ${CF('employeeInitials','Initials','60px')} &nbsp;&nbsp;&nbsp; <strong>Employer initials</strong> ${CF('employerInitials','Initials','60px')}</div>
+    <div style="${H}">Workplace Terms and Signatures</div>
+    <div style="${H}">5 Employee Electronic App Handbook</div>
+    <div style="${P}">${CC('handbookAck')} The Employee acknowledges receipt of the Meet the Keepers employee handbook and agrees to read it, ask about anything unclear and follow its lawful policies. Signing the handbook acknowledgment is a condition of employment.</div>
+    <div style="${H}">6 Confidentiality</div>
+    <div style="${P}">${CC('confidentialityAck')} The Employee agrees to protect the Employer's trade secrets, confidential business information and proprietary data learned at work, during and after employment. The Employer retains ownership of its confidential materials. The Employee may make disclosures required or protected by law, including reporting safety, harassment or animal welfare concerns to the appropriate authorities.</div>
+    <div style="${H}">7 Required Work Dates</div>
+    <div style="${P}">The Employee agrees to be available for work on the dates below, subject to protected leave and accommodation rights. The Employer will confirm assigned shifts.</div>
+    <div style="${P}">1. ${CF('workDate1','Date','150px')} &nbsp;&nbsp; 2. ${CF('workDate2','Date','150px')}</div>
+    <div style="${P}">3. ${CF('workDate3','Date','150px')} &nbsp;&nbsp; 4. ${CF('workDate4','Date','150px')}</div>
+    <div style="${H}">8 Discipline and Ending Employment</div>
+    <div style="${P}">Meet the Keepers generally uses a three-strike process under its handbook. Serious concerns, including animal abuse or harassment, may warrant skipping steps after an appropriate review. Any disciplinary action is subject to applicable law.</div>
+    <div style="${P}">If employment ends, the Employer will provide all applicable entitlements under the ESA and common law, including any required notice or pay in lieu, benefits continuation and statutory severance. This agreement preserves all minimum ESA rights and Human Rights Code protections.</div>
+    <div style="${P}">If the Employee resigns, the Employer requests two weeks' written notice where practicable.</div>
+    <div style="${H}">9 Vacation and Attendance</div>
+    <div style="${P}"><strong>Vacation.</strong> The Employee receives at least two weeks of vacation per completed vacation entitlement year and 4% vacation pay, increasing to at least three weeks and 6% at five years of employment. The 6% rate applies to eligible wages for the entire vacation entitlement year in which the Employee reaches five years, with any required top-up.</div>
+    <div style="${P}">${CC('vacationPayEach')} The Employee agrees to receive vacation pay on each payday. The Employer will show it separately on the pay statement or a separate statement. If the box is left blank, the Employer will pay vacation pay in accordance with the ESA.</div>
+    <div style="${P}"><strong>Sick leave and missed shifts.</strong> Notify your supervisor before the shift when possible, or as soon as possible afterward. Eligible employees have up to three unpaid, job-protected ESA sick days per calendar year after two consecutive weeks of employment, plus any other applicable leaves. Missing a shift without notifying the Employer may lead to discipline, up to dismissal, after considering the circumstances, protected leave and any duty to accommodate.</div>
+    <div style="${H}">Signatures</div>
+    <div style="${P}"><strong>Employee name</strong> ${esc(empName)} &nbsp;&nbsp;&nbsp; <strong>Employer representative</strong> ${CF('employerRepName','Name','160px')}</div>
+    <div style="${P}"><strong>Employee signature</strong> ${contract.acknowledged ? `<span style="color:var(--green-dark,#1e6b2e);font-style:italic;"> Acknowledged digitally on ${new Date(contract.acknowledgedAt).toLocaleDateString('en-CA')}</span>` : '<span style="color:#aaa;font-style:italic;">Not yet acknowledged</span>'} &nbsp;&nbsp;&nbsp; <strong>Employer signature / date</strong> ${CF('signatureDate','Signed by / Date','160px')}</div>
+    ${contract.assignedAt?`<div style="font-size:12px;color:#888;margin-top:10px;">Contract issued ${contract.assignedAt}</div>`:''}
+  </div>`;
+}
+function renderContractManagerCard(memberId){
+  const m = DATA.team.find(x=>x.id===memberId); if(!m) return '';
+  const contract = getContractForMember(memberId);
+  if(!contract){
+    return `<div class="card">
+      <h2>Employment Contract</h2>
+      <div class="sub" style="margin-bottom:12px;">No contract on file for ${esc(m.name)} yet.</div>
+      <button class="btn-small" onclick="createContractForMember(${memberId})">+ Create Contract</button>
+    </div>`;
+  }
+  const hasPending = contract.pendingChanges && contract.pendingChanges.length > 0;
+  return `<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <h2 style="margin:0;">Employment Contract</h2>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${contract.acknowledged ? `<span style="font-size:12px;color:var(--green-dark,#1e6b2e);font-weight:600;"> Acknowledged ${new Date(contract.acknowledgedAt).toLocaleDateString('en-CA')}</span>` : '<span style="font-size:12px;color:#c0392b;font-weight:600;">Not yet acknowledged</span>'}
+        ${hasPending ? `<span style="font-size:12px;color:#c0392b;font-weight:600;"> ${contract.pendingChanges.length} change${contract.pendingChanges.length>1?'s':''} pending re-acknowledgment</span>` : ''}
+        <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="deleteContract(${contract.id})">Delete</button>
+      </div>
+    </div>
+    <div class="sub" style="margin-bottom:12px;">Fill in the blanks and check the boxes. Click Save when done. Any fields you change after the employee has acknowledged will be highlighted in red for them to re-acknowledge.</div>
+    ${renderContractDocument(contract, true)}
+    <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
+      <button class="btn" onclick="saveContractFields(${contract.id})">Save Contract</button>
+      <span class="sub" id="contract-saved-${contract.id}" style="display:none;"> Saved.</span>
+    </div>
+  </div>`;
+}
+function renderContractStaffCard(memberId){
+  const contract = getContractForMember(memberId); if(!contract) return '';
+  const needsAck = !contract.acknowledged || (contract.pendingChanges && contract.pendingChanges.length > 0);
+  return `<div class="card" ${needsAck?'style="border-left:4px solid #c0392b;"':''}>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <h2 style="margin:0;">My Employment Contract</h2>
+      ${contract.acknowledged && !needsAck ? `<span style="font-size:12px;color:var(--green-dark,#1e6b2e);font-weight:600;"> Acknowledged ${new Date(contract.acknowledgedAt).toLocaleDateString('en-CA')}</span>` : ''}
+    </div>
+    ${needsAck ? `<div style="background:#fdf0ef;border:1px solid #f5c6c6;border-radius:8px;padding:12px;margin-bottom:14px;">
+      <div style="font-weight:700;color:#c0392b;margin-bottom:4px;">${contract.acknowledged?'Your contract has been updated — please review and acknowledge the changes highlighted in red.':'Your employment contract is ready. Please read it carefully and acknowledge below.'}</div>
+    </div>` : ''}
+    ${renderContractDocument(contract, false)}
+    ${needsAck ? `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+      <div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">By clicking Acknowledge, you confirm you have read and understood${contract.acknowledged?' the changes to':''} this employment agreement.</div>
+      <button class="btn" style="background:#c0392b;border-color:#c0392b;" onclick="acknowledgeContract(${contract.id})"> Acknowledge</button>
+    </div>` : ''}
+  </div>`;
+}
+
 /* ---------- TEAM (read-only directory + personal employee file for staff) ---------- */
 function openStaffFilePreview(id){ VIEWING_STAFF_FILE_ID = id; showTab('team'); }
 function closeStaffFilePreview(){ VIEWING_STAFF_FILE_ID = null; showTab('team'); }
@@ -3569,7 +3753,8 @@ function renderStaffFileReadOnly(m){
       </div>
       ${APPROVED_ANIMALS_OPEN[m.id] ? approvedAnimalsHtml(m, false) : ''}
     </div>
-    ${renderStaffMileageCard(m.name, false)}`;
+    ${renderStaffMileageCard(m.name, false)}
+    ${renderContractManagerCard(m.id)}`;
 }
 function saveEvalTraining(memberId, field, value){
   const m = DATA.team.find(x=>x.id===memberId); if(!m) return;
@@ -4166,6 +4351,7 @@ function renderTeam(){
       ${APPROVED_ANIMALS_OPEN[me.id] ? approvedAnimalsHtml(me, false) : ''}
     </div>
     ${renderStaffMileageCard(me.name, true)}
+    ${renderContractStaffCard(me.id)}
   ` : `
     <div class="card">
       <div class="notice">Your login isn't linked to a staff profile yet. Ask a manager to link your login to your name to see your personal Employee File here.</div>
@@ -4597,6 +4783,17 @@ function renderDashboard(){
   // Progress report ack notifications
   // Quiz available notification
   const quizAvailable = !isManagerLogin() && myName && quizNeedsQuiz(myName) && quizCanTakeQuiz(myName);
+  // Contract acknowledgment notifications
+  const myContractAck = (() => {
+    if(!myName || isManagerLogin()) return null;
+    const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
+    const c = getContractForMember(me.id); if(!c) return null;
+    if(!c.acknowledged || (c.pendingChanges && c.pendingChanges.length > 0)) return { contract: c, memberId: me.id, hasChanges: c.acknowledged && c.pendingChanges && c.pendingChanges.length > 0 };
+    return null;
+  })();
+  const managerContractNotices = isManagerLogin() ? (() => {
+    return DATA.team.filter(m=>!m.archived).map(m=>({m, c:getContractForMember(m.id)})).filter(({c})=>c && (!c.acknowledged || (c.pendingChanges && c.pendingChanges.length > 0)));
+  })() : [];
   const myProgressAck = (() => {
     if(!myName) return null;
     const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
@@ -4627,6 +4824,24 @@ function renderDashboard(){
         </div>`;
       }).join('')}
       <div style="font-size:12px;color:var(--text-light);margin-top:8px;">This reminder stays on your dashboard until all payments are acknowledged.</div>
+    </div>` : ''}
+    ${myContractAck ? `
+    <div class="card" style="border-left:5px solid #c0392b;">
+      <h2 style="margin-bottom:6px;"> ${myContractAck.hasChanges ? 'Your Employment Contract Has Been Updated' : 'Employment Contract Ready to Review'}</h2>
+      <div class="sub" style="margin-bottom:12px;">${myContractAck.hasChanges ? 'Your employer has made changes to your employment contract. Items changed are highlighted in red — please review and acknowledge.' : 'Your employment contract has been issued. Please read it carefully and acknowledge below.'}</div>
+      <button class="btn" style="background:#c0392b;border-color:#c0392b;" onclick="TEAM_SUBTAB='team';showTab('team')">View &amp; Acknowledge Contract →</button>
+    </div>` : ''}
+    ${managerContractNotices.length ? `
+    <div class="card" style="border-left:5px solid #c0392b;">
+      <h2 style="margin-bottom:10px;">Contracts Awaiting Acknowledgment</h2>
+      ${managerContractNotices.map(({m,c})=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;">${esc(m.name)}</span>
+            <span style="margin-left:8px;font-size:13px;color:var(--text-light);">${c.pendingChanges && c.pendingChanges.length ? `${c.pendingChanges.length} change${c.pendingChanges.length>1?'s':''} pending re-acknowledgment` : 'Not yet acknowledged'}</span>
+          </div>
+          <button class="btn-small" onclick="openStaffFilePreview(${m.id});showTab('team')">View Contract →</button>
+        </div>`).join('')}
     </div>` : ''}
     ${myProgressAck ? `
     <div class="card" style="border-left:5px solid #2d4a2d;">
