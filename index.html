@@ -1858,8 +1858,8 @@ function showTab(id){
   if((id === 'manager' || id === 'supervisor') && CURRENT_TAB !== 'manager' && CURRENT_TAB !== 'supervisor'){
     if(MANAGER_TAB === 'shows') collapseShowDates(DATA.shows);
   }
+  if(id !== CURRENT_TAB) SIN_UNLOCKED.clear();
   CURRENT_TAB = id;
-  SIN_UNLOCKED.clear();
   refreshRecurringTasks();
   visibleTabs().forEach(t=>{
     document.getElementById('tabbtn-'+t.id).classList.toggle('active', t.id===id);
@@ -3365,6 +3365,58 @@ function closeSinModal(){
   document.removeEventListener('keydown',_sinModalKeydown);
 }
 function lockSin(memberId){ SIN_UNLOCKED.delete(memberId); showTab(CURRENT_TAB); }
+
+/* SIN entry modal for staff (no <input>, so no password-manager prompt) */
+let _sinEntryBuffer = '';
+let _sinEntryMemberId = null;
+function _sinEntryKeydown(e){
+  if(e.key==='Escape'){ closeSinEntryModal(); return; }
+  if(e.key==='Enter'){ _sinEntrySubmit(); return; }
+  if(e.key==='Backspace'){ _sinEntryBuffer=_sinEntryBuffer.slice(0,-1); }
+  else if(e.key.length===1 && /[\d\s\-]/.test(e.key)){ _sinEntryBuffer+=e.key; }
+  const disp=document.getElementById('sin-entry-display');
+  if(disp) disp.textContent=_sinEntryBuffer||'';
+}
+function _sinEntrySubmit(){
+  const val=_sinEntryBuffer.trim();
+  if(!val){ closeSinEntryModal(); return; }
+  saveStaffField(_sinEntryMemberId,'sin',val);
+  closeSinEntryModal();
+  showTab(CURRENT_TAB);
+}
+function openSinEntryModal(memberId){
+  _sinEntryMemberId=memberId; _sinEntryBuffer='';
+  let overlay=document.getElementById('sin-entry-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='sin-entry-overlay';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML=`<div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.22);text-align:center;" onclick="event.stopPropagation()">
+      <div style="font-size:28px;margin-bottom:10px;"></div>
+      <div style="font-weight:700;font-size:17px;margin-bottom:6px;">Enter your SIN</div>
+      <div style="font-size:13px;color:#888;margin-bottom:18px;">Type your Social Insurance Number. Only managers can view it once saved.</div>
+      <div id="sin-entry-display" style="font-size:20px;letter-spacing:3px;min-height:40px;border:1px solid #ddd;border-radius:8px;padding:6px 14px;background:#f8f8f8;margin-bottom:6px;color:#222;font-family:monospace;"></div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:14px;">Use Backspace to correct. Numbers, spaces and dashes only.</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button class="btn-ghost" onclick="closeSinEntryModal()">Cancel</button>
+        <button class="btn" onclick="_sinEntrySubmit()">Save SIN</button>
+      </div>
+    </div>`;
+    overlay.addEventListener('click',closeSinEntryModal);
+    document.body.appendChild(overlay);
+  } else {
+    overlay.style.display='flex';
+    const disp=document.getElementById('sin-entry-display');
+    if(disp) disp.textContent='';
+  }
+  document.addEventListener('keydown',_sinEntryKeydown);
+}
+function closeSinEntryModal(){
+  _sinEntryBuffer='';
+  const overlay=document.getElementById('sin-entry-overlay');
+  if(overlay) overlay.style.display='none';
+  document.removeEventListener('keydown',_sinEntryKeydown);
+}
 function sinFieldHtml(memberId, sinValue){
   if(!sinValue) return `<span style="color:var(--gray);font-style:italic;">Not on file</span>`;
   if(SIN_UNLOCKED.has(memberId)){
@@ -4401,13 +4453,13 @@ function renderTeam(){
       <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Payroll</div>
       <div class="field-block">
         <label>Social Insurance Number (SIN)</label>
-        ${me.sin ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--text-light);font-style:italic;">On file — only visible to managers</span>
-          <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('sin-update-wrap-${me.id}').style.display='block';this.style.display='none';">Update</button>
-        </div>
-        <div id="sin-update-wrap-${me.id}" style="display:none;margin-top:6px;">
-          <input type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Enter new SIN (e.g. 123 456 789)" style="max-width:260px;-webkit-text-security:disc;" onchange="saveStaffField(${me.id},'sin',this.value);document.getElementById('sin-update-wrap-${me.id}').style.display='none';">
-        </div>` : `<input type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="e.g. 123 456 789" style="max-width:260px;-webkit-text-security:disc;" onchange="saveStaffField(${me.id},'sin',this.value)">`}
+        ${me.sin
+          ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:13px;color:var(--text-light);font-style:italic;">On file — only visible to managers</span>
+              <button class="btn-ghost" style="font-size:12px;" onclick="openSinEntryModal(${me.id})">Update</button>
+             </div>`
+          : `<button class="btn-small" onclick="openSinEntryModal(${me.id})">+ Enter SIN</button>`
+        }
         <div class="sub" style="margin-top:4px;">Your SIN is stored securely and visible only to managers and owners — never displayed back to you.</div>
       </div>
       <div class="sub" style="margin-top:10px;font-style:italic;">Changes save automatically as you fill them in.</div>
