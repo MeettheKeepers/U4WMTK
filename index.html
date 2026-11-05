@@ -2454,6 +2454,45 @@ function renderStaffMileageCard(staffName, isSelf){
   </div>`;
 }
 
+const DEFAULT_TRAINING_HTML = `<h3>Item 1 — Assign Logins for the App</h3>
+        <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
+        <p><strong>iPhone (Safari)</strong></p>
+        <ol>
+          <li>Open <strong>Safari</strong> and go to the website.</li>
+          <li>Tap <strong>Share</strong> (square with upward arrow), scroll down and tap <strong>Add to Home Screen</strong>.</li>
+          <li>Turn on <strong>Open as Web App</strong> if it appears, then tap <strong>Add</strong>.</li>
+        </ol>
+        <p><strong>Android (Chrome)</strong></p>
+        <ol>
+          <li>Open <strong>Chrome</strong> and go to the website.</li>
+          <li>Tap the <strong>three-dot menu</strong>, then tap <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li>
+          <li>Choose <strong>Install</strong> if available, or <strong>Create shortcut</strong> and tap <strong>Add</strong>.</li>
+        </ol>
+        <p>Then walk through each tab one by one: <em>Welcome → Dashboard → Tasks → Animals → Shows → Calendar → Schedule → Supplies &amp; Repairs → Inventory → Incidents → Team → Wildlife Adventures Show</em></p>
+        <p><strong>Dashboard</strong> — Clock in/out for shifts and breaks from your phone. Breaks are assigned times unless on the road.</p>
+        <p><strong>Tasks</strong> — Show examples, explain when to check them off; more detail during animal care training.</p>
+        <p><strong>Animals</strong> — "Take" animals at show start, "return" at shift end. 3-day/week limit per animal (exceptions require supervisor approval). Approved animal list and approved crate categories apply. Diets and Scripts also live here.</p>
+        <p><strong>Shows</strong> — View shows assigned to you: client name, address, phone. Travel time includes 30-min load, drive time, and 20-min buffer. For 2 shows, travel is from show 1 to show 2. Always double-check addresses. If late, contact the client <em>and</em> the office. Check in on arrival, check out when leaving. On return: put away animals, clean habitats, complete "paperwork" (return animals in app, fill in occasion, record animals taken).</p>
+        <p><strong>Calendar</strong> — Upcoming shows and time-off requests. First come, first served, pending approval. Submit request → manager approves/denies → notification on your dashboard next sign-in.</p>
+        <p><strong>Schedule</strong> — Visible ~2 weeks out (ideally 1 month). Report errors to a supervisor ASAP. Schedule changes often.</p>
+        <p><strong>Supplies &amp; Repairs</strong> — Click "Take" for common items. Write repairs you can't fix yourself. Use Supply Request for non-common items.</p>
+        <p><strong>Inventory</strong> — Contents of each vehicle travel bag. If something is low or missing, submit a supply request.</p>
+        <p><strong>Incidents</strong> — Log any injury or minor incident here. For major incidents, contact a supervisor immediately.</p>
+        <p><strong>Team</strong> — Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.</p>
+        <p><strong>Wildlife Adventures</strong> — New episodes of our show appear here.</p>
+        <h3>Item 2 — Handling All the Animals</h3>
+        <p>At the scripts section, stand and stretch. Handle each animal one by one and introduce the ball trick with tarantula and scorpion. Cover proper handling of each animal.</p>
+        <h3>Item 3 — Shows</h3>
+        <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee deliver:</p>
+        <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
+        <p>At a future event, we will film a presentation and review it like game film.</p>
+        <h3>Item 4 — Scripts</h3>
+        <p>Go over animal scripts — trainees are expected to memorize them. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
+        <h3>Item 4 — Quiz</h3>
+        <p>Finish the day with the quiz. Failing the first attempt is okay — 7-day cooldown, then eligible again. <strong>80% required to pass (20 randomized questions).</strong> Until passed, trainees cannot perform in front of a crowd. If unable to pass after 3 attempts (1 month), they may be reprimanded, moved to animal care only, or dismissed.</p>
+        <h3>Conclusion</h3>
+        <p>Open the floor for questions, comments, and concerns. Ensure everyone understands their roles and expectations.</p>`;
+
 function renderAdmin(){
   const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
   const hiringEnabled = DATA.admin.hiringEnabled !== false;
@@ -2476,9 +2515,7 @@ function renderAdmin(){
     const trainingNotes = (DATA.admin && DATA.admin.training && DATA.admin.training.notes) || '';
     body = `<div class="card">
       <h2>Training Plan</h2>
-      ${trainingNotes
-        ? `<div class="welcome-content" style="font-size:14px;line-height:1.75;">${trainingNotes}</div>`
-        : '<div class="empty">No training plan on file yet. Managers can add one in Manager → Admin → Training.</div>'}
+      <div class="welcome-content" style="font-size:14px;line-height:1.75;">${trainingNotes || DEFAULT_TRAINING_HTML}</div>
     </div>`;
   } else if(ADMIN_TAB === 'mileage'){
     body = renderMileageAdmin();
@@ -11607,7 +11644,7 @@ function renderManager(){
         <div class="sub">Edit the training content staff see in the Admin tab.</div>
         <div class="rich-wrap">
           ${richToolbar('admin-training-editor')}
-          <div class="welcome-editor" id="admin-training-editor" contenteditable="true">${(DATA.admin && DATA.admin.training && DATA.admin.training.notes)||''}</div>
+          <div class="welcome-editor" id="admin-training-editor" contenteditable="true">${(DATA.admin && DATA.admin.training && DATA.admin.training.notes)||DEFAULT_TRAINING_HTML}</div>
         </div>
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminTraining()">Save Training</button>
         <span class="sub" id="admin-training-saved" style="margin-left:10px;display:none;">Saved.</span>
