@@ -701,7 +701,7 @@ function blankWelcomeAck(){
   return { about:null, mission:null, policies:null, safety:null, vehicles:null, shows:null, yourrole:null, mtkprovides:null, custom:{} };
 }
 function blankStaffExtras(){
-  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"", startDate:"", endDate:"", hourlyRate:"18.00" };
+  return { phone:"", email:"", address:"", emergencyName:"", emergencyPhone:"", emergencyRelation:"", writeUps:[], birthday:"", startDate:"", endDate:"", hourlyRate:"18.00", sin:"" };
 }
 function defaultData(){
   return {
@@ -1859,6 +1859,7 @@ function showTab(id){
     if(MANAGER_TAB === 'shows') collapseShowDates(DATA.shows);
   }
   CURRENT_TAB = id;
+  SIN_UNLOCKED.clear();
   refreshRecurringTasks();
   visibleTabs().forEach(t=>{
     document.getElementById('tabbtn-'+t.id).classList.toggle('active', t.id===id);
@@ -3302,6 +3303,37 @@ function renderFoundation(){
     ${body}`;
 }
 
+/* ---------- SIN PASSWORD GATE ---------- */
+const SIN_UNLOCKED = new Set(); // member IDs whose SIN is currently revealed
+function verifySinPassword(memberId){
+  const pw = document.getElementById('sin-pw-input-'+memberId);
+  if(!pw) return;
+  if(CURRENT_LOGIN && pw.value === CURRENT_LOGIN.password){
+    SIN_UNLOCKED.add(memberId);
+    showTab(CURRENT_TAB);
+  } else {
+    const err = document.getElementById('sin-pw-err-'+memberId);
+    if(err){ err.style.display='inline'; setTimeout(()=>err.style.display='none', 2500); }
+    pw.value=''; pw.focus();
+  }
+}
+function lockSin(memberId){ SIN_UNLOCKED.delete(memberId); showTab(CURRENT_TAB); }
+function sinFieldHtml(memberId, sinValue){
+  if(!sinValue) return `<span style="color:var(--gray);font-style:italic;">Not on file</span>`;
+  if(SIN_UNLOCKED.has(memberId)){
+    return `<span style="font-family:monospace;font-size:14px;letter-spacing:.5px;">${esc(sinValue)}</span>
+      &nbsp;<button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${memberId})"> Lock</button>`;
+  }
+  return `<span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
+      <input type="password" id="sin-pw-input-${memberId}" placeholder="Enter your login password" autocomplete="off"
+        style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;max-width:220px;"
+        onkeydown="if(event.key==='Enter')verifySinPassword(${memberId})">
+      <button class="btn-small" onclick="verifySinPassword(${memberId})">Reveal</button>
+      <span id="sin-pw-err-${memberId}" style="display:none;font-size:12px;color:var(--red);font-weight:600;">Incorrect password</span>
+    </div>`;
+}
+
 /* ---------- SCRIPTS TAB ---------- */
 let SCRIPT_SEARCH = '';
 const SCRIPT_OPEN_IDS = new Set();
@@ -3706,6 +3738,7 @@ function renderStaffFileReadOnly(m){
       <div class="field-block"><label>Emergency Contact Name</label><div>${m.emergencyName || '—'}</div></div>
       <div class="field-block"><label>Emergency Contact Phone</label><div>${m.emergencyPhone || '—'}</div></div>
       <div class="field-block"><label>Relationship</label><div>${m.emergencyRelation || '—'}</div></div>
+      <div class="field-block"><label>Social Insurance Number (SIN)</label><div>${sinFieldHtml(m.id, m.sin||'')}</div></div>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -4293,14 +4326,33 @@ function renderTeam(){
     </div>
     <div class="card">
       <h2>My Employee File</h2>
-      <div class="sub">Read-only. Contact a manager if anything here needs to be updated.</div>
+      <div class="sub" style="margin-bottom:12px;">You can update your contact information, birthday, and emergency contact below. Start date and hourly rate are managed by your employer.</div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Employment</div>
       <div class="field-block"><label>Start Date</label><div>${me.startDate ? fmtShortDate(me.startDate) : '—'}${me.startDate ? (()=>{ const s=new Date(me.startDate),n=new Date(); let y=n.getFullYear()-s.getFullYear(),m=n.getMonth()-s.getMonth(); if(m<0){y--;m+=12;} return ` <span style="color:var(--gray);font-size:13px;">(${y>0?y+' yr'+(y!==1?'s':'')+(m>0?', ':''):''}${m>0?m+' mo':''}${y===0&&m===0?'< 1 mo':''})</span>`; })() : ''}</div></div>
       ${me.endDate ? `<div class="field-block"><label>End Date</label><div>${fmtShortDate(me.endDate)}</div></div>` : ''}
-      <div class="field-block"><label>Birthday</label><div>${me.birthday ? fmtShortDate(me.birthday) : '—'}</div></div>
       <div class="field-block"><label>Hourly Rate</label><div>${me.hourlyRate ? '$'+parseFloat(me.hourlyRate).toFixed(2)+'/hr' : '—'}</div></div>
-      <div class="field-block"><label>Emergency Contact Name</label><div>${me.emergencyName || '—'}</div></div>
-      <div class="field-block"><label>Emergency Contact Phone</label><div>${me.emergencyPhone || '—'}</div></div>
-      <div class="field-block"><label>Relationship</label><div>${me.emergencyRelation || '—'}</div></div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Contact Information</div>
+      <div class="field-block"><label>Phone</label><input type="tel" value="${esc(me.phone||'')}" placeholder="e.g. 905-555-1234" onchange="saveStaffField(${me.id},'phone',this.value)"></div>
+      <div class="field-block"><label>Email</label><input type="email" value="${esc(me.email||'')}" placeholder="your@email.com" onchange="saveStaffField(${me.id},'email',this.value)"></div>
+      <div class="field-block"><label>Address</label><input type="text" value="${esc(me.address||'')}" placeholder="Street, City, Province, Postal Code" onchange="saveStaffField(${me.id},'address',this.value)"></div>
+      <div class="field-block"><label>Birthday</label><input type="date" value="${esc(me.birthday||'')}" onchange="saveStaffField(${me.id},'birthday',this.value)"><div class="sub" style="margin-top:4px;">Visible to managers only — a birthday banner appears on the dashboard on your birthday.</div></div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Emergency Contact</div>
+      <div class="field-block"><label>Name</label><input type="text" value="${esc(me.emergencyName||'')}" placeholder="Full name" onchange="saveStaffField(${me.id},'emergencyName',this.value)"></div>
+      <div class="field-block"><label>Phone</label><input type="tel" value="${esc(me.emergencyPhone||'')}" placeholder="e.g. 905-555-5678" onchange="saveStaffField(${me.id},'emergencyPhone',this.value)"></div>
+      <div class="field-block"><label>Relationship</label><input type="text" value="${esc(me.emergencyRelation||'')}" placeholder="e.g. Parent, Spouse" onchange="saveStaffField(${me.id},'emergencyRelation',this.value)"></div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Payroll</div>
+      <div class="field-block">
+        <label>Social Insurance Number (SIN)</label>
+        ${me.sin ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:13px;color:var(--text-light);font-style:italic;">On file — only visible to managers</span>
+          <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('sin-update-wrap-${me.id}').style.display='block';this.style.display='none';">Update</button>
+        </div>
+        <div id="sin-update-wrap-${me.id}" style="display:none;margin-top:6px;">
+          <input type="password" autocomplete="off" placeholder="Enter new SIN (e.g. 123 456 789)" style="max-width:260px;" onchange="saveStaffField(${me.id},'sin',this.value);document.getElementById('sin-update-wrap-${me.id}').style.display='none';">
+        </div>` : `<input type="password" autocomplete="off" placeholder="e.g. 123 456 789" style="max-width:260px;" onchange="saveStaffField(${me.id},'sin',this.value)">`}
+        <div class="sub" style="margin-top:4px;">Your SIN is stored securely and visible only to managers and owners — never displayed back to you.</div>
+      </div>
+      <div class="sub" style="margin-top:10px;font-style:italic;">Changes save automatically as you fill them in.</div>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -9474,7 +9526,7 @@ function saveStaffField(id, field, value){
   if(!m) return;
   m[field] = value;
   saveData();
-  showTab('manager');
+  showTab(CURRENT_TAB);
 }
 function addWriteUp(id){
   const m = DATA.team.find(x=>x.id===id);
@@ -9597,6 +9649,19 @@ function renderEmployeeFile(m){
       <div class="field-block"><label>Name</label><input type="text" value="${esc(m.emergencyName)}" onchange="saveStaffField(${m.id},'emergencyName',this.value)"></div>
       <div class="field-block"><label>Phone</label><input type="text" value="${esc(m.emergencyPhone)}" onchange="saveStaffField(${m.id},'emergencyPhone',this.value)"></div>
       <div class="field-block"><label>Relationship</label><input type="text" value="${esc(m.emergencyRelation)}" onchange="saveStaffField(${m.id},'emergencyRelation',this.value)"></div>
+    </div>
+    <div class="card">
+      <h2>Payroll</h2>
+      <div class="field-block">
+        <label>Social Insurance Number (SIN)</label>
+        ${SIN_UNLOCKED.has(m.id) ? `
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input type="text" value="${esc(m.sin||'')}" placeholder="e.g. 123 456 789" style="max-width:220px;" onchange="saveStaffField(${m.id},'sin',this.value)">
+            <button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${m.id})"> Lock</button>
+          </div>` : `
+          <div>${sinFieldHtml(m.id, m.sin||'')}</div>`}
+        <div class="sub" style="margin-top:6px;">Visible to managers and owners only. Never shown to the employee. Re-enters locked state on every page navigation.</div>
+      </div>
     </div>
     <div class="card">
       <h2>Write-Ups</h2>
