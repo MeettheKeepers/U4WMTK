@@ -3304,18 +3304,65 @@ function renderFoundation(){
 }
 
 /* ---------- SIN PASSWORD GATE ---------- */
-const SIN_UNLOCKED = new Set(); // member IDs whose SIN is currently revealed
-function verifySinPassword(memberId){
-  const pw = document.getElementById('sin-pw-input-'+memberId);
-  if(!pw) return;
-  if(CURRENT_LOGIN && pw.value === CURRENT_LOGIN.password){
-    SIN_UNLOCKED.add(memberId);
+const SIN_UNLOCKED = new Set();
+let _sinModalTarget = null;
+let _sinModalBuffer = '';
+function _sinModalKeydown(e){
+  if(e.key==='Escape'){ closeSinModal(); return; }
+  if(e.key==='Enter'){ _sinModalSubmit(); return; }
+  if(e.key==='Backspace'){ _sinModalBuffer=_sinModalBuffer.slice(0,-1); }
+  else if(e.key.length===1){ _sinModalBuffer+=e.key; }
+  const dots = document.getElementById('sin-modal-dots');
+  if(dots) dots.textContent = '•'.repeat(_sinModalBuffer.length) || '';
+}
+function _sinModalSubmit(){
+  if(CURRENT_LOGIN && _sinModalBuffer === CURRENT_LOGIN.password){
+    SIN_UNLOCKED.add(_sinModalTarget);
+    closeSinModal();
     showTab(CURRENT_TAB);
   } else {
-    const err = document.getElementById('sin-pw-err-'+memberId);
-    if(err){ err.style.display='inline'; setTimeout(()=>err.style.display='none', 2500); }
-    pw.value=''; pw.focus();
+    _sinModalBuffer='';
+    const dots=document.getElementById('sin-modal-dots');
+    const err=document.getElementById('sin-modal-err');
+    if(dots) dots.textContent='';
+    if(err){ err.style.display='block'; setTimeout(()=>err.style.display='none',2200); }
   }
+}
+function openSinModal(memberId){
+  _sinModalTarget=memberId; _sinModalBuffer='';
+  let overlay=document.getElementById('sin-modal-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='sin-modal-overlay';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML=`<div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.22);text-align:center;" onclick="event.stopPropagation()">
+      <div style="font-size:28px;margin-bottom:10px;"></div>
+      <div style="font-weight:700;font-size:17px;margin-bottom:6px;">Enter your password to reveal SIN</div>
+      <div style="font-size:13px;color:#888;margin-bottom:18px;">Type your login password, then press Enter or click Reveal.</div>
+      <div id="sin-modal-dots" style="font-size:28px;letter-spacing:6px;min-height:36px;border:1px solid #ddd;border-radius:8px;padding:6px 14px;background:#f8f8f8;margin-bottom:12px;color:#333;"></div>
+      <div id="sin-modal-err" style="display:none;color:#c0392b;font-size:13px;font-weight:600;margin-bottom:10px;">Incorrect password — try again</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button class="btn-ghost" onclick="closeSinModal()">Cancel</button>
+        <button class="btn" onclick="_sinModalSubmit()">Reveal</button>
+      </div>
+    </div>`;
+    overlay.addEventListener('click', closeSinModal);
+    document.body.appendChild(overlay);
+  } else {
+    overlay.style.display='flex';
+    const dots=document.getElementById('sin-modal-dots');
+    if(dots) dots.textContent='';
+    const err=document.getElementById('sin-modal-err');
+    if(err) err.style.display='none';
+  }
+  document.addEventListener('keydown',_sinModalKeydown);
+  setTimeout(()=>{ const d=document.getElementById('sin-modal-dots'); if(d) d.focus(); },50);
+}
+function closeSinModal(){
+  _sinModalBuffer='';
+  const overlay=document.getElementById('sin-modal-overlay');
+  if(overlay) overlay.style.display='none';
+  document.removeEventListener('keydown',_sinModalKeydown);
 }
 function lockSin(memberId){ SIN_UNLOCKED.delete(memberId); showTab(CURRENT_TAB); }
 function sinFieldHtml(memberId, sinValue){
@@ -3324,14 +3371,10 @@ function sinFieldHtml(memberId, sinValue){
     return `<span style="font-family:monospace;font-size:14px;letter-spacing:.5px;">${esc(sinValue)}</span>
       &nbsp;<button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${memberId})"> Lock</button>`;
   }
-  return `<span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
-    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
-      <input type="text" id="sin-pw-input-${memberId}" placeholder="Enter your login password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;max-width:220px;-webkit-text-security:disc;"
-        onkeydown="if(event.key==='Enter')verifySinPassword(${memberId})">
-      <button class="btn-small" onclick="verifySinPassword(${memberId})">Reveal</button>
-      <span id="sin-pw-err-${memberId}" style="display:none;font-size:12px;color:var(--red);font-weight:600;">Incorrect password</span>
-    </div>`;
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
+    <button class="btn-small" onclick="openSinModal(${memberId})"> Reveal</button>
+  </div>`;
 }
 
 /* ---------- SCRIPTS TAB ---------- */
@@ -9671,7 +9714,7 @@ function renderEmployeeFile(m){
         <label>Social Insurance Number (SIN)</label>
         ${SIN_UNLOCKED.has(m.id) ? `
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <input type="text" value="${esc(m.sin||'')}" placeholder="e.g. 123 456 789" style="max-width:220px;" onchange="saveStaffField(${m.id},'sin',this.value)">
+            <input type="text" value="${esc(m.sin||'')}" placeholder="e.g. 123 456 789" autocomplete="off" style="max-width:220px;" onchange="saveStaffField(${m.id},'sin',this.value)">
             <button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${m.id})"> Lock</button>
           </div>` : `
           <div>${sinFieldHtml(m.id, m.sin||'')}</div>`}
