@@ -921,7 +921,8 @@ function normalizeData(d){
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
   if(!Array.isArray(d.mileageArchivedPayments)) d.mileageArchivedPayments = [];
   if(!Array.isArray(d.animalScripts)) d.animalScripts = [];
-  d.animalScripts.forEach(s=>{ if(s.archived===undefined) s.archived=false; });
+  d.animalScripts.forEach(s=>{ if(s.archived===undefined) s.archived=false; if(s.facts===undefined) s.facts=''; });
+  d.animals.forEach(a=>{ if(a.scriptId===undefined) a.scriptId=null; });
   if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
   d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
   if(!Array.isArray(d.timeOffRemovals)) d.timeOffRemovals = [];
@@ -3259,7 +3260,9 @@ function renderFoundation(){
 /* ---------- SCRIPTS TAB ---------- */
 let SCRIPT_SEARCH = '';
 const SCRIPT_OPEN_IDS = new Set();
+let SCRIPT_TAB = {}; // id -> 'script'|'info'|'facts'
 function toggleScriptOpen(id){ if(SCRIPT_OPEN_IDS.has(id)) SCRIPT_OPEN_IDS.delete(id); else SCRIPT_OPEN_IDS.add(id); showTab('animals'); }
+function setScriptTab(id, tab){ SCRIPT_TAB[id]=tab; showTab('animals'); }
 function renderScripts(){
   const scripts = (DATA.animalScripts||[]).filter(s=>!s.archived);
   const search = SCRIPT_SEARCH.toLowerCase().trim();
@@ -3274,13 +3277,43 @@ function renderScripts(){
     ${filtered.length === 0 ? `<div class="card"><div class="empty">${scripts.length===0?'No scripts have been added yet. Managers can add them under Manager → Animals → Scripts.':'No scripts match your search.'}</div></div>` :
       filtered.map(s=>{
         const open = SCRIPT_OPEN_IDS.has(s.id);
+        const tab = SCRIPT_TAB[s.id] || 'script';
+        let tabContent = '';
+        if(open){
+          if(tab === 'script'){
+            tabContent = s.content && s.content.trim() ? s.content : '<span style="color:var(--text-light);font-style:italic;">No script content yet.</span>';
+          } else if(tab === 'info'){
+            const assigned = (DATA.animals||[]).filter(a=>!a.archived && a.scriptId===s.id);
+            if(!assigned.length){
+              tabContent = '<span style="color:var(--text-light);font-style:italic;">No animals assigned to this script yet.</span>';
+            } else {
+              tabContent = assigned.map(a=>`
+                <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+                  <div style="font-weight:700;font-size:15px;margin-bottom:5px;">${esc(a.name)}</div>
+                  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
+                    ${a.species ? `<li><strong>Species:</strong> ${esc(a.species)}</li>` : ''}
+                    ${a.scientificName ? `<li><strong>Latin name:</strong> <em>${esc(a.scientificName)}</em></li>` : ''}
+                    ${a.birthday ? `<li><strong>Age:</strong> ${esc(a.birthday)}</li>` : ''}
+                    ${a.range ? `<li><strong>Range:</strong> ${esc(a.range)}</li>` : ''}
+                    ${a.rescueStory ? `<li><strong>Backstory:</strong> ${esc(a.rescueStory)}</li>` : ''}
+                  </ul>
+                </div>`).join('');
+            }
+          } else {
+            tabContent = s.facts && s.facts.trim() ? s.facts : '<span style="color:var(--text-light);font-style:italic;">No general facts added yet.</span>';
+          }
+        }
         return `<div class="card" style="padding:0;overflow:hidden;">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;" onclick="toggleScriptOpen(${s.id})">
             <span style="font-size:16px;font-weight:700;">${esc(s.species)}</span>
             <span style="font-size:14px;color:var(--text-light);">${open?'▾':'▸'}</span>
           </div>
-          ${open ? `<div style="padding:0 16px 16px;font-size:15px;line-height:1.7;color:var(--text);border-top:1px solid var(--border);">
-            ${s.content && s.content.trim() ? s.content : '<span style="color:var(--text-light);font-style:italic;">No script content yet.</span>'}
+          ${open ? `
+          <div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+            ${['script','info','facts'].map(t=>`<button onclick="event.stopPropagation();setScriptTab(${s.id},'${t}')" style="flex:1;padding:9px 4px;border:none;border-right:1px solid var(--border);background:${tab===t?'var(--surface)':'var(--bg)'};font-size:13px;font-weight:${tab===t?'700':'400'};color:${tab===t?'var(--green-dark)':'var(--text-light)'};cursor:pointer;text-transform:capitalize;">${t==='script'?'Script':t==='info'?'Info':'Facts'}</button>`).join('')}
+          </div>
+          <div style="padding:14px 16px;font-size:15px;line-height:1.7;color:var(--text);">
+            ${tabContent}
           </div>` : ''}
         </div>`;
       }).join('')
@@ -7781,7 +7814,7 @@ function addAnimalScript(){
   const species = (document.getElementById('new-script-species')||{}).value||'';
   if(!species.trim()){ alert('Enter a species/group name.'); return; }
   if(!Array.isArray(DATA.animalScripts)) DATA.animalScripts = [];
-  DATA.animalScripts.push({ id: nextId(DATA.animalScripts), species: species.trim(), content: '', updatedAt: todayStr() });
+  DATA.animalScripts.push({ id: nextId(DATA.animalScripts), species: species.trim(), content: '', facts: '', updatedAt: todayStr() });
   saveData(); EDITING_SCRIPT_ID = DATA.animalScripts[DATA.animalScripts.length-1].id;
   showTab('manager');
 }
@@ -7814,6 +7847,11 @@ function saveAnimalScriptContent(id){
   const el = document.getElementById('script-editor-'+id); if(!el) return;
   s.content = el.innerHTML; s.updatedAt = todayStr(); saveData();
 }
+function saveAnimalScriptFacts(id){
+  const s = (DATA.animalScripts||[]).find(x=>x.id===id); if(!s) return;
+  const el = document.getElementById('script-facts-editor-'+id); if(!el) return;
+  s.facts = el.innerHTML; s.updatedAt = todayStr(); saveData();
+}
 function scriptFormat(id, cmd, val){
   document.getElementById('script-editor-'+id).focus();
   if(cmd==='fontSize'){
@@ -7828,6 +7866,18 @@ function scriptFormat(id, cmd, val){
     document.execCommand(cmd,false,val||null);
   }
   saveAnimalScriptContent(id);
+}
+function scriptFormatFacts(id, cmd, val){
+  document.getElementById('script-facts-editor-'+id).focus();
+  if(cmd==='fontSize'){
+    document.execCommand('styleWithCSS',false,true);
+    document.execCommand('fontSize',false,'7');
+    document.execCommand('styleWithCSS',false,false);
+    document.execCommand('fontSize',false,val);
+  } else {
+    document.execCommand(cmd,false,val||null);
+  }
+  saveAnimalScriptFacts(id);
 }
 let SHOW_ARCHIVED_SCRIPTS = false;
 function renderMgrAnimalScripts(){
@@ -7854,6 +7904,7 @@ function renderMgrAnimalScripts(){
       </div>
       ${isEditing ? `
       <div style="padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:var(--green-dark);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Script</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
           <span style="font-size:12px;font-weight:600;color:var(--text-light);">Format:</span>
           <button onclick="scriptFormat(${s.id},'bold')" title="Bold" style="font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">B</button>
@@ -7871,6 +7922,23 @@ function renderMgrAnimalScripts(){
           style="min-height:180px;border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.65;background:#fff;color:#222;outline:none;"
           oninput="saveAnimalScriptContent(${s.id})"
         >${s.content||''}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--green-dark);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.5px;">General Facts</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-light);">Format:</span>
+          <button onclick="scriptFormatFacts(${s.id},'bold')" title="Bold" style="font-weight:700;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">B</button>
+          <button onclick="scriptFormatFacts(${s.id},'underline')" title="Underline" style="text-decoration:underline;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">U</button>
+          <button onclick="scriptFormatFacts(${s.id},'italic')" title="Italic" style="font-style:italic;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;font-size:13px;">I</button>
+        </div>
+        <div id="script-facts-editor-${s.id}" contenteditable="true"
+          style="min-height:120px;border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.65;background:#fff;color:#222;outline:none;"
+          oninput="saveAnimalScriptFacts(${s.id})"
+        >${s.facts||''}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--green-dark);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Info (auto — animals assigned to this script)</div>
+        ${(()=>{
+          const assigned = (DATA.animals||[]).filter(a=>!a.archived && a.scriptId===s.id);
+          if(!assigned.length) return '<div class="empty" style="font-size:13px;">No animals assigned yet. Set "Script Category" on each animal profile.</div>';
+          return assigned.map(a=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);"><strong>${esc(a.name)}</strong> — ${esc(a.species||'')}${a.scientificName?` <span style="color:var(--text-light);font-style:italic;">(${esc(a.scientificName)})</span>`:''}</div>`).join('');
+        })()}
       </div>` : ''}
     </div>`;
   }).join('');
@@ -7937,6 +8005,8 @@ function saveAnimalCard(id){
   a.water = val(`m-water-${id}`);
   a.dietNotes = val(`m-dietnotes-${id}`);
   a.trainingVideos = val(`m-training-${id}`);
+  const scriptSel = document.getElementById(`m-scriptid-${id}`);
+  if(scriptSel) a.scriptId = scriptSel.value === '' ? null : parseInt(scriptSel.value,10);
   a._updatedAt = Date.now(); // timestamp used by mergeAnimals to protect recent edits during cloud sync
   saveData();
 }
@@ -8062,6 +8132,13 @@ function renderAnimalManagerCard(a){
         <label>Habitat Card</label>
         <select onchange="reassignAnimalCard(${a.id}, this.value)">
           ${(DATA.habitats||[]).map(h=>`<option value="${esc(h.cardId)}"${h.cardId===a.cardId?' selected':''}>${esc(h.cardTitle)} (${esc(h.cardId)})</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-block">
+        <label>Script Category</label>
+        <select id="m-scriptid-${a.id}" onchange="saveAnimalCard(${a.id})">
+          <option value="">— None —</option>
+          ${(DATA.animalScripts||[]).filter(s=>!s.archived).map(s=>`<option value="${s.id}"${a.scriptId===s.id?' selected':''}>${esc(s.species)}</option>`).join('')}
         </select>
       </div>
       <div class="field-block">
