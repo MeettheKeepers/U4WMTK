@@ -3326,8 +3326,8 @@ function sinFieldHtml(memberId, sinValue){
   }
   return `<span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
-      <input type="password" id="sin-pw-input-${memberId}" placeholder="Enter your login password" autocomplete="off"
-        style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;max-width:220px;"
+      <input type="text" id="sin-pw-input-${memberId}" placeholder="Enter your login password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;max-width:220px;-webkit-text-security:disc;"
         onkeydown="if(event.key==='Enter')verifySinPassword(${memberId})">
       <button class="btn-small" onclick="verifySinPassword(${memberId})">Reveal</button>
       <span id="sin-pw-err-${memberId}" style="display:none;font-size:12px;color:var(--red);font-weight:600;">Incorrect password</span>
@@ -3662,6 +3662,9 @@ function renderContractDocument(contract, editable){
     ${contract.assignedAt?`<div style="font-size:12px;color:#888;margin-top:10px;">Contract issued ${contract.assignedAt}</div>`:''}
   </div>`;
 }
+const CONTRACT_EXPANDED = new Set(); // member IDs with contract currently expanded
+function toggleContractExpanded(memberId){ CONTRACT_EXPANDED.has(memberId)?CONTRACT_EXPANDED.delete(memberId):CONTRACT_EXPANDED.add(memberId); showTab(CURRENT_TAB); }
+
 function renderContractManagerCard(memberId){
   const m = DATA.team.find(x=>x.id===memberId); if(!m) return '';
   const contract = getContractForMember(memberId);
@@ -3673,38 +3676,50 @@ function renderContractManagerCard(memberId){
     </div>`;
   }
   const hasPending = contract.pendingChanges && contract.pendingChanges.length > 0;
+  const expanded = CONTRACT_EXPANDED.has(memberId);
   return `<div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer;" onclick="toggleContractExpanded(${memberId})">
       <h2 style="margin:0;">Employment Contract</h2>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         ${contract.acknowledged ? `<span style="font-size:12px;color:var(--green-dark,#1e6b2e);font-weight:600;"> Acknowledged ${new Date(contract.acknowledgedAt).toLocaleDateString('en-CA')}</span>` : '<span style="font-size:12px;color:#c0392b;font-weight:600;">Not yet acknowledged</span>'}
-        ${hasPending ? `<span style="font-size:12px;color:#c0392b;font-weight:600;"> ${contract.pendingChanges.length} change${contract.pendingChanges.length>1?'s':''} pending re-acknowledgment</span>` : ''}
-        <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="deleteContract(${contract.id})">Delete</button>
+        ${hasPending ? `<span style="font-size:12px;color:#c0392b;font-weight:600;"> ${contract.pendingChanges.length} change${contract.pendingChanges.length>1?'s':''} pending</span>` : ''}
+        <button class="btn-ghost" style="font-size:13px;min-width:28px;" onclick="event.stopPropagation();toggleContractExpanded(${memberId})">${expanded?'▾':'▸'}</button>
       </div>
     </div>
-    <div class="sub" style="margin-bottom:12px;">Fill in the blanks and check the boxes. Click Save when done. Any fields you change after the employee has acknowledged will be highlighted in red for them to re-acknowledge.</div>
-    ${renderContractDocument(contract, true)}
-    <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
-      <button class="btn" onclick="saveContractFields(${contract.id})">Save Contract</button>
-      <span class="sub" id="contract-saved-${contract.id}" style="display:none;"> Saved.</span>
-    </div>
+    ${expanded ? `
+    <div style="margin-top:12px;">
+      <div class="sub" style="margin-bottom:12px;">Fill in the blanks and check the boxes. Click Save when done. Any fields you change after the employee has acknowledged will be highlighted in red for them to re-acknowledge.</div>
+      ${renderContractDocument(contract, true)}
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn" onclick="saveContractFields(${contract.id})">Save Contract</button>
+        <span class="sub" id="contract-saved-${contract.id}" style="display:none;"> Saved.</span>
+        <button class="btn-ghost" style="color:var(--red);font-size:12px;margin-left:auto;" onclick="deleteContract(${contract.id})">Delete Contract</button>
+      </div>
+    </div>` : ''}
   </div>`;
 }
 function renderContractStaffCard(memberId){
   const contract = getContractForMember(memberId); if(!contract) return '';
   const needsAck = !contract.acknowledged || (contract.pendingChanges && contract.pendingChanges.length > 0);
+  const expanded = CONTRACT_EXPANDED.has(memberId);
   return `<div class="card" ${needsAck?'style="border-left:4px solid #c0392b;"':''}>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer;" onclick="toggleContractExpanded(${memberId})">
       <h2 style="margin:0;">My Employment Contract</h2>
-      ${contract.acknowledged && !needsAck ? `<span style="font-size:12px;color:var(--green-dark,#1e6b2e);font-weight:600;"> Acknowledged ${new Date(contract.acknowledgedAt).toLocaleDateString('en-CA')}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;">
+        ${needsAck ? `<span style="font-size:12px;color:#c0392b;font-weight:600;">${contract.acknowledged?'Changes need acknowledgment':'Needs acknowledgment'}</span>` : `<span style="font-size:12px;color:var(--green-dark,#1e6b2e);font-weight:600;"> Acknowledged</span>`}
+        <button class="btn-ghost" style="font-size:13px;min-width:28px;" onclick="event.stopPropagation();toggleContractExpanded(${memberId})">${expanded?'▾':'▸'}</button>
+      </div>
     </div>
-    ${needsAck ? `<div style="background:#fdf0ef;border:1px solid #f5c6c6;border-radius:8px;padding:12px;margin-bottom:14px;">
-      <div style="font-weight:700;color:#c0392b;margin-bottom:4px;">${contract.acknowledged?'Your contract has been updated — please review and acknowledge the changes highlighted in red.':'Your employment contract is ready. Please read it carefully and acknowledge below.'}</div>
-    </div>` : ''}
-    ${renderContractDocument(contract, false)}
-    ${needsAck ? `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
-      <div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">By clicking Acknowledge, you confirm you have read and understood${contract.acknowledged?' the changes to':''} this employment agreement.</div>
-      <button class="btn" style="background:#c0392b;border-color:#c0392b;" onclick="acknowledgeContract(${contract.id})"> Acknowledge</button>
+    ${expanded ? `
+    <div style="margin-top:12px;">
+      ${needsAck ? `<div style="background:#fdf0ef;border:1px solid #f5c6c6;border-radius:8px;padding:12px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#c0392b;margin-bottom:4px;">${contract.acknowledged?'Your contract has been updated — please review and acknowledge the changes highlighted in red.':'Your employment contract is ready. Please read it carefully and acknowledge below.'}</div>
+      </div>` : ''}
+      ${renderContractDocument(contract, false)}
+      ${needsAck ? `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">By clicking Acknowledge, you confirm you have read and understood${contract.acknowledged?' the changes to':''} this employment agreement.</div>
+        <button class="btn" style="background:#c0392b;border-color:#c0392b;" onclick="acknowledgeContract(${contract.id})"> Acknowledge</button>
+      </div>` : ''}
     </div>` : ''}
   </div>`;
 }
@@ -4348,8 +4363,8 @@ function renderTeam(){
           <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('sin-update-wrap-${me.id}').style.display='block';this.style.display='none';">Update</button>
         </div>
         <div id="sin-update-wrap-${me.id}" style="display:none;margin-top:6px;">
-          <input type="password" autocomplete="off" placeholder="Enter new SIN (e.g. 123 456 789)" style="max-width:260px;" onchange="saveStaffField(${me.id},'sin',this.value);document.getElementById('sin-update-wrap-${me.id}').style.display='none';">
-        </div>` : `<input type="password" autocomplete="off" placeholder="e.g. 123 456 789" style="max-width:260px;" onchange="saveStaffField(${me.id},'sin',this.value)">`}
+          <input type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Enter new SIN (e.g. 123 456 789)" style="max-width:260px;-webkit-text-security:disc;" onchange="saveStaffField(${me.id},'sin',this.value);document.getElementById('sin-update-wrap-${me.id}').style.display='none';">
+        </div>` : `<input type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="e.g. 123 456 789" style="max-width:260px;-webkit-text-security:disc;" onchange="saveStaffField(${me.id},'sin',this.value)">`}
         <div class="sub" style="margin-top:4px;">Your SIN is stored securely and visible only to managers and owners — never displayed back to you.</div>
       </div>
       <div class="sub" style="margin-top:10px;font-style:italic;">Changes save automatically as you fill them in.</div>
@@ -4403,7 +4418,6 @@ function renderTeam(){
       ${APPROVED_ANIMALS_OPEN[me.id] ? approvedAnimalsHtml(me, false) : ''}
     </div>
     ${renderStaffMileageCard(me.name, true)}
-    ${renderContractStaffCard(me.id)}
   ` : `
     <div class="card">
       <div class="notice">Your login isn't linked to a staff profile yet. Ask a manager to link your login to your name to see your personal Employee File here.</div>
@@ -4442,7 +4456,6 @@ function renderTeam(){
 
   return renderTeamSubNav() + `
     ${myFileHtml}
-    ${staffChartHtml}
     <div class="card">
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
@@ -4461,6 +4474,8 @@ function renderTeam(){
         })()}
       </table>
     </div>
+    ${staffChartHtml}
+    ${me ? renderContractStaffCard(me.id) : ''}
   `;
 }
 function sortedTeamMembers(){
