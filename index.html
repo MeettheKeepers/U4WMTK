@@ -921,6 +921,7 @@ function normalizeData(d){
   if(!Array.isArray(d.mileagePayments)) d.mileagePayments = [];
   if(!Array.isArray(d.mileageArchivedPayments)) d.mileageArchivedPayments = [];
   if(!Array.isArray(d.animalScripts)) d.animalScripts = [];
+  d.animalScripts.forEach(s=>{ if(s.archived===undefined) s.archived=false; });
   if(!Array.isArray(d.timeOffRequests)) d.timeOffRequests = [];
   d.timeOffRequests.forEach(r=>{ if(r.notificationDismissed===undefined) r.notificationDismissed=false; });
   if(!Array.isArray(d.timeOffRemovals)) d.timeOffRemovals = [];
@@ -954,6 +955,8 @@ function normalizeData(d){
   if(!d.admin.customTabs) d.admin.customTabs = [];
   if(!d.admin.hiring) d.admin.hiring = { interviews: [], notes: '' };
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
+  if(!d.admin.training) d.admin.training = { notes: '' };
+  if(!d.admin.training.notes) d.admin.training.notes = '';
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(d.admin.grantsEnabled === undefined) d.admin.grantsEnabled = true;
   if(!d.admin.grantsLog) d.admin.grantsLog = [];
@@ -2218,6 +2221,15 @@ function saveManagerAdminHiring(){
   const flag = document.getElementById('admin-hiring-saved');
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
+function saveManagerAdminTraining(){
+  const el = document.getElementById('admin-training-editor');
+  if(!el) return;
+  if(!DATA.admin.training) DATA.admin.training = { notes:'' };
+  DATA.admin.training.notes = el.innerHTML;
+  saveData();
+  const flag = document.getElementById('admin-training-saved');
+  if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
+}
 /* ── Mileage Payments ──────────────────────────────────────────────────── */
 const MILEAGE_PAYMENT_MODES = ['e-Transfer','Cash','Cheque','Direct Deposit'];
 
@@ -2447,8 +2459,8 @@ function renderAdmin(){
   const isMgr = isManagerLogin();
   const loggedIn = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
   const allSubTabs = [
+    {id:'training', label:'Training'},
     ...(hiringEnabled ? [{id:'hiring', label:'Hiring'}] : []),
-    ...(isMgr ? [{id:'training', label:'Training'}] : []),
     ...(isMgr ? [{id:'mileage', label:'Mileage'}] : []),
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
@@ -2460,48 +2472,12 @@ function renderAdmin(){
   const tabsHtml = visibleSubTabs.map(t=>`<button class="detail-tab-btn ${ADMIN_TAB===t.id?'active':''}" onclick="setAdminTab('${t.id}')">${t.label}</button>`).join('');
   let body = '';
   if(ADMIN_TAB === 'training'){
+    const trainingNotes = (DATA.admin && DATA.admin.training && DATA.admin.training.notes) || '';
     body = `<div class="card">
       <h2>Training Plan</h2>
-      <div class="welcome-content" style="font-size:14px;line-height:1.75;">
-        <h3>Item 1 — Assign Logins for the App</h3>
-        <p>Have everyone sign into the app using their name as the login and <strong>wildlife</strong> as the password.</p>
-        <p><strong>iPhone (Safari)</strong></p>
-        <ol>
-          <li>Open <strong>Safari</strong> and go to the website.</li>
-          <li>Tap <strong>Share</strong> (square with upward arrow), scroll down and tap <strong>Add to Home Screen</strong>.</li>
-          <li>Turn on <strong>Open as Web App</strong> if it appears, then tap <strong>Add</strong>.</li>
-        </ol>
-        <p><strong>Android (Chrome)</strong></p>
-        <ol>
-          <li>Open <strong>Chrome</strong> and go to the website.</li>
-          <li>Tap the <strong>three-dot menu</strong>, then tap <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li>
-          <li>Choose <strong>Install</strong> if available, or <strong>Create shortcut</strong> and tap <strong>Add</strong>.</li>
-        </ol>
-        <p>Then walk through each tab one by one: <em>Welcome → Dashboard → Tasks → Animals → Shows → Calendar → Schedule → Supplies &amp; Repairs → Inventory → Incidents → Team → Wildlife Adventures Show</em></p>
-        <p><strong>Dashboard</strong> — Clock in/out for shifts and breaks from your phone. Breaks are assigned times unless on the road.</p>
-        <p><strong>Tasks</strong> — Show examples, explain when to check them off; more detail during animal care training.</p>
-        <p><strong>Animals</strong> — "Take" animals at show start, "return" at shift end. 3-day/week limit per animal (exceptions require supervisor approval). Approved animal list and approved crate categories apply. Diets and Scripts also live here.</p>
-        <p><strong>Shows</strong> — View shows assigned to you: client name, address, phone. Travel time includes 30-min load, drive time, and 20-min buffer. For 2 shows, travel is from show 1 to show 2. Always double-check addresses. If late, contact the client <em>and</em> the office. Check in on arrival, check out when leaving. On return: put away animals, clean habitats, complete "paperwork" (return animals in app, fill in occasion, record animals taken).</p>
-        <p><strong>Calendar</strong> — Upcoming shows and time-off requests. First come, first served, pending approval. Submit request → manager approves/denies → notification on your dashboard next sign-in.</p>
-        <p><strong>Schedule</strong> — Visible ~2 weeks out (ideally 1 month). Report errors to a supervisor ASAP. Schedule changes often.</p>
-        <p><strong>Supplies &amp; Repairs</strong> — Click "Take" for common items. Write repairs you can't fix yourself. Use Supply Request for non-common items.</p>
-        <p><strong>Inventory</strong> — Contents of each vehicle travel bag. If something is low or missing, submit a supply request.</p>
-        <p><strong>Incidents</strong> — Log any injury or minor incident here. For major incidents, contact a supervisor immediately.</p>
-        <p><strong>Team</strong> — Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.</p>
-        <p><strong>Wildlife Adventures</strong> — New episodes of our show appear here.</p>
-        <h3>Item 2 — Handling All the Animals</h3>
-        <p>At the scripts section, stand and stretch. Handle each animal one by one and introduce the ball trick with tarantula and scorpion. Cover proper handling of each animal.</p>
-        <h3>Item 3 — Shows</h3>
-        <p>Demonstrate projecting voice, keeping attention, changing tone, and moving around — no standing still. Have each trainee deliver:</p>
-        <blockquote style="border-left:3px solid var(--accent);padding-left:12px;margin:10px 0;font-style:italic;">"Hello! My name is YOUR NAME the Keeper, I am so excited to be here today and can't wait to get started. Is everybody ready to start the show?"</blockquote>
-        <p>At a future event, we will film a presentation and review it like game film.</p>
-        <h3>Item 4 — Scripts</h3>
-        <p>Go over animal scripts — trainees are expected to memorize them. Additional approved facts are available to extend show time. <strong>Nothing else gets added to a show without supervisor approval.</strong></p>
-        <h3>Item 4 — Quiz</h3>
-        <p>Finish the day with the quiz. Failing the first attempt is okay — 7-day cooldown, then eligible again. <strong>80% required to pass (20 randomized questions).</strong> Until passed, trainees cannot perform in front of a crowd. If unable to pass after 3 attempts (1 month), they may be reprimanded, moved to animal care only, or dismissed.</p>
-        <h3>Conclusion</h3>
-        <p>Open the floor for questions, comments, and concerns. Ensure everyone understands their roles and expectations.</p>
-      </div>
+      ${trainingNotes
+        ? `<div class="welcome-content" style="font-size:14px;line-height:1.75;">${trainingNotes}</div>`
+        : '<div class="empty">No training plan on file yet. Managers can add one in Manager → Admin → Training.</div>'}
     </div>`;
   } else if(ADMIN_TAB === 'mileage'){
     body = renderMileageAdmin();
@@ -3282,8 +3258,10 @@ function renderFoundation(){
 
 /* ---------- SCRIPTS TAB ---------- */
 let SCRIPT_SEARCH = '';
+const SCRIPT_OPEN_IDS = new Set();
+function toggleScriptOpen(id){ if(SCRIPT_OPEN_IDS.has(id)) SCRIPT_OPEN_IDS.delete(id); else SCRIPT_OPEN_IDS.add(id); showTab('animals'); }
 function renderScripts(){
-  const scripts = (DATA.animalScripts||[]);
+  const scripts = (DATA.animalScripts||[]).filter(s=>!s.archived);
   const search = SCRIPT_SEARCH.toLowerCase().trim();
   const filtered = search ? scripts.filter(s=>s.species.toLowerCase().includes(search)) : scripts;
   return `
@@ -3291,17 +3269,21 @@ function renderScripts(){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
         <h2 style="margin:0;">Scripts</h2>
       </div>
-      <input type="text" placeholder="Search species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('animals')" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:4px;">
+      <input type="text" id="script-search-input" placeholder="Search species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('animals');setTimeout(()=>{const e=document.getElementById('script-search-input');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}},0)" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:4px;">
     </div>
     ${filtered.length === 0 ? `<div class="card"><div class="empty">${scripts.length===0?'No scripts have been added yet. Managers can add them under Manager → Animals → Scripts.':'No scripts match your search.'}</div></div>` :
-      filtered.map(s=>`
-        <div class="card">
-          <div style="font-size:18px;font-weight:700;margin-bottom:10px;">${esc(s.species)}</div>
-          ${s.content && s.content.trim()
-            ? `<div style="font-size:15px;line-height:1.7;color:var(--text);">${s.content}</div>`
-            : `<div class="empty" style="font-style:italic;">No script content yet.</div>`
-          }
-        </div>`).join('')
+      filtered.map(s=>{
+        const open = SCRIPT_OPEN_IDS.has(s.id);
+        return `<div class="card" style="padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;" onclick="toggleScriptOpen(${s.id})">
+            <span style="font-size:16px;font-weight:700;">${esc(s.species)}</span>
+            <span style="font-size:14px;color:var(--text-light);">${open?'▾':'▸'}</span>
+          </div>
+          ${open ? `<div style="padding:0 16px 16px;font-size:15px;line-height:1.7;color:var(--text);border-top:1px solid var(--border);">
+            ${s.content && s.content.trim() ? s.content : '<span style="color:var(--text-light);font-style:italic;">No script content yet.</span>'}
+          </div>` : ''}
+        </div>`;
+      }).join('')
     }`;
 }
 
@@ -7809,6 +7791,24 @@ function deleteAnimalScript(id){
   if(EDITING_SCRIPT_ID===id) EDITING_SCRIPT_ID=null;
   saveData(); showTab('manager');
 }
+function archiveAnimalScript(id, archive){
+  const s = (DATA.animalScripts||[]).find(x=>x.id===id); if(!s) return;
+  s.archived = archive;
+  if(EDITING_SCRIPT_ID===id) EDITING_SCRIPT_ID=null;
+  saveData(); showTab('manager');
+}
+function moveAnimalScript(id, dir){
+  const arr = DATA.animalScripts||[];
+  const active = arr.filter(s=>!s.archived);
+  const i = active.findIndex(s=>s.id===id);
+  const j = i + dir;
+  if(i<0 || j<0 || j>=active.length) return;
+  // swap in original array
+  const iGlobal = arr.indexOf(active[i]);
+  const jGlobal = arr.indexOf(active[j]);
+  [arr[iGlobal], arr[jGlobal]] = [arr[jGlobal], arr[iGlobal]];
+  saveData(); showTab('manager');
+}
 function saveAnimalScriptContent(id){
   const s = (DATA.animalScripts||[]).find(x=>x.id===id); if(!s) return;
   const el = document.getElementById('script-editor-'+id); if(!el) return;
@@ -7829,16 +7829,26 @@ function scriptFormat(id, cmd, val){
   }
   saveAnimalScriptContent(id);
 }
+let SHOW_ARCHIVED_SCRIPTS = false;
 function renderMgrAnimalScripts(){
-  const scripts = DATA.animalScripts||[];
-  const rows = scripts.map(s=>{
+  const allScripts = DATA.animalScripts||[];
+  const scripts = allScripts.filter(s=>!s.archived);
+  const archived = allScripts.filter(s=>s.archived);
+  const rows = scripts.map((s,idx)=>{
     const isEditing = EDITING_SCRIPT_ID===s.id;
     return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);cursor:pointer;" onclick="EDITING_SCRIPT_ID=${isEditing?'null':s.id};showTab('manager')">
-        <span style="font-weight:700;font-size:15px;">${esc(s.species)}</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="display:flex;flex-direction:column;gap:1px;">
+            <button class="btn-ghost" style="font-size:11px;padding:0 4px;line-height:1.4;" onclick="event.stopPropagation();moveAnimalScript(${s.id},-1)" ${idx===0?'disabled':''}>▲</button>
+            <button class="btn-ghost" style="font-size:11px;padding:0 4px;line-height:1.4;" onclick="event.stopPropagation();moveAnimalScript(${s.id},1)" ${idx===scripts.length-1?'disabled':''}>▼</button>
+          </div>
+          <span style="font-weight:700;font-size:15px;">${esc(s.species)}</span>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <span style="font-size:12px;color:var(--text-light);">Updated ${s.updatedAt||''}</span>
-          <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="event.stopPropagation();deleteAnimalScript(${s.id})"> Delete</button>
+          <button class="btn-ghost" style="color:var(--orange,#b85c00);font-size:12px;" onclick="event.stopPropagation();if(confirm('Archive this script? It will be hidden from staff but kept here.'))archiveAnimalScript(${s.id},true)">Archive</button>
+          <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="event.stopPropagation();deleteAnimalScript(${s.id})">Delete</button>
           <span style="font-size:14px;color:var(--text-light);">${isEditing?'▾':'▸'}</span>
         </div>
       </div>
@@ -7864,10 +7874,28 @@ function renderMgrAnimalScripts(){
       </div>` : ''}
     </div>`;
   }).join('');
+  const archivedRows = archived.length ? `
+    <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;" onclick="SHOW_ARCHIVED_SCRIPTS=!SHOW_ARCHIVED_SCRIPTS;showTab('manager')">
+        <span style="font-weight:700;font-size:14px;color:var(--text-light);">Archived Scripts (${archived.length})</span>
+        <span style="font-size:12px;color:var(--text-light);">${SHOW_ARCHIVED_SCRIPTS?'▾':'▸'}</span>
+      </div>
+      ${SHOW_ARCHIVED_SCRIPTS ? archived.map(s=>`
+        <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden;opacity:0.75;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);">
+            <span style="font-weight:600;font-size:14px;color:var(--text-light);">${esc(s.species)}</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn-ghost" style="font-size:12px;" onclick="archiveAnimalScript(${s.id},false)">Restore</button>
+              <button class="btn-ghost" style="color:var(--red);font-size:12px;" onclick="deleteAnimalScript(${s.id})">Delete</button>
+            </div>
+          </div>
+        </div>`).join('') : ''}
+    </div>` : '';
   return `<div class="card">
     <h2>Scripts</h2>
-    <div class="sub" style="margin-bottom:14px;">One script per species/group. Click to expand and edit. Use the toolbar for bold, underline, italic and font size.</div>
+    <div class="sub" style="margin-bottom:14px;">One script per species/group. Click to expand and edit. Use ▲▼ to reorder. Archive keeps the script hidden from staff but saved here.</div>
     ${rows || '<div class="empty">No scripts yet. Add one below.</div>'}
+    ${archivedRows}
     <div class="add-row" style="margin-top:14px;">
       <input type="text" id="new-script-species" placeholder="Species/group name (e.g. Tortoises, Snakes…)">
       <button class="btn-small" onclick="addAnimalScript()">+ Add Script</button>
@@ -11476,10 +11504,21 @@ function renderManager(){
     const tabAccess = (DATA.admin && DATA.admin.tabAccess) || {};
     const hiringOn = DATA.admin.hiringEnabled !== false;
     const allSubTabs = [
+      {id:'training', label:'Training'},
       ...(hiringOn ? [{id:'hiring', label:'Hiring'}] : []),
       ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title, ctId:ct.id}))
     ];
     body = `
+      <div class="card">
+        <h2>Training Plan</h2>
+        <div class="sub">Edit the training content staff see in the Admin tab.</div>
+        <div class="rich-wrap">
+          ${richToolbar('admin-training-editor')}
+          <div class="welcome-editor" id="admin-training-editor" contenteditable="true">${(DATA.admin && DATA.admin.training && DATA.admin.training.notes)||''}</div>
+        </div>
+        <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminTraining()">Save Training</button>
+        <span class="sub" id="admin-training-saved" style="margin-left:10px;display:none;">Saved.</span>
+      </div>
       <div class="card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
           <h2 style="margin:0;">Hiring</h2>
