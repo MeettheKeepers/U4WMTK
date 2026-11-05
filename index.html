@@ -2992,18 +2992,20 @@ function copyClientEmail(email){
     if(btn){ const orig=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=orig, 1500); }
   }).catch(()=>{ prompt('Copy this email:', email); });
 }
-function copyAllClientEmails(){
+function copyAllClientEmails(occasion){
   const clientMap = {};
   (DATA.shows||[]).forEach(s => {
+    if(occasion && (s.occasion||'') !== occasion) return;
     const name = (s.clientName||'').trim();
     const email = (s.clientEmail||'').trim();
     if(name && email && !clientMap[name]) clientMap[name] = email;
   });
   const emails = Object.values(clientMap).join(', ');
+  if(!emails){ alert('No emails found' + (occasion ? ' for "' + occasion + '"' : '') + '.'); return; }
   navigator.clipboard.writeText(emails).then(()=>{
     const btn = event && event.target;
-    if(btn){ const orig=btn.textContent; btn.textContent='Copied all!'; setTimeout(()=>{ btn.textContent=orig; }, 1500); }
-  }).catch(()=>{ prompt('Copy all emails:', emails); });
+    if(btn){ const orig=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>{ btn.textContent=orig; }, 1500); }
+  }).catch(()=>{ prompt('Copy emails:', emails); });
 }
 function hasNonProfitAccess(){
   const myName = getWelcomeStaffName();
@@ -10983,16 +10985,22 @@ function renderManager(){
         const email = (s.clientEmail||'').trim();
         const phone = (s.clientPhone||'').trim();
         const date = s.date||'';
-        if(!clientMap[name]){ clientMap[name] = { name, email, phone, lastDate: date, count: 1 }; }
+        const occ = (s.occasion||'').trim();
+        if(!clientMap[name]){ clientMap[name] = { name, email, phone, lastDate: date, count: 1, occasions: new Set(occ ? [occ] : []) }; }
         else {
           if(email && !clientMap[name].email) clientMap[name].email = email;
           if(phone && !clientMap[name].phone) clientMap[name].phone = phone;
           if(date > clientMap[name].lastDate) clientMap[name].lastDate = date;
+          if(occ) clientMap[name].occasions.add(occ);
           clientMap[name].count++;
         }
       });
       const clients = Object.values(clientMap).sort((a,b) => a.name.localeCompare(b.name));
-      const clientRows = clients.map(c => `
+      // All distinct occasions across all clients (excluding Unknown/blank)
+      const allOccasions = [...new Set(clients.flatMap(c=>[...c.occasions].filter(o=>o&&o!=='Unknown')))].sort();
+      const clientRows = clients.map(c => {
+        const occs = [...c.occasions].filter(o=>o&&o!=='Unknown');
+        return `
         <tr style="border-bottom:1px solid var(--border);${c.count > 1 ? 'background:#fffbea;' : ''}">
           <td style="padding:10px 12px;font-weight:600;">
             ${esc(c.name)}
@@ -11000,15 +11008,24 @@ function renderManager(){
           </td>
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.email)||'<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${esc(c.phone)||'<span style="color:#bbb;">—</span>'}</td>
+          <td style="padding:10px 12px;color:var(--text-light);">${occs.length ? occs.map(o=>`<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);font-size:11px;padding:2px 7px;border-radius:10px;margin:2px 2px 2px 0;">${esc(o)}</span>`).join('') : '<span style="color:#bbb;">—</span>'}</td>
           <td style="padding:10px 12px;color:var(--text-light);">${c.lastDate ? fmtShortDate(c.lastDate) : '—'}</td>
           <td style="padding:10px 12px;">${c.email ? `<button class="btn-small" onclick="copyClientEmail('${esc(c.email)}')">Copy email</button>` : ''}</td>
           <td style="padding:10px 12px;"><button class="btn-ghost" style="font-size:12px;padding:3px 10px;white-space:nowrap;" onclick="renameClient('${esc(c.name).replace(/'/g,"\\'")}')">Rename / Merge</button></td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
       const allEmails = clients.filter(c=>c.email).map(c=>c.email);
       analyticsBody = `
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
           <span style="color:var(--text-light);font-size:13px;">${clients.length} total clients · sorted A–Z</span>
-          ${allEmails.length ? `<button class="btn" onclick="copyAllClientEmails()">Copy all emails (${allEmails.length})</button>` : ''}
+          ${allEmails.length ? `
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <select id="copy-occasion-filter" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--bg);">
+              <option value="">All occasions</option>
+              ${allOccasions.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}
+            </select>
+            <button class="btn" onclick="copyAllClientEmails(document.getElementById('copy-occasion-filter').value)">Copy emails</button>
+          </div>` : ''}
         </div>
         ${clients.length ? `
         <div style="overflow-x:auto;">
@@ -11017,6 +11034,7 @@ function renderManager(){
               <th style="padding:8px 12px 8px 0;font-size:13px;color:var(--text-light);">Name</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Email</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Phone</th>
+              <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Occasions</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);">Last booked</th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
               <th style="padding:8px 12px;font-size:13px;color:var(--text-light);"></th>
