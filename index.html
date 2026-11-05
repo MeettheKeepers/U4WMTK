@@ -3287,17 +3287,33 @@ function renderScripts(){
             if(!assigned.length){
               tabContent = '<span style="color:var(--text-light);font-style:italic;">No animals assigned to this script yet.</span>';
             } else {
-              tabContent = assigned.map(a=>`
-                <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
-                  <div style="font-weight:700;font-size:15px;margin-bottom:5px;">${esc(a.name)}</div>
-                  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
-                    ${a.species ? `<li><strong>Species:</strong> ${esc(a.species)}</li>` : ''}
-                    ${a.scientificName ? `<li><strong>Latin name:</strong> <em>${esc(a.scientificName)}</em></li>` : ''}
-                    ${a.birthday ? `<li><strong>Age:</strong> ${esc(a.birthday)}</li>` : ''}
-                    ${a.range ? `<li><strong>Range:</strong> ${esc(a.range)}</li>` : ''}
-                    ${a.rescueStory ? `<li><strong>Backstory:</strong> ${esc(a.rescueStory)}</li>` : ''}
+              // Group by species
+              const speciesMap = {};
+              assigned.forEach(a=>{
+                const key = (a.species||'Unknown').trim();
+                if(!speciesMap[key]) speciesMap[key] = [];
+                speciesMap[key].push(a);
+              });
+              tabContent = Object.entries(speciesMap).map(([species, animals])=>{
+                const ref = animals[0];
+                const sharedInfo = [
+                  ref.scientificName ? `<li><strong>Latin name:</strong> <em>${esc(ref.scientificName)}</em></li>` : '',
+                  ref.range ? `<li><strong>Range:</strong> ${esc(ref.range)}</li>` : '',
+                ].filter(Boolean).join('');
+                const individualLines = animals.map(a=>{
+                  const parts = [a.name, a.birthday, a.rescueStory].filter(Boolean).map((v,i)=>i===0?`<strong>${esc(v)}</strong>`:esc(v));
+                  return `<li>${parts.join(' — ')}</li>`;
+                }).join('');
+                return `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+                  <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${esc(species)}</div>
+                  <ul style="margin:0 0 6px;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
+                    ${sharedInfo}
                   </ul>
-                </div>`).join('');
+                  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
+                    ${individualLines}
+                  </ul>
+                </div>`;
+              }).join('');
             }
           } else {
             tabContent = s.facts && s.facts.trim() ? s.facts : '<span style="color:var(--text-light);font-style:italic;">No general facts added yet.</span>';
@@ -3310,7 +3326,7 @@ function renderScripts(){
           </div>
           ${open ? `
           <div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
-            ${['script','info','facts'].map(t=>`<button onclick="event.stopPropagation();setScriptTab(${s.id},'${t}')" style="flex:1;padding:9px 4px;border:none;border-right:1px solid var(--border);background:${tab===t?'var(--surface)':'var(--bg)'};font-size:13px;font-weight:${tab===t?'700':'400'};color:${tab===t?'var(--green-dark)':'var(--text-light)'};cursor:pointer;text-transform:capitalize;">${t==='script'?'Script':t==='info'?'Info':'Facts'}</button>`).join('')}
+            ${['script','info','facts'].map(t=>`<button onclick="event.stopPropagation();setScriptTab(${s.id},'${t}')" style="flex:1;padding:9px 4px;border:none;border-right:1px solid var(--border);background:${tab===t?'var(--surface)':'var(--bg)'};font-size:13px;font-weight:${tab===t?'700':'400'};color:${tab===t?'var(--green-dark)':'var(--text-light)'};cursor:pointer;">${t==='script'?'Script':t==='info'?'Animal Information':'General Facts'}</button>`).join('')}
           </div>
           <div style="padding:14px 16px;font-size:15px;line-height:1.7;color:var(--text);">
             ${tabContent}
