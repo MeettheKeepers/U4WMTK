@@ -4912,9 +4912,113 @@ function completeDeadlineTask(id){
   saveData();
   showTab(CURRENT_TAB);
 }
+/* ── WEATHER ───────────────────────────────────────────────────────────── */
+// Dunvegan, Ontario — Glengarry County (45.37°N, 74.63°W)
+const WEATHER_LAT = 45.37, WEATHER_LON = -74.63;
+const TEMP_MIN = 15, TEMP_MAX = 30; // protocol thresholds
+let WEATHER = null; // { current, hourly: [{hour, temp}], high, low, fetchedAt }
+let WEATHER_FETCHING = false;
+
+function fetchWeather(){
+  if(WEATHER_FETCHING) return;
+  if(WEATHER && (Date.now()-WEATHER.fetchedAt) < 10*60*1000) return; // cache 10 min
+  WEATHER_FETCHING = true;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=America%2FToronto`;
+  fetch(url)
+    .then(r=>r.json())
+    .then(d=>{
+      const hourly = (d.hourly.time||[]).map((t,i)=>({
+        hour: parseInt(t.slice(11,13),10),
+        temp: d.hourly.temperature_2m[i]
+      }));
+      WEATHER = {
+        current: Math.round(d.current.temperature_2m),
+        high: Math.round(d.daily.temperature_2m_max[0]),
+        low: Math.round(d.daily.temperature_2m_min[0]),
+        hourly,
+        fetchedAt: Date.now()
+      };
+      WEATHER_FETCHING = false;
+      if(CURRENT_TAB==='dashboard') showTab('dashboard');
+    })
+    .catch(()=>{ WEATHER_FETCHING=false; });
+}
+
+function weatherHourTemp(timeStr){
+  // timeStr like "14:00" or "2:30 PM"
+  if(!WEATHER || !timeStr) return null;
+  let h = null;
+  const m24 = timeStr.match(/^(\d{1,2}):/);
+  const m12 = timeStr.match(/(\d{1,2})(?::\d{2})?\s*(AM|PM)/i);
+  if(m24) h = parseInt(m24[1],10);
+  else if(m12){ h=parseInt(m12[1],10)%12; if(/PM/i.test(m12[2])) h+=12; }
+  if(h===null) return null;
+  const entry = WEATHER.hourly.find(e=>e.hour===h);
+  return entry ? Math.round(entry.temp) : null;
+}
+
+function weatherChipHtml(){
+  if(!WEATHER) return `<span style="font-size:13px;color:var(--text-light);">Loading weather…</span>`;
+  const c = WEATHER.current, hi = WEATHER.high, lo = WEATHER.low;
+  const color = c < TEMP_MIN ? '#1a3a7a' : c > TEMP_MAX ? '#a33' : 'var(--text-light)';
+  return `<span style="font-size:14px;font-weight:600;color:${color};">${c}°C</span><span style="font-size:12px;color:var(--gray);margin-left:6px;">↑${hi}° ↓${lo}°</span>`;
+}
+
+function weatherProtocolCard(){
+  if(!WEATHER) return '';
+  const { current, high, low, hourly } = WEATHER;
+  const todayStr2 = todayStr();
+  const todayShows = (DATA.shows||[]).filter(s=>s.date===todayStr2 && showStatus(s)!=='completed');
+
+  const warnings = [];
+
+  // Overall day thresholds
+  if(low < TEMP_MIN) warnings.push({ type:'cold', msg:`Today's low is <strong>${low}°C</strong> — below the 15°C cold threshold.` });
+  if(high > TEMP_MAX) warnings.push({ type:'heat', msg:`Today's high is <strong>${high}°C</strong> — above the 30°C heat threshold.` });
+  if(current < TEMP_MIN) warnings.push({ type:'cold', msg:`Current temperature is <strong>${current}°C</strong>.` });
+  if(current > TEMP_MAX) warnings.push({ type:'heat', msg:`Current temperature is <strong>${current}°C</strong>.` });
+
+  // Per-show time warnings
+  todayShows.forEach(s=>{
+    const t = weatherHourTemp(s.startTime);
+    if(t===null) return;
+    if(t < TEMP_MIN || t > TEMP_MAX){
+      const type = t < TEMP_MIN ? 'cold' : 'heat';
+      const label = s.client || s.location || 'Show';
+      warnings.push({ type, msg:`<strong>${esc(label)}</strong>${s.startTime?' at '+s.startTime:''} — forecast <strong>${t}°C</strong>.` });
+    }
+  });
+
+  if(!warnings.length) return '';
+
+  const hasCold = warnings.some(w=>w.type==='cold');
+  const hasHeat = warnings.some(w=>w.type==='heat');
+  const borderColor = hasCold && hasHeat ? '#7c3fad' : hasCold ? '#1a3a7a' : '#a33';
+  const icon = hasCold && hasHeat ? '' : hasCold ? '❄️' : '🌡️';
+
+  const coldProtocol = hasCold ? `<div style="margin-top:10px;padding:10px 12px;background:#eef3fb;border-radius:8px;font-size:13px;line-height:1.65;">
+    <strong style="color:#1a3a7a;">❄️ Cold Weather Protocol (below 15°C)</strong><br>
+    Pre-condition vehicles to 15–25°C before loading animals. Keep all doors and windows closed — do not leave them open during transfers. Cover animals with blankets or towels to prevent cold drafts. Monitor temperatures at multiple points inside the vehicle throughout the journey.
+  </div>` : '';
+
+  const heatProtocol = hasHeat ? `<div style="margin-top:10px;padding:10px 12px;background:#fef5f0;border-radius:8px;font-size:13px;line-height:1.65;">
+    <strong style="color:#a33;">🌡️ Heat Weather Protocol (above 30°C)</strong><br>
+    Pre-cool vehicles to 15–25°C before loading animals. Keep all doors closed to retain cool air. Never leave animals unattended in a vehicle. Monitor temperatures at multiple points inside the vehicle throughout the journey.
+  </div>` : '';
+
+  return `<div class="card" style="border-left:5px solid ${borderColor};">
+    <h2 style="margin-bottom:8px;">${icon} Temperature Alert — Animal Transport Protocol Required</h2>
+    <ul style="margin:0 0 4px 18px;font-size:14px;line-height:1.75;">
+      ${[...new Map(warnings.map(w=>[w.msg,w])).values()].map(w=>`<li>${w.msg}</li>`).join('')}
+    </ul>
+    ${coldProtocol}${heatProtocol}
+  </div>`;
+}
+
 function renderDashboard(){
   const validGroupIds = new Set((DATA.taskGroups||[]).map(g=>g.id));
   const todaysTasks = DATA.tasks.filter(t=>!t.archived && isTaskActiveToday(t) && validGroupIds.has(t.group) && t.freq !== 'Deadline');
+  fetchWeather(); // kick off async fetch; re-renders dashboard when data arrives
   const total = todaysTasks.length;
   const done = todaysTasks.filter(t=>t.done).length;
   const pct = total ? Math.round(done/total*100) : 0;
@@ -4969,9 +5073,11 @@ function renderDashboard(){
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! </span>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <span style="font-size:15px;color:var(--text-light);font-weight:500;">${_dateStr}</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--bg-card,#fff);border:1px solid var(--border);border-radius:20px;">${weatherChipHtml()}</span>
         ${myName ? `<button class="btn" style="font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
       </div>
     </div>
+    ${weatherProtocolCard()}
     ${myOutstandingMileage.length ? `
     <div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
       <h2 style="margin-bottom:10px;"> Mileage Payment${myOutstandingMileage.length>1?'s':''} Outstanding</h2>
@@ -8520,9 +8626,11 @@ function renderAnimalManagerCard(a){
             ? `<button class="pill-btn" style="background:#fde2e2;color:#a33;" onclick="toggleAnimalOutreach(${a.id})">Remove from Outreach</button>`
             : `<button class="pill-btn" style="background:#d7e8d0;color:#2a5a1a;" onclick="toggleAnimalOutreach(${a.id})">Return to Outreach</button>`
           }
+          ${expanded ? `
           <button class="pill-btn" style="background:#f5e6e6;color:#7a1a1a;" onclick="archiveAnimal(${a.id},'deceased')"> Deceased</button>
           <button class="pill-btn" style="background:#e6f0fa;color:#1a3a7a;" onclick="archiveAnimal(${a.id},'transferred')"> Transferred</button>
           <button class="pill-btn" style="background:#e6f5eb;color:#1a5a2a;" onclick="archiveAnimal(${a.id},'adopted')"> Adopted Out</button>
+          ` : ''}
           <button class="btn-ghost" style="font-size:18px;padding:2px 10px;line-height:1;" onclick="toggleAnimalExpand(${a.id})" title="${expanded?'Collapse':'Expand'}">${expanded ? '▾' : '▸'}</button>
         </div>
       </div>
