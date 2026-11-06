@@ -958,6 +958,7 @@ function normalizeData(d){
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
   if(!d.admin.training) d.admin.training = { notes: '' };
   if(!d.admin.training.notes) d.admin.training.notes = '';
+  if(!d.admin.training.roles) d.admin.training.roles = {};
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
@@ -2230,14 +2231,30 @@ function saveManagerAdminHiring(){
   const flag = document.getElementById('admin-hiring-saved');
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
+let TRAINING_ROLE_TAB = 'general'; // 'general' | specialty name
+function setTrainingRoleTab(t){ TRAINING_ROLE_TAB=t; showTab('manager'); }
+function setAdminTrainingRoleTab(t){ TRAINING_ROLE_TAB=t; showTab('admin'); }
 function saveManagerAdminTraining(){
-  const el = document.getElementById('admin-training-editor');
-  if(!el) return;
-  if(!DATA.admin.training) DATA.admin.training = { notes:'' };
-  DATA.admin.training.notes = el.innerHTML;
+  if(!DATA.admin.training) DATA.admin.training = { notes:'', roles:{} };
+  if(!DATA.admin.training.roles) DATA.admin.training.roles = {};
+  if(TRAINING_ROLE_TAB === 'general'){
+    const el = document.getElementById('admin-training-editor-general');
+    if(el) DATA.admin.training.notes = el.innerHTML;
+  } else {
+    const el = document.getElementById('admin-training-editor-role');
+    if(el) DATA.admin.training.roles[TRAINING_ROLE_TAB] = el.innerHTML;
+  }
   saveData();
   const flag = document.getElementById('admin-training-saved');
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
+}
+function _trainingVisibleRoles(){
+  // Which specialty tabs can the current viewer see?
+  const level = getLoginLevel();
+  if(level === 'owner') return STAFF_SPECIALTIES; // all
+  if(level === 'manager') return STAFF_SPECIALTIES.filter(r=>r!=='Manager');
+  if(level === 'supervisor') return STAFF_SPECIALTIES.filter(r=>r!=='Manager'&&r!=='Supervisor');
+  return []; // all other roles: no specialty tabs
 }
 /* ── Mileage Payments ──────────────────────────────────────────────────── */
 const MILEAGE_PAYMENT_MODES = ['e-Transfer','Cash','Cheque','Direct Deposit'];
@@ -2520,10 +2537,23 @@ function renderAdmin(){
   const tabsHtml = visibleSubTabs.map(t=>`<button class="detail-tab-btn ${ADMIN_TAB===t.id?'active':''}" onclick="setAdminTab('${t.id}')">${t.label}</button>`).join('');
   let body = '';
   if(ADMIN_TAB === 'training'){
-    const trainingNotes = (DATA.admin && DATA.admin.training && DATA.admin.training.notes) || '';
+    const tr = (DATA.admin && DATA.admin.training) || {};
+    const visibleRoles = _trainingVisibleRoles();
+    const allTabs = [
+      { id:'general', label:'General' },
+      ...visibleRoles.map(r=>({ id:r, label:r }))
+    ];
+    const activeTab = allTabs.find(t=>t.id===TRAINING_ROLE_TAB) ? TRAINING_ROLE_TAB : 'general';
+    const tabNav = allTabs.length > 1 ? `<div style="display:flex;gap:0;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:16px;">
+      ${allTabs.map(t=>`<button onclick="setAdminTrainingRoleTab('${t.id.replace(/'/g,"\\'")}')" style="padding:7px 14px;background:none;border:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${activeTab===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${activeTab===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${esc(t.label)}</button>`).join('')}
+    </div>` : '';
+    const content = activeTab === 'general'
+      ? (tr.notes || DEFAULT_TRAINING_HTML)
+      : ((tr.roles && tr.roles[activeTab]) || '<div class="empty" style="padding:20px 0;">No training content added for this role yet.</div>');
     body = `<div class="card">
       <h2>Training Plan</h2>
-      <div class="welcome-content" style="font-size:14px;line-height:1.75;">${trainingNotes || DEFAULT_TRAINING_HTML}</div>
+      ${tabNav}
+      <div class="welcome-content" style="font-size:14px;line-height:1.75;">${content}</div>
     </div>`;
   } else if(ADMIN_TAB === 'mileage'){
     body = renderMileageAdmin();
@@ -12307,11 +12337,25 @@ function renderManager(){
     body = `
       <div class="card">
         <h2>Training Plan</h2>
-        <div class="sub">Edit the training content staff see in the Admin tab.</div>
-        <div class="rich-wrap">
-          ${richToolbar('admin-training-editor')}
-          <div class="welcome-editor" id="admin-training-editor" contenteditable="true">${(DATA.admin && DATA.admin.training && DATA.admin.training.notes)||DEFAULT_TRAINING_HTML}</div>
-        </div>
+        <div class="sub" style="margin-bottom:12px;">Edit training content per role. Owners see all tabs. Managers see all except Manager. Supervisors see all except Manager &amp; Supervisor. All other roles only see General.</div>
+        ${(()=>{
+          const tr = (DATA.admin && DATA.admin.training) || {};
+          const roles = tr.roles || {};
+          const allTabs = [
+            { id:'general', label:'General (All Staff)' },
+            ...STAFF_SPECIALTIES.map(r=>({ id:r, label:r }))
+          ];
+          const active = allTabs.find(t=>t.id===TRAINING_ROLE_TAB) ? TRAINING_ROLE_TAB : 'general';
+          const content = active === 'general' ? (tr.notes || DEFAULT_TRAINING_HTML) : (roles[active] || '');
+          const editorId = active === 'general' ? 'admin-training-editor-general' : 'admin-training-editor-role';
+          return `<div style="display:flex;gap:0;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:14px;">
+            ${allTabs.map(t=>`<button onclick="setTrainingRoleTab('${t.id.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="padding:6px 12px;background:none;border:none;cursor:pointer;font-size:12px;font-weight:600;border-bottom:${active===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${active===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${esc(t.label)}</button>`).join('')}
+          </div>
+          <div class="rich-wrap">
+            ${richToolbar(editorId)}
+            <div class="welcome-editor" id="${editorId}" contenteditable="true">${content}</div>
+          </div>`;
+        })()}
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminTraining()">Save Training</button>
         <span class="sub" id="admin-training-saved" style="margin-left:10px;display:none;">Saved.</span>
       </div>
