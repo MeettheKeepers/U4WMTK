@@ -6827,10 +6827,10 @@ function showConflictInfo(s){
 // Priority: Purple (missing info / conflict / lang) → Orange (no character) → Yellow (missing occasion) → Red (unpaid) → Green (paid, not all done) → none (all done)
 function showDateGroupStatus(instances){
   const shows = instances.map(i=>i.s);
-  const isPastGroup = instances.every(i=>i.date < todayStr());
+  const isPastGroup = instances.every(i=>i.date < todayStr() || showStatus(i.s) === 'cancelled');
   if(shows.some(s=> {
-    const past = s.date < todayStr();
-    return (!s.staffNames.length||!s.showTypes.length||(!past&&!s.vehicle)) || (!past&&showConflictInfo(s).hasConflict) || isLangMismatch(s);
+    const past = s.date < todayStr() || showStatus(s) === 'cancelled';
+    return (!s.staffNames.length||!s.showTypes.length||(!past&&!s.vehicle)) || (!past&&showConflictInfo(s).hasConflict) || (!past&&isLangMismatch(s));
   }))
     return {border:'#7c3fad', bg:'#f7f0ff', label:' Missing info / conflict', text:'#5a1a8a'};
   if(shows.some(s=>(s.showTypes||[]).includes('Character Walkaround') && !(s.characters||[]).length))
@@ -7040,7 +7040,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
   `;
   const isMultiDay = s.endDate && s.endDate > s.date;
   const dayOverrideActive = viewDate && s.dayOverrides && s.dayOverrides[viewDate] && Object.keys(s.dayOverrides[viewDate]).length > 0;
-  const isShowPast = s.date < todayStr();
+  const isShowPast = s.date < todayStr() || showStatus(s) === 'cancelled';
   const missingInfo = !s.staffNames.length || !s.showTypes.length || (!isShowPast && !s.vehicle);
   const repeatCount = clientShowCount(s);
   const isRepeat = repeatCount > 1;
@@ -9673,7 +9673,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
   const bufferLabel = plan.buffer % 60 === 0 ? `${plan.buffer/60} hour${plan.buffer===60?'':'s'}` : `${plan.buffer} min`;
   const conflictInfo = showConflictInfo(s);
   const st = showStatus(s);
-  const isPast = s.date < todayStr();
+  const isPast = s.date < todayStr() || showStatus(s) === 'cancelled';
   // Detect previous same-day show for any assigned staff member
   const sameDayPrev = (() => {
     if(!s.staffNames.length) return null;
