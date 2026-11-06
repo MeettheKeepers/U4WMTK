@@ -958,6 +958,7 @@ function normalizeData(d){
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
   if(!d.admin.training) d.admin.training = { notes: '' };
   if(!d.admin.training.notes) d.admin.training.notes = '';
+  if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
   d.contracts.forEach(c=>{
@@ -4536,7 +4537,10 @@ function renderTeam(){
     }).join('');
     return `
     <div class="card">
-      <h2>Staff Show Stats</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <h2 style="margin:0;">Staff Show Stats</h2>
+        <button class="btn-ghost" onclick="downloadHoursReport()">⬇ Download Hours Report</button>
+      </div>
       <div class="sub" style="margin-bottom:12px;">Completed and upcoming shows per team member.</div>
       <table style="width:auto;">
         <tr>
@@ -4912,6 +4916,150 @@ function completeDeadlineTask(id){
   saveData();
   showTab(CURRENT_TAB);
 }
+/* ── PAYROLL HOURS REPORT (downloadable Word doc) ───────────────────────── */
+function downloadHoursReport(){
+  const periodStart = currentPeriodStart();
+  const periodDays  = getPeriodDays(periodStart);
+  const periodEnd   = addDays(periodStart, periodDays - 1);
+  const generated   = new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
+  const members     = sortedTeamMembers();
+
+  const rows = members.map(m=>{
+    const hrs  = parseFloat(currentPayPeriodHoursFor(m.name)) || 0;
+    const rate = parseFloat(m.hourlyRate) || 0;
+    const gross = rate ? (hrs * rate).toFixed(2) : '—';
+    return { name: m.name, role: m.role||'Keeper', hrs, rate, gross };
+  });
+
+  const totalHrs   = rows.reduce((s,r)=>s+r.hrs,0).toFixed(2);
+  const totalGross = rows.every(r=>r.gross!=='—')
+    ? '$'+rows.reduce((s,r)=>s+parseFloat(r.gross),0).toFixed(2)
+    : '—';
+
+  const rowsHtml = rows.map((r,i)=>`
+    <tr style="background:${i%2===0?'#ffffff':'#f7f7f7'};">
+      <td style="padding:8px 12px;border:1px solid #ddd;font-weight:600;">${r.name}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;color:#555;">${r.role}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;">${r.hrs}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;">${r.rate ? '$'+r.rate.toFixed(2)+'/hr' : '—'}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;font-weight:600;">${r.gross!=='—'?'$'+r.gross:r.gross}</td>
+    </tr>`).join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Arial, sans-serif; margin: 40px; color: #222; }
+  h1   { font-size: 20px; margin-bottom: 2px; color: #1a3a1a; }
+  h2   { font-size: 14px; font-weight: normal; color: #555; margin: 0 0 20px; }
+  .meta{ font-size: 12px; color: #777; margin-bottom: 24px; }
+  table{ border-collapse: collapse; width: 100%; font-size: 13px; }
+  th   { padding: 10px 12px; background: #2d4a2d; color: #fff; text-align: left; border: 1px solid #2d4a2d; }
+  th.r { text-align: right; }
+  .totrow td { padding: 10px 12px; border: 1px solid #ddd; font-weight: 700; background: #eef3ee; }
+  .totrow td.r { text-align: right; }
+  .footer { margin-top: 32px; font-size: 11px; color: #aaa; }
+</style>
+</head>
+<body>
+  <h1>Meet the Keepers — Payroll Hours Summary</h1>
+  <h2>Pay Period: ${fmtShortDate(periodStart)} – ${fmtShortDate(periodEnd)}</h2>
+  <div class="meta">Generated ${generated} &nbsp;·&nbsp; For accountant use</div>
+  <table>
+    <tr>
+      <th>Full Name</th>
+      <th>Role</th>
+      <th class="r">Hours</th>
+      <th class="r">Hourly Rate</th>
+      <th class="r">Gross Pay</th>
+    </tr>
+    ${rowsHtml}
+    <tr class="totrow">
+      <td colspan="2"><strong>TOTAL</strong></td>
+      <td class="r"><strong>${totalHrs}</strong></td>
+      <td class="r">—</td>
+      <td class="r"><strong>${totalGross}</strong></td>
+    </tr>
+  </table>
+  <div class="footer">Meet the Keepers &amp; Unite for Wildlife &nbsp;·&nbsp; Dunvegan, Ontario &nbsp;·&nbsp; Confidential — for payroll purposes only</div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-word;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `MTK-Hours-${periodStart}-to-${periodEnd}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+/* ── ACCOUNTANT HOURS REMINDER (managers only) ─────────────────────────── */
+function nextUpcomingPayday(){
+  const s = DATA.scheduleSettings;
+  if(!s || !s.showPayDays || !s.firstPayDay) return null;
+  const freqDays = (s.payFrequencyWeeks||2)*7;
+  const today = todayStr();
+  const diff = daysBetween(s.firstPayDay, today);
+  if(diff < 0) return s.firstPayDay;
+  const periodsElapsed = Math.ceil(diff / freqDays);
+  return addDays(s.firstPayDay, periodsElapsed * freqDays);
+}
+function mondayBeforeDate(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = d.getDay(); // 0=Sun,1=Mon…6=Sat
+  const daysBack = dow === 0 ? 6 : dow === 1 ? 7 : dow - 1;
+  d.setDate(d.getDate() - daysBack);
+  return d.toISOString().slice(0,10);
+}
+function dismissAccountantReminder(){
+  const payday = nextUpcomingPayday(); if(!payday) return;
+  DATA.accountantReminderDismissed = payday;
+  saveData(); showTab('dashboard');
+}
+function accountantReminderCard(){
+  if(!isManagerLogin()) return '';
+  const payday = nextUpcomingPayday(); if(!payday) return '';
+  const monday = mondayBeforeDate(payday);
+  const today = todayStr();
+  if(today < monday || today >= payday) return ''; // only show Mon–Thu before payday
+  if(DATA.accountantReminderDismissed === payday) return ''; // manager marked done
+  const payLabel = fmtShortDate(payday);
+  return `<div class="card" style="border-left:5px solid #e67e22;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0 0 4px;">📋 Send Hours to Accountant</h2>
+        <div style="font-size:14px;color:var(--text-light);">Payday is <strong>${payLabel}</strong> — compile and send the team's hours to the accountant before then.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-ghost" style="white-space:nowrap;" onclick="downloadHoursReport()">⬇ Download Hours Report</button>
+        <button class="btn" style="background:#e67e22;border-color:#e67e22;white-space:nowrap;" onclick="dismissAccountantReminder()">Mark as Done</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── PAYDAY REMINDER ───────────────────────────────────────────────────── */
+let PAYDAY_REMINDER_DISMISSED = null; // date string on which it was dismissed
+function dismissPaydayReminder(){ PAYDAY_REMINDER_DISMISSED = todayStr(); showTab('dashboard'); }
+function paydayReminderCard(){
+  // Auto-clear dismissal from a previous day
+  if(PAYDAY_REMINDER_DISMISSED && PAYDAY_REMINDER_DISMISSED !== todayStr()) PAYDAY_REMINDER_DISMISSED = null;
+  if(PAYDAY_REMINDER_DISMISSED) return '';
+  const tomorrow = addDays(todayStr(), 1);
+  if(!isPayDay(tomorrow)) return '';
+  return `<div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0 0 4px;"> Payday Tomorrow</h2>
+        <div style="font-size:14px;color:var(--text-light);">Pay day is <strong>${fmtShortDate(tomorrow)}</strong>. Check your bank account tomorrow!</div>
+      </div>
+      <button class="btn-ghost" style="font-size:12px;white-space:nowrap;" onclick="dismissPaydayReminder()">Dismiss</button>
+    </div>
+  </div>`;
+}
+
 /* ── WEATHER ───────────────────────────────────────────────────────────── */
 // Dunvegan, Ontario — Glengarry County (45.37°N, 74.63°W)
 const WEATHER_LAT = 45.37, WEATHER_LON = -74.63;
@@ -5078,6 +5226,8 @@ function renderDashboard(){
       </div>
     </div>
     ${weatherProtocolCard()}
+    ${accountantReminderCard()}
+    ${paydayReminderCard()}
     ${myOutstandingMileage.length ? `
     <div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
       <h2 style="margin-bottom:10px;"> Mileage Payment${myOutstandingMileage.length>1?'s':''} Outstanding</h2>
