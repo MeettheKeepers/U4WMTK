@@ -1054,9 +1054,12 @@ function normalizeData(d){
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
     if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
     if(m.hourlyRate===undefined) m.hourlyRate = "18.00";
-    if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '' };
+    if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '', fileUrl: '', storagePath: '', fileName: '' };
     if(m.vsc.hasVSC===undefined) m.vsc.hasVSC = false;
     if(m.vsc.expiryDate===undefined) m.vsc.expiryDate = '';
+    if(m.vsc.fileUrl===undefined) m.vsc.fileUrl = '';
+    if(m.vsc.storagePath===undefined) m.vsc.storagePath = '';
+    if(m.vsc.fileName===undefined) m.vsc.fileName = '';
   });
   (d.animals||[]).forEach(a=>{ if(a.scriptFr===undefined) a.scriptFr=''; });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
@@ -10006,6 +10009,59 @@ function updateVSC(id, field, value){
   saveData();
   showTab(CURRENT_TAB);
 }
+async function uploadVscFile(memberId){
+  const input = document.getElementById('vsc-file-'+memberId);
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('vsc-upload-status-'+memberId);
+  const btnEl = document.getElementById('vsc-upload-btn-'+memberId);
+  if(statusEl) statusEl.textContent = 'Uploading…';
+  if(btnEl) btnEl.disabled = true;
+  try{
+    const m = DATA.team.find(x=>x.id===memberId);
+    if(!m) throw new Error('Member not found');
+    // Remove old file if replacing
+    if(m.vsc && m.vsc.storagePath && sb){
+      await sb.storage.from('vsc-documents').remove([m.vsc.storagePath]);
+    }
+    const ext = file.name.split('.').pop();
+    const path = `${memberId}/${Date.now()}.${ext}`;
+    const { data: upData, error: upErr } = await sb.storage.from('vsc-documents').upload(path, file, { cacheControl:'3600', upsert:true });
+    if(upErr) throw upErr;
+    const { data: urlData } = sb.storage.from('vsc-documents').getPublicUrl(upData.path);
+    if(!m.vsc) m.vsc = { hasVSC: true, expiryDate: '' };
+    m.vsc.fileUrl = urlData.publicUrl;
+    m.vsc.storagePath = upData.path;
+    m.vsc.fileName = file.name;
+    saveData();
+    showTab(CURRENT_TAB);
+  } catch(e){
+    if(statusEl) statusEl.textContent = 'Upload failed: ' + (e.message||e);
+    if(btnEl) btnEl.disabled = false;
+  }
+}
+function copyVscLink(memberId){
+  const m = DATA.team.find(x=>x.id===memberId);
+  if(!m||!m.vsc||!m.vsc.fileUrl){ alert('No file uploaded yet.'); return; }
+  navigator.clipboard.writeText(m.vsc.fileUrl).then(()=>{
+    alert('Link copied to clipboard! You can paste it into an email to send to your client.');
+  }).catch(()=>{
+    prompt('Copy this link to share with your client:', m.vsc.fileUrl);
+  });
+}
+async function deleteVscFile(memberId){
+  if(!confirm('Remove the uploaded VSC file? The expiry date and status will be kept.')) return;
+  const m = DATA.team.find(x=>x.id===memberId);
+  if(!m||!m.vsc) return;
+  if(m.vsc.storagePath && sb){
+    await sb.storage.from('vsc-documents').remove([m.vsc.storagePath]);
+  }
+  m.vsc.fileUrl = '';
+  m.vsc.storagePath = '';
+  m.vsc.fileName = '';
+  saveData();
+  showTab(CURRENT_TAB);
+}
 function addWriteUp(id){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
@@ -10159,6 +10215,22 @@ function renderEmployeeFile(m){
           if(daysLeft <= 30) return `<div class="sub" style="color:#c0392b;margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''} — renewal needed soon.</div>`;
           return `<div class="sub" style="color:var(--gray);margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''}.</div>`;
         })() : ''}
+      </div>
+      <div class="field-block" style="margin-top:12px;">
+        <label>VSC Document</label>
+        ${m.vsc&&m.vsc.fileUrl ? `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <span style="font-size:13px;color:var(--gray);">${esc(m.vsc.fileName||'VSC File')}</span>
+          <a href="${esc(m.vsc.fileUrl)}" target="_blank" class="btn-ghost" style="font-size:13px;padding:3px 10px;">View / Download</a>
+          <button class="btn-ghost" style="font-size:13px;padding:3px 10px;" onclick="copyVscLink(${m.id})">Copy Shareable Link</button>
+          <button class="btn-ghost" style="font-size:13px;padding:3px 10px;color:var(--red);" onclick="deleteVscFile(${m.id})">Remove File</button>
+        </div>` : '<div class="sub" style="margin-bottom:8px;">No file uploaded yet.</div>'}
+        <div>
+          <input type="file" id="vsc-file-${m.id}" accept="application/pdf,image/*" style="display:none" onchange="uploadVscFile(${m.id})">
+          <button class="btn-ghost" onclick="document.getElementById('vsc-file-${m.id}').click()" id="vsc-upload-btn-${m.id}">${m.vsc&&m.vsc.fileUrl?'Replace File':'Upload PDF or Image'}</button>
+          <span id="vsc-upload-status-${m.id}" style="font-size:13px;color:var(--gray);margin-left:8px;"></span>
+        </div>
+        <div class="sub" style="margin-top:6px;">Upload a scan or photo of the VSC document. The link can be copied and sent directly to clients who require it.</div>
       </div>` : ''}
     </div>
     <div class="card">
