@@ -1019,6 +1019,7 @@ function normalizeData(d){
     if(s.characters===undefined) s.characters=[];
     if(s.occasion===undefined) s.occasion='';
     if(s.animalsTaken===undefined) s.animalsTaken=[];
+    if(s.requiresVSC===undefined) s.requiresVSC=false;
     // Ensure array fields always exist — prevents crashes in showDateGroupStatus and showConflictInfo
     if(!s.staffNames) s.staffNames = [];
     if(!s.showTypes) s.showTypes = s.showType ? [s.showType] : [];
@@ -1053,6 +1054,9 @@ function normalizeData(d){
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
     if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
     if(m.hourlyRate===undefined) m.hourlyRate = "18.00";
+    if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '' };
+    if(m.vsc.hasVSC===undefined) m.vsc.hasVSC = false;
+    if(m.vsc.expiryDate===undefined) m.vsc.expiryDate = '';
   });
   (d.animals||[]).forEach(a=>{ if(a.scriptFr===undefined) a.scriptFr=''; });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
@@ -3882,6 +3886,21 @@ function renderStaffFileReadOnly(m){
       <div class="field-block"><label>Social Insurance Number (SIN)</label><div>${sinFieldHtml(m.id, m.sin||'')}</div></div>
     </div>
     <div class="card">
+      <h2>Vulnerable Sector Check (VSC)</h2>
+      <div class="sub" style="margin-bottom:10px;">Visible to managers and owners only.</div>
+      ${(()=>{
+        const v = m.vsc||{};
+        if(!v.hasVSC) return '<div class="sub" style="color:#c0392b;">No VSC on file for this employee.</div>';
+        if(!v.expiryDate) return '<div style="color:#27ae60;font-weight:600;">VSC on file — no expiry date set.</div>';
+        const daysLeft = daysBetween(todayStr(), v.expiryDate);
+        const expFmt = fmtShortDate(v.expiryDate);
+        if(daysLeft < 0) return `<div style="color:#c0392b;font-weight:600;">VSC EXPIRED — expired ${expFmt}</div>`;
+        if(daysLeft <= 30) return `<div style="color:#c0392b;font-weight:600;">VSC on file — expires ${expFmt} (${daysLeft} day${daysLeft!==1?'s':''} remaining)</div>`;
+        return `<div style="color:#27ae60;font-weight:600;">VSC on file — expires ${expFmt}</div>`;
+      })()}
+      <div style="margin-top:10px;"><button class="btn-ghost" onclick="closeStaffFilePreview();openEmployeeFile(${m.id});showTab('manager')">Edit VSC in Employee File →</button></div>
+    </div>
+    <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <h2>Hours</h2>
         <button class="btn-ghost" onclick="toggleHoursSection()" style="flex-shrink:0;">${HOURS_SECTION_OPEN ? '▾ Collapse' : '▸ Expand'}</button>
@@ -4589,7 +4608,7 @@ function renderTeam(){
       <h2>Team Directory</h2>
       <div class="sub">Names, job titles, and phone numbers for the team.</div>
       <table>
-        <tr><th>Name</th><th>Position</th><th>Phone</th>${isManagerLogin()?'<th>Hourly Rate</th><th>Last Login</th>':''}</tr>
+        <tr><th>Name</th><th>Position</th><th>Phone</th>${isManagerLogin()?'<th>VSC</th><th>Hourly Rate</th><th>Last Login</th>':''}</tr>
         ${(()=>{
           const roleColors={'Owner':'#1a5a8a','Manager':'#27ae60','Supervisor':'#7c3fad','Keeper':'#e67e22'};
           return sortedTeamMembers().map(m=>{
@@ -4597,7 +4616,16 @@ function renderTeam(){
             const rCol = roleColors[displayRole];
             const login = (DATA.logins||[]).find(l=>l.name===m.name);
             const lastLogin = login && login.lastLogin ? (()=>{ const d=new Date(login.lastLogin); return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true}); })() : 'Never';
-            const rateCell = isManagerLogin() ? `<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td><td style="font-size:13px;color:var(--gray);">${lastLogin}</td>` : '';
+            const vscCell = isManagerLogin() ? (()=>{
+              const v = m.vsc||{};
+              if(!v.hasVSC) return '<td style="color:#c0392b;font-size:12px;">None</td>';
+              if(!v.expiryDate) return '<td style="color:#27ae60;font-size:12px;">On file</td>';
+              const dl = daysBetween(todayStr(), v.expiryDate);
+              if(dl < 0) return '<td style="color:#c0392b;font-size:12px;font-weight:700;">Expired</td>';
+              if(dl <= 30) return `<td style="color:#c0392b;font-size:12px;">Exp. ${fmtShortDate(v.expiryDate)}</td>`;
+              return `<td style="color:#27ae60;font-size:12px;">Exp. ${fmtShortDate(v.expiryDate)}</td>`;
+            })() : '';
+            const rateCell = isManagerLogin() ? `${vscCell}<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td><td style="font-size:13px;color:var(--gray);">${lastLogin}</td>` : '';
             return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"></button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td>${rateCell}</tr>`;
           }).join('');
         })()}
@@ -5246,6 +5274,20 @@ function renderDashboard(){
     return pr.needsAck && !pr.employeeAckedAt ? {memberId:me.id, updatedAt:pr.updatedAt} : null;
   })();
   const managerProgressAcks = isManagerLogin() ? DATA.team.filter(m=>!m.archived&&m.evaluation&&m.evaluation.progressReport&&m.evaluation.progressReport.needsAck&&!m.evaluation.progressReport.managerAckedAt) : [];
+  // VSC expiry notifications
+  const myVscExpiry = (() => {
+    if(isManagerLogin() || !myName) return null;
+    const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
+    const v = me.vsc||{}; if(!v.hasVSC || !v.expiryDate) return null;
+    const dl = daysBetween(todayStr(), v.expiryDate);
+    if(dl <= 30) return { daysLeft: dl, expiryDate: v.expiryDate };
+    return null;
+  })();
+  const managerVscExpiring = isManagerLogin() ? DATA.team.filter(m=>{
+    if(m.archived) return false;
+    const v = m.vsc||{}; if(!v.hasVSC || !v.expiryDate) return false;
+    return daysBetween(todayStr(), v.expiryDate) <= 30;
+  }).map(m=>({ m, daysLeft: daysBetween(todayStr(), m.vsc.expiryDate) })) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! </span>
@@ -5307,6 +5349,23 @@ function renderDashboard(){
             ${m.evaluation.progressReport.updatedAt?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">Updated ${m.evaluation.progressReport.updatedAt}</span>`:''}
           </div>
           <button class="btn-small" onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='progress';TEAM_SUBTAB='evaluations';showTab('team')">Review &amp; Acknowledge →</button>
+        </div>`).join('')}
+    </div>` : ''}
+    ${myVscExpiry ? `
+    <div class="card" style="border-left:5px solid #c0392b;">
+      <h2 style="margin-bottom:6px;">Vulnerable Sector Check Expiring Soon</h2>
+      <div class="sub" style="margin-bottom:12px;">${myVscExpiry.daysLeft < 0 ? 'Your Vulnerable Sector Check has <strong>expired</strong>.' : `Your Vulnerable Sector Check expires on <strong>${fmtShortDate(myVscExpiry.expiryDate)}</strong> — ${myVscExpiry.daysLeft === 0 ? 'that is today!' : `in ${myVscExpiry.daysLeft} day${myVscExpiry.daysLeft!==1?'s':''}.`}`} Please arrange for a renewal with your manager.</div>
+    </div>` : ''}
+    ${managerVscExpiring.length ? `
+    <div class="card" style="border-left:5px solid #c0392b;">
+      <h2 style="margin-bottom:10px;">Vulnerable Sector Check${managerVscExpiring.length>1?'s':''} Expiring Soon</h2>
+      ${managerVscExpiring.map(({m,daysLeft})=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:600;">${esc(m.name)}</span>
+            <span style="margin-left:8px;font-size:13px;color:${daysLeft<0?'#c0392b':'var(--text-light)'};">${daysLeft<0?'EXPIRED':'Expires '+fmtShortDate(m.vsc.expiryDate)+' ('+daysLeft+' day'+(daysLeft!==1?'s':'')+' remaining)'}</span>
+          </div>
+          <button class="btn-small" onclick="openEmployeeFile(${m.id});showTab('manager')">View Employee File →</button>
         </div>`).join('')}
     </div>` : ''}
     ${quizAvailable ? `
@@ -7008,6 +7067,7 @@ function showCardHtml(s, staffName, idx, total, dayShows, viewDate, dayNum, tota
         ${s.clientEmail ? `<strong>Email:</strong> ${esc(s.clientEmail)}<br>` : ''}
         <strong>Vehicle:</strong> ${s.vehicle||'—'}<br>
         ${s.childApplicable ? `<strong>Child name:</strong> ${s.childName||'—'}<br>` : ''}
+        ${s.requiresVSC ? `<strong style="color:#c0392b;">VSC Required</strong><br>` : ''}
         <strong>Address:</strong> ${s.address||'—'}<br>
         ${s.region ? `<strong>Region:</strong> ${esc(s.region)}<br>` : ''}
         <strong>Show type(s):</strong> ${s.showTypes.join(', ')||'—'}
@@ -9153,6 +9213,15 @@ function toggleShowStaffAssign(id, name){
   if(i>=0){
     s.staffNames.splice(i,1);
   } else {
+    // VSC check: block assignment if show requires VSC and staff doesn't have a valid one
+    if(s.requiresVSC){
+      const member = DATA.team.find(m=>m.name===name && !m.archived);
+      if(member && (!member.vsc || !member.vsc.hasVSC)){
+        alert(`${name} does not have a Vulnerable Sector Check on file. A VSC is required for this show. Please update their employee file before assigning them.`);
+        showTab('manager');
+        return;
+      }
+    }
     const issue = staffSchedulingIssue(name, s.date, s.startTime, s.endTime, s.id, s.travelMinutes, s.arrivalBufferMinutes);
     if(issue){
       if(!confirm(`${issue} Assign ${name} to this show anyway? It will be flagged in red until fixed.`)){
@@ -9477,12 +9546,13 @@ function addShowManager(){
   const language = val('new-show-language');
   const notes = val('new-show-notes');
   const paid = document.getElementById('new-show-paid').checked;
+  const requiresVSC = document.getElementById('new-show-vsc').checked;
   const isFair = showTypes.some(t=>FAIRS_SHOW_TYPES.includes(t));
   const endDate = isFair ? (val('new-show-enddate')||'') : '';
   const overnight = isFair ? !!(document.getElementById('new-show-overnight')&&document.getElementById('new-show-overnight').checked) : false;
   const overnightNote = overnight ? (val('new-show-overnightnote')||'') : '';
   // Always save — conflicts are visible as red cards in the manager view
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, paid, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, paid, requiresVSC, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -9518,6 +9588,7 @@ function renderShowForm(){
       </div>
       <div class="field-block" style="flex:0; min-width:80px;">
         <label class="checkbox-line"><input type="checkbox" id="new-show-paid"> Paid</label>
+        <label class="checkbox-line" style="margin-top:6px;"><input type="checkbox" id="new-show-vsc"> Requires Vulnerable Sector Check</label>
       </div>
     </div>
     <div class="medrecord-box" id="new-show-plan-preview">
@@ -9790,6 +9861,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       <div class="field-block">
         <label class="checkbox-line"><input type="checkbox" ${s.childApplicable?'checked':''} onchange="toggleShowBool(${s.id},'childApplicable')"> Child name applicable</label>
         ${s.childApplicable ? `<input type="text" style="margin-top:8px;" value="${esc(s.childName)}" placeholder="Child name" onchange="saveShowField(${s.id},'childName',this.value)">` : ''}
+        <label class="checkbox-line" style="margin-top:8px;"><input type="checkbox" ${s.requiresVSC?'checked':''} onchange="toggleShowBool(${s.id},'requiresVSC')"> Requires Vulnerable Sector Check</label>
       </div>
       <div class="field-block">
         <label>Address</label>
@@ -9923,6 +9995,14 @@ function saveStaffField(id, field, value){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
   m[field] = value;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function updateVSC(id, field, value){
+  const m = DATA.team.find(x=>x.id===id);
+  if(!m) return;
+  if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '' };
+  m.vsc[field] = value;
   saveData();
   showTab(CURRENT_TAB);
 }
@@ -10060,6 +10140,26 @@ function renderEmployeeFile(m){
           <div>${sinFieldHtml(m.id, m.sin||'')}</div>`}
         <div class="sub" style="margin-top:6px;">Visible to managers and owners only. Never shown to the employee. Re-enters locked state on every page navigation.</div>
       </div>
+    </div>
+    <div class="card">
+      <h2>Vulnerable Sector Check (VSC)</h2>
+      <div class="sub" style="margin-bottom:12px;">Visible to managers and owners only. Staff members do not see this section.</div>
+      <div class="field-block">
+        <label class="checkbox-line">
+          <input type="checkbox" ${m.vsc&&m.vsc.hasVSC?'checked':''} onchange="updateVSC(${m.id},'hasVSC',this.checked)"> Has VSC on file
+        </label>
+      </div>
+      ${m.vsc&&m.vsc.hasVSC ? `
+      <div class="field-block" style="margin-top:8px;">
+        <label>Expiry Date</label>
+        <input type="date" value="${esc(m.vsc.expiryDate||'')}" onchange="updateVSC(${m.id},'expiryDate',this.value)">
+        ${m.vsc.expiryDate ? (()=>{
+          const daysLeft = daysBetween(todayStr(), m.vsc.expiryDate);
+          if(daysLeft < 0) return '<div class="sub" style="color:#c0392b;margin-top:4px;">EXPIRED — this VSC is no longer valid.</div>';
+          if(daysLeft <= 30) return `<div class="sub" style="color:#c0392b;margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''} — renewal needed soon.</div>`;
+          return `<div class="sub" style="color:var(--gray);margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''}.</div>`;
+        })() : ''}
+      </div>` : ''}
     </div>
     <div class="card">
       <h2>Write-Ups</h2>
