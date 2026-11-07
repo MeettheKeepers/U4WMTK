@@ -895,7 +895,7 @@ function normalizeData(d){
     const isMulti = _scMultiDay.includes(cat);
     const fields = isMulti
       ? ['staff','transportPerDay','perDiems','accommodations','misc','tripDays','travelSetupDays','travelCostTrip','u4wAgreement','basePrice','pricingDiscount1','pricingDiscount2','pricingDiscount3','pricingDiscount4','pricingDiscount5']
-      : ['staff','staff2','fuel','perDiems','accommodations','misc','u4wAgreement','showPrice1','showPrice2','showPrice3','showPrice4','showDiscount1','showDiscount2','showDiscount3','showDiscount4','showStaffHourlyRate'];
+      : ['staff','fuel','perDiems','accommodations','misc','u4wAgreement','showPrice1','showPrice2','showPrice3','showPrice4','showDiscount1','showDiscount2','showDiscount3','showDiscount4','showStaffHourlyRate'];
     fields.forEach(f=>{
       if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = f==='tripDays' ? 1 : f==='u4wAgreement' ? 50 : f==='basePrice' ? 2500 : f==='showPrice1' ? 350 : f==='showPrice2' ? 650 : f==='showPrice3' ? 900 : f==='showPrice4' ? 1050 : 0;
     });
@@ -12164,8 +12164,7 @@ function renderManager(){
           ];
           // Single-day categories use fuel instead of daily transport
           const COST_FIELDS_SINGLE = [
-            {id:'staff',          label:'Staff Cost (1 employee)'},
-            {id:'staff2',         label:'2nd Staff Cost'},
+            {id:'staff',          label:'Staff Cost (per employee)'},
             {id:'fuel',           label:'Fuel Cost'},
             {id:'perDiems',       label:'Per Diems'},
             {id:'accommodations', label:'Accommodations'},
@@ -12333,18 +12332,17 @@ function renderManager(){
               const showCounts = [1,2,3,4];
               const staffOpts  = [1,2];
               const staffHourlyRate = parseFloat(costs.showStaffHourlyRate)||0;
-              const staff2Cost      = parseFloat(costs.staff2)||0;
               const staff1Cost      = parseFloat(costs.staff)||0;
-              // non-staff base cost (fuel, perdiems, accommodations, misc, u4w - excludes both staff fields)
-              const nonStaffBase = perDayTotal - staff1Cost - staff2Cost;
+              // non-staff base cost (fuel, perdiems, accommodations, misc, u4w)
+              const nonStaffBase = perDayTotal - staff1Cost;
               // 8 columns: for each show count, show 1-staff then 2-staff
               const cols8 = showCounts.flatMap(n => staffOpts.map(s => ({n, s})));
               const colData = cols8.map(({n, s})=>{
                 const price    = parseFloat(costs['showPrice'+n])||0;
                 const discount = parseFloat(costs['showDiscount'+n])||0;
                 const revenue  = price - discount;
-                // cost: non-staff base + staff for all n shows + extra hours (1 hr per extra show, per staff member)
-                const staffBase  = s === 1 ? staff1Cost : staff1Cost + staff2Cost;
+                // 2nd staff = same rate as 1st; extra shows add 1 hr per staff per show
+                const staffBase  = staff1Cost * s;
                 const extraHours = staffHourlyRate * (n-1) * s;
                 const cost       = nonStaffBase + staffBase + extraHours;
                 const profit     = revenue - cost;
