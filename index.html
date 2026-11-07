@@ -12146,8 +12146,8 @@ function renderManager(){
           const COST_CATS = [
             {id:'outreach',            label:'Outreach',                sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
             {id:'outreach2',           label:'Outreach w/ 2 Employees', sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
-            {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true},
-            {id:'display',             label:'Display',                 sub:'', multiDay:true},
+            {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true, staffTravelDouble:true},
+            {id:'display',             label:'Display',                 sub:'', multiDay:true, staffTravelDouble:true},
             {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true},
             {id:'wildPresentations',   label:'Wild Presentations',      sub:'', multiDay:true},
           ];
@@ -12182,12 +12182,17 @@ function renderManager(){
             const perDayTotal = fields.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
             const tripDays     = cat.multiDay ? Math.max(1, parseInt(costs.tripDays)||1) : 1;
             const travelDays   = cat.multiDay ? Math.max(0, parseInt(costs.travelSetupDays)||0) : 0;
-            const travelCost   = cat.multiDay ? (parseFloat(costs.travelCostTrip)||0) : 0;
-            const u4wCost      = cat.multiDay ? (parseFloat(costs.u4wAgreement)||0) : 0;
-            const totalDays    = tripDays + travelDays;
-            const tripTotal    = travelCost + u4wCost + perDayTotal * tripDays;
+            const travelCost           = cat.multiDay ? (parseFloat(costs.travelCostTrip)||0) : 0;
+            const u4wCost              = cat.multiDay ? (parseFloat(costs.u4wAgreement)||0) : 0;
+            const effectiveTravelDays  = cat.staffTravelDouble ? travelDays * 2 : travelDays;
+            const staffPerDay          = cat.staffTravelDouble ? (parseFloat(costs.staff)||0) : 0;
+            const nonStaffPerDay       = cat.staffTravelDouble ? perDayTotal - staffPerDay : perDayTotal;
+            const totalDays            = tripDays + effectiveTravelDays;
+            const tripTotal            = cat.staffTravelDouble
+              ? travelCost + u4wCost + nonStaffPerDay * tripDays + staffPerDay * (tripDays + effectiveTravelDays)
+              : travelCost + u4wCost + perDayTotal * tripDays;
             const expanded     = !!SHOW_COST_EXPANDED[cat.id];
-            const unitLabel    = cat.multiDay ? `${tripDays} show day${tripDays===1?'':'s'}${travelDays?' + '+travelDays+' travel':''}` : 'per day';
+            const unitLabel    = cat.multiDay ? `${tripDays} show day${tripDays===1?'':'s'}${effectiveTravelDays?' + '+effectiveTravelDays+' travel day'+(effectiveTravelDays===1?'':'s'):''}` : 'per day';
             const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:${expanded?'10px 10px 0 0':'10px'};background:#f9f7f2;border:1px solid var(--border);" onclick="toggleShowCost('${cat.id}')">
               <span style="font-size:12px;color:#aaa;">${expanded?'▾':'▸'}</span>
               <div style="flex:1;">
@@ -12211,7 +12216,10 @@ function renderManager(){
                   onblur="saveShowCostField('${cat.id}','tripDays',this.value)">
               </div>
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <span style="flex:1;font-size:14px;color:#555;">Travel / setup days</span>
+                <div style="flex:1;">
+                  <div style="font-size:14px;color:#555;">${cat.staffTravelDouble ? 'Travel/Setup & Tear Down days' : 'Travel / setup days'}</div>
+                  ${cat.staffTravelDouble ? `<div style="font-size:11px;color:#999;margin-top:1px;">1 entry = 2 days (setup + tear down) · staff paid both</div>` : ''}
+                </div>
                 <input type="number" min="0" step="1" value="${travelDays}"
                   style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
                   onchange="saveShowCostField('${cat.id}','travelSetupDays',this.value)"
@@ -12241,6 +12249,10 @@ function renderManager(){
                   <span style="flex:1;font-size:14px;font-weight:600;">Per show day</span>
                   <span style="font-size:15px;font-weight:800;color:var(--green-dark);">${fmtDollar(perDayTotal)}</span>
                 </div>
+                ${cat.staffTravelDouble && effectiveTravelDays > 0 ? `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:#f4f8f0;border-top:1px solid #ddeedd;">
+                  <span style="flex:1;font-size:13px;color:#555;">Staff on travel days (${effectiveTravelDays} day${effectiveTravelDays===1?'':'s'})</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--green-dark);">${fmtDollar(staffPerDay * effectiveTravelDays)}</span>
+                </div>` : ''}
                 <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:#e8f5ed;border-radius:0 0 10px 10px;">
                   <span style="flex:1;font-size:14px;font-weight:700;">Total trip (${totalDays} day${totalDays===1?'':'s'})</span>
                   <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(tripTotal)}</span>
