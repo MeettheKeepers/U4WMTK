@@ -12291,9 +12291,59 @@ function renderManager(){
                 </div>
               </div>`;
             })() : '';
+            const showPricingTableMin = cat.showPricing ? (()=>{
+              const showCounts = [1,2,3,4];
+              const staffOpts  = [1,2];
+              const staffHourlyRate = parseFloat(costs.showStaffHourlyRate)||0;
+              const staff1Cost      = parseFloat(costs.staff)||0;
+              const nonStaffBase    = perDayTotal - staff1Cost;
+              const cols8 = showCounts.flatMap(n => staffOpts.map(s => ({n, s})));
+              const colData = cols8.map(({n, s})=>{
+                const price    = parseFloat(costs['showPrice'+n])||0;
+                const discount = parseFloat(costs['showDiscount'+n])||0;
+                const revenue  = price - discount;
+                const staffBase  = staff1Cost * s;
+                const extraHours = staffHourlyRate * (n-1) * s;
+                const cost       = nonStaffBase + staffBase + extraHours;
+                const profit     = revenue - cost;
+                return {n, s, revenue, cost, profit};
+              });
+              const pc = v => v>=0 ? 'var(--green-dark)' : '#c0453a';
+              const pb = v => v>=0 ? '#e8f5ed' : '#fce8e8';
+              return `<div style="padding:10px 14px 12px;background:#f9f7f2;">
+                <div style="overflow-x:auto;">
+                  <table style="width:100%;border-collapse:collapse;min-width:560px;">
+                    <thead>
+                      <tr>
+                        <th style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:left;"></th>
+                        ${showCounts.map(n=>`<th colspan="2" style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:center;white-space:nowrap;border-bottom:1px solid #ddd;">${n} show${n===1?'':'s'}</th>`).join('')}
+                      </tr>
+                      <tr style="border-bottom:2px solid var(--border);">
+                        <th style="padding:3px 8px;font-size:10px;color:var(--text-light);text-align:left;min-width:70px;"></th>
+                        ${cols8.map(({s})=>`<th style="padding:3px 8px;font-size:10px;color:var(--text-light);text-align:right;white-space:nowrap;">${s} staff</th>`).join('')}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
+                        ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
+                        ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding:7px 8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                        ${colData.map(c=>`<td style="padding:7px 4px;font-size:13px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+            })() : '';
             if(!expanded) {
               // For single-day outreach categories, still show the pricing table when collapsed
-              const collapsedPricing = cat.showPricing ? showPricingTable : '';
+              const collapsedPricing = cat.showPricing ? showPricingTableMin : '';
               if(collapsedPricing) {
                 return `<div style="margin-bottom:8px;">${header}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${collapsedPricing}</div></div>`;
               }
