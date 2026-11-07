@@ -5481,6 +5481,43 @@ function renderDashboard(){
         </div>`;}).join('')}
     </div>` : ''}
     ${renderBirthdayBanner(myName)}
+    ${(!isManagerLogin() && myName) ? (()=>{
+      const tod = todayStr();
+      const myTodayShows = (DATA.shows||[]).filter(s=>
+        s.date===tod &&
+        (s.staffNames||[]).includes(myName) &&
+        showStatus(s)!=='cancelled' &&
+        showStatus(s)!=='completed'
+      );
+      if(!myTodayShows.length) return '';
+      const showCards = myTodayShows.map(s=>{
+        const arr = s.arrivals||[];
+        const dep = s.departures||[];
+        const firstArr = arr[0]||null;
+        const firstDep = dep[0]||null;
+        const timeStr = s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : (s.startTime||'');
+        const metaStr = [timeStr, s.clientName ? esc(s.clientName) : ''].filter(Boolean).join(' · ');
+        return `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+          <div style="font-weight:700;font-size:15px;margin-bottom:3px;">${esc(s.title||'Show')}</div>
+          ${metaStr ? `<div style="font-size:13px;color:var(--text-light);margin-bottom:8px;">${metaStr}</div>` : ''}
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            ${!firstArr
+              ? `<button class="btn-small" style="background:#2563eb;border-color:#2563eb;color:#fff;" onclick="markArrived(${s.id},null)"> Check In</button>`
+              : `<span style="font-size:13px;color:var(--green-dark);font-weight:600;"> ${esc(firstArr.name)} checked in at ${fmtTimeShort(firstArr.time)}</span>`
+            }
+            ${firstArr && !firstDep
+              ? `<button class="btn-small" style="background:#c0453a;border-color:#c0453a;color:#fff;" onclick="markDeparted(${s.id},null)"> Leave Show</button>`
+              : (firstDep ? `<span style="font-size:13px;color:#888;"> Left at ${fmtTimeShort(firstDep.time)}</span>` : '')
+            }
+          </div>
+        </div>`;
+      }).join('');
+      return `<div class="card" style="border-left:5px solid #2563eb;">
+        <h2 style="margin-bottom:2px;"> You Have ${myTodayShows.length} Show${myTodayShows.length>1?'s':''} Today</h2>
+        <div class="sub" style="margin-bottom:10px;">Check in when you arrive at the venue. Tap Leave Show when you're done.</div>
+        ${showCards}
+      </div>`;
+    })() : ''}
     ${isManagerLogin() ? renderLiveStatusBoard() : ''}
     ${myShiftHtml}
     ${(openRepairsCount+openSupplyCount+lowStockItems.length) ? `
@@ -9898,7 +9935,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${(()=>{ const prev=getPrevClientAnimals(s); if(!prev) return ''; const names=animalNamesFromIds(prev.animalsTaken); if(!names.length) return ''; return `<div class="notice" style="background:#e8f4fd;color:#1a4a7a;border:1px solid #a8d0f0;"> <strong>Previous visit (${fmtShortDate(prev.date)}):</strong> ${names.join(', ')} — consider switching animals.</div>`; })()}
       <div class="add-row" style="margin-top:0;align-items:center;">
         <span class="status-badge ${st==='completed'?'status-done':st==='cancelled'?'status-open':'status-progress'}">${st.charAt(0).toUpperCase()+st.slice(1)}</span>
-        ${isPast && st!=='completed' ? `<button class="btn-small" onclick="setShowStatus(${s.id},'completed')">Mark Completed</button>` : ''}
+        ${(isPast || (isManagerLogin() && s.date === todayStr())) && st!=='completed' ? `<button class="btn-small" onclick="setShowStatus(${s.id},'completed')">Mark Completed</button>` : ''}
         ${st!=='cancelled' ? `<button class="btn-ghost" onclick="setShowStatus(${s.id},'cancelled')">Cancel Show</button>` : ''}
         ${st==='cancelled' || isPast ? `<button class="btn-ghost" onclick="rescheduleShow(${s.id})">Reschedule</button>` : ''}
         ${st!=='scheduled' ? `<button class="btn-ghost" onclick="setShowStatus(${s.id},'scheduled')">Reset to Scheduled</button>` : ''}
