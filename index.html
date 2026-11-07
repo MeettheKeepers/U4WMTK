@@ -894,7 +894,7 @@ function normalizeData(d){
     if(!d.showCosts[cat]) d.showCosts[cat] = {};
     const isMulti = _scMultiDay.includes(cat);
     const fields = isMulti
-      ? ['staff','transportPerDay','perDiems','accommodations','misc','tripDays','travelSetupDays','travelCostTrip','u4wAgreement','basePrice','pricingDiscount']
+      ? ['staff','transportPerDay','perDiems','accommodations','misc','tripDays','travelSetupDays','travelCostTrip','u4wAgreement','basePrice','pricingDiscount1','pricingDiscount2','pricingDiscount3','pricingDiscount4','pricingDiscount5']
       : ['staff','fuel','perDiems','accommodations','misc','u4wAgreement'];
     fields.forEach(f=>{
       if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = f==='tripDays' ? 1 : f==='u4wAgreement' ? 50 : f==='basePrice' ? 2500 : 0;
@@ -12208,13 +12208,13 @@ function renderManager(){
             // Pricing & Profit table (staffTravelDouble categories only)
             const pricingTable = cat.staffTravelDouble ? (()=>{
               const basePrice = parseFloat(costs.basePrice)||2500;
-              const discount  = parseFloat(costs.pricingDiscount)||0;
               const cols = [1,2,3,4,5];
-              const colData = cols.map(d=>{
+              const discounts = cols.map(d => parseFloat(costs['pricingDiscount'+d])||0);
+              const colData = cols.map((d,i)=>{
                 const cost = travelCost + u4wCost + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
-                const revenue = basePrice*d - discount;
+                const revenue = basePrice*d - discounts[i];
                 const profit = revenue - cost;
-                return {d, cost, revenue, profit};
+                return {d, cost, revenue, profit, discount: discounts[i]};
               });
               const pc = v => parseFloat(v)>=0 ? 'var(--green-dark)' : '#c0453a';
               const pb = v => parseFloat(v)>=0 ? '#e8f5ed' : '#fce8e8';
@@ -12225,34 +12225,43 @@ function renderManager(){
                   onchange="saveShowCostField('${cat.id}','${field}',this.value)"
                   onblur="saveShowCostField('${cat.id}','${field}',this.value)">
               </div>`;
+              const mkDiscInput = (d) => `<td style="padding:5px 6px;text-align:right;">
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;">
+                  <span style="color:#888;font-size:12px;">$</span>
+                  <input type="number" min="0" step="1" value="${(parseFloat(costs['pricingDiscount'+d])||0).toFixed(0)}"
+                    style="width:72px;padding:4px 5px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;"
+                    onchange="saveShowCostField('${cat.id}','pricingDiscount${d}',this.value)"
+                    onblur="saveShowCostField('${cat.id}','pricingDiscount${d}',this.value)">
+                </div>
+              </td>`;
               return `<div style="border-top:2px solid var(--border);padding:12px 14px 14px;background:#f9f7f2;">
                 <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:10px;">Pricing & Profit</div>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
                   <span style="flex:1;font-size:14px;color:#555;">Rate per day</span>
                   ${mkPriceInput('basePrice', basePrice)}
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                  <span style="flex:1;font-size:14px;color:#555;">Discount (whole booking)</span>
-                  ${mkPriceInput('pricingDiscount', discount)}
-                </div>
                 <div style="overflow-x:auto;">
-                  <table style="width:100%;border-collapse:collapse;min-width:340px;">
+                  <table style="width:100%;border-collapse:collapse;min-width:380px;">
                     <thead><tr style="border-bottom:2px solid var(--border);">
-                      <th style="padding:7px 8px;font-size:12px;color:var(--text-light);text-align:left;min-width:60px;"></th>
+                      <th style="padding:7px 8px;font-size:12px;color:var(--text-light);text-align:left;min-width:70px;"></th>
                       ${cols.map(d=>`<th style="padding:7px 8px;font-size:12px;color:var(--text-light);text-align:right;white-space:nowrap;">${d} day${d===1?'':'s'}</th>`).join('')}
                     </tr></thead>
                     <tbody>
+                      <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
+                        <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Discount</td>
+                        ${cols.map(d=>mkDiscInput(d)).join('')}
+                      </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
-                        ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
+                        ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.discount>0?`<span style="font-size:11px;color:#888;text-decoration:line-through;margin-right:3px;">$${(basePrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                         ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
                       </tr>
                       <tr>
-                        <td style="padding:8px 8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
-                        ${colData.map(c=>`<td style="padding:8px;font-size:14px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                        <td style="padding:8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                        ${colData.map(c=>`<td style="padding:8px 6px;font-size:14px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
                       </tr>
                     </tbody>
                   </table>
