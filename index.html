@@ -12206,7 +12206,7 @@ function renderManager(){
             </div>`;
             if(!expanded) return `<div style="margin-bottom:8px;">${header}</div>`;
             // Pricing & Profit table (staffTravelDouble categories only)
-            const pricingTable = cat.staffTravelDouble ? (()=>{
+            const pricingTable = cat.multiDay ? (()=>{
               const basePrice = parseFloat(costs.basePrice)||2500;
               const cols = [1,2,3,4,5];
               const discounts = cols.map(d => parseFloat(costs['pricingDiscount'+d])||0);
@@ -12269,6 +12269,7 @@ function renderManager(){
               </div>`;
             })() : '';
             // Trip settings block (multi-day only)
+
             const tripSettings = cat.multiDay ? `<div style="padding:10px 14px 8px;background:#faf8f4;border-bottom:2px solid var(--border);">
               <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">Trip Settings</div>
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
