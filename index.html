@@ -887,6 +887,14 @@ function normalizeData(d){
   if(!d.scheduleSettings.firstPeriodStart) d.scheduleSettings.firstPeriodStart = '2026-06-22';
   if(!d.scheduleOverrides) d.scheduleOverrides = [];
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
+  if(!d.showCosts) d.showCosts = {};
+  const _scDefs = {outreach:'Outreach', mtkRacing:'MTK Racing', display:'Display', characterWalkaround:'Character Walkaround'};
+  Object.keys(_scDefs).forEach(cat=>{
+    if(!d.showCosts[cat]) d.showCosts[cat] = {};
+    ['staff','fuel','perDiems','accommodations','animalFood','misc'].forEach(f=>{
+      if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = 0;
+    });
+  });
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases." };
   if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
   if(!Array.isArray(d.welcome.trainingPlanRoles)) d.welcome.trainingPlanRoles = ['owner','manager'];
@@ -9079,6 +9087,15 @@ const HISTORICAL_YEARS = [
   { year: 2025, income: 291482.15, expenses: 298553.23, net: -7071.08,   shows: null, outreach: null, note: '' },
 ];
 let EXPENSES_EDIT_OPEN = false;
+let SHOW_COST_EXPANDED = {}; // keyed by category id — true = expanded
+function toggleShowCost(cat){ SHOW_COST_EXPANDED[cat]=!SHOW_COST_EXPANDED[cat]; showTab('manager'); }
+function saveShowCostField(cat,field,val){
+  const v = parseFloat(val)||0;
+  if(!DATA.showCosts[cat]) DATA.showCosts[cat]={};
+  DATA.showCosts[cat][field] = v;
+  saveData();
+  showTab('manager');
+}
 let ASSETS_EDIT_OPEN = false;
 let NONPROFIT_EDIT_OPEN = false;
 let INCOME_EDIT_OPEN = false;
@@ -11889,6 +11906,62 @@ function renderManager(){
                    style="position:absolute;top:50%;left:50%;width:399px;height:660px;transform:translate(-50%,-50%) rotate(90deg);"
                    onerror="this.parentElement.innerHTML='<div style=\'padding:16px;color:#bbb;font-size:13px;\'>Map not found — make sure region-map.png is committed to the repo alongside index.html.</div>'">
             </div>`;
+        })()}
+        ${(()=>{
+          const COST_CATS = [
+            {id:'outreach',       label:'Outreach', sub:'Country, Continent, Science, Archeology, Battle Match'},
+            {id:'mtkRacing',      label:'MTK Racing', sub:''},
+            {id:'display',        label:'Display', sub:''},
+            {id:'characterWalkaround', label:'Character Walkaround', sub:''},
+          ];
+          const COST_FIELDS = [
+            {id:'staff',          label:'Staff Cost'},
+            {id:'fuel',           label:'Fuel Cost'},
+            {id:'perDiems',       label:'Per Diems'},
+            {id:'accommodations', label:'Accommodations'},
+            {id:'animalFood',     label:'Animal Food'},
+            {id:'misc',           label:'Misc'},
+          ];
+          const fmtDollar = v => '$' + (parseFloat(v)||0).toFixed(2);
+          const catCards = COST_CATS.map(cat => {
+            const costs = (DATA.showCosts||{})[cat.id]||{};
+            const total = COST_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
+            const expanded = !!SHOW_COST_EXPANDED[cat.id];
+            const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:${expanded?'10px 10px 0 0':'10px'};background:#f9f7f2;border:1px solid var(--border);" onclick="toggleShowCost('${cat.id}')">
+              <span style="font-size:12px;color:#aaa;">${expanded?'▾':'▸'}</span>
+              <div style="flex:1;">
+                <div style="font-weight:700;font-size:15px;">${cat.label}</div>
+                ${cat.sub?`<div style="font-size:12px;color:var(--text-light);margin-top:1px;">${cat.sub}</div>`:''}
+              </div>
+              <div style="font-size:17px;font-weight:800;color:var(--green-dark);">${fmtDollar(total)}<span style="font-size:11px;font-weight:500;color:var(--text-light);margin-left:4px;">/ event</span></div>
+            </div>`;
+            if(!expanded) return `<div style="margin-bottom:8px;">${header}</div>`;
+            const rows = COST_FIELDS.map(f => {
+              const v = parseFloat(costs[f.id])||0;
+              return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #f0ece3;">
+                <span style="flex:1;font-size:14px;color:#555;">${f.label}</span>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <span style="color:#888;font-size:13px;">$</span>
+                  <input type="number" min="0" step="0.01" value="${v.toFixed(2)}"
+                    style="width:90px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
+                    onchange="saveShowCostField('${cat.id}','${f.id}',this.value)"
+                    onblur="saveShowCostField('${cat.id}','${f.id}',this.value)">
+                </div>
+              </div>`;
+            }).join('');
+            const totalRow = `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f7f1;border-radius:0 0 10px 10px;">
+              <span style="flex:1;font-size:14px;font-weight:700;">Total per event</span>
+              <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(total)}</span>
+            </div>`;
+            return `<div style="margin-bottom:8px;">
+              ${header}
+              <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${rows}${totalRow}</div>
+            </div>`;
+          }).join('');
+          return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
+            <h3 style="margin:0 0 4px;">Average Cost per Show</h3>
+            <div class="sub" style="margin-bottom:16px;">Click a category to expand and edit its cost breakdown. All amounts are per event.</div>
+            ${catCards}`;
         })()}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
