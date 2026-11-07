@@ -6649,37 +6649,77 @@ function showShiftPlan(s){
 }
 // Global outreach pricing (matches financials tab SHOW_PRICES for outreach types)
 const OUTREACH_PRICES = {Country:350, Continent:475, Archeology:299, 'Battle Match':350, Science:299};
-// Calculate revenue, staff cost, mileage and profit for a single outreach show
+// travelMinutes → one-way km estimate at 80 km/h
+function travelKm(mins){ return Math.round((Number(mins)||0) / 60 * 80 * 10) / 10; }
+
+// Calculate revenue, staff cost, mileage and profit for a SINGLE outreach show.
+// Used for the per-show breakdown panel inside each card.
 function calcOutreachProfit(s){
   const outreachTypes = (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]);
   if(!outreachTypes.length) return null;
   const revenue = outreachTypes.reduce((sum,t)=>sum+(OUTREACH_PRICES[t]||0), 0);
-  // Staff cost: full shift (pack-load to unload-finish), rounded up to nearest hour per staff
   const plan = showShiftPlan(s);
   const shiftHours = Math.ceil(plan.totalMinutes / 60);
   let staffLines = [];
-  let totalStaffCost = 0;
   (s.staffNames||[]).forEach(name=>{
     const m = DATA.team.find(x=>x.name===name);
     const rate = m && m.hourlyRate ? parseFloat(m.hourlyRate) : null;
-    if(rate){
-      const cost = shiftHours * rate;
-      totalStaffCost += cost;
-      staffLines.push({name, rate, hours:shiftHours, cost});
-    } else {
-      staffLines.push({name, rate:null, hours:shiftHours, cost:null});
-    }
+    staffLines.push({name, rate, hours:shiftHours, cost: rate!=null ? shiftHours*rate : null});
   });
-  // Mileage: estimate km from travelMinutes at 80 km/h, × 2 for round trip
-  const km = Math.round((Number(s.travelMinutes)||0) / 60 * 80 * 10) / 10;
+  const km = travelKm(s.travelMinutes);
   const isPersonal = (s.vehicle||'').toLowerCase().includes('personal');
   const kmRate = isPersonal ? 0.50 : 0.70;
   const mileageCost = km * 2 * kmRate;
-  const knownStaffCost = staffLines.filter(l=>l.cost!==null).reduce((s,l)=>s+l.cost, 0);
+  const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
   const missingRates = staffLines.filter(l=>l.cost===null);
   const totalKnownCost = knownStaffCost + mileageCost;
   const profit = revenue - totalKnownCost;
   return {revenue, staffLines, shiftHours, totalStaffCost:knownStaffCost, km, kmRate, mileageCost, totalKnownCost, profit, missingRates, outreachTypes};
+}
+
+// Calculate total profit for a DAY (array of show instances from a date group).
+// Correctly handles multiple shows: one hour-span per staff member across all their
+// shows that day, and mileage as one round trip to the furthest location.
+function calcDayProfit(instances){
+  const outreachShows = instances.map(i=>i.s).filter(s=>(s.showTypes||[]).some(t=>OUTREACH_PRICES[t]));
+  if(!outreachShows.length) return null;
+  // Revenue: sum all outreach types across all shows
+  const revenue = outreachShows.reduce((sum,s)=>
+    sum + (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]).reduce((a,t)=>a+(OUTREACH_PRICES[t]||0),0), 0);
+  // Staff: per unique staff member, span from earliest packLoad to latest unloadFinished
+  const staffMap = {}; // name → {earliest packLoadTime, latest unloadFinished}
+  outreachShows.forEach(s=>{
+    const plan = showShiftPlan(s);
+    (s.staffNames||[]).forEach(name=>{
+      if(!staffMap[name]) staffMap[name] = {earliest: plan.packLoad, latest: plan.unloadFinished};
+      else {
+        if(plan.packLoad < staffMap[name].earliest) staffMap[name].earliest = plan.packLoad;
+        if(plan.unloadFinished > staffMap[name].latest) staffMap[name].latest = plan.unloadFinished;
+      }
+    });
+  });
+  let staffLines = [];
+  Object.entries(staffMap).forEach(([name, span])=>{
+    const m = DATA.team.find(x=>x.name===name);
+    const rate = m && m.hourlyRate ? parseFloat(m.hourlyRate) : null;
+    const hours = Math.ceil((span.latest - span.earliest) / 60);
+    staffLines.push({name, rate, hours, cost: rate!=null ? hours*rate : null});
+  });
+  // Mileage: one round trip, using the furthest show's km as the base distance,
+  // plus one-way km for any additional shows (they're stops on the same trip out/back)
+  const kmByShow = outreachShows.map(s=>travelKm(s.travelMinutes)).sort((a,b)=>b-a);
+  const totalKm = kmByShow.length > 1
+    ? kmByShow[0] * 2 + kmByShow.slice(1).reduce((a,k)=>a+k,0)
+    : kmByShow[0] * 2;
+  // Use vehicle from first show that has one set
+  const vehicleShow = outreachShows.find(s=>s.vehicle) || outreachShows[0];
+  const isPersonal = (vehicleShow.vehicle||'').toLowerCase().includes('personal');
+  const kmRate = isPersonal ? 0.50 : 0.70;
+  const mileageCost = totalKm * kmRate;
+  const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
+  const totalKnownCost = knownStaffCost + mileageCost;
+  const profit = revenue - totalKnownCost;
+  return {revenue, staffLines, totalStaffCost:knownStaffCost, totalKm, kmRate, mileageCost, totalKnownCost, profit, showCount:outreachShows.length};
 }
 function timesOverlap(aStart, aEnd, bStart, bEnd){
   return timeToMin(aStart) < timeToMin(bEnd) && timeToMin(bStart) < timeToMin(aEnd);
@@ -11201,12 +11241,23 @@ function renderManager(){
           const collapsed = !!COLLAPSED_SHOW_DATES[g.date];
           const dgs = showDateGroupStatus(g.instances);
           const hasBorder = dgs.border !== 'transparent';
+          // Profit pill — manager/owner only, outreach shows only, day-level calculation
+          const profitPill = (()=>{
+            if(!isManagerLogin()) return '';
+            const day = calcDayProfit(g.instances);
+            if(!day) return '';
+            const col = day.profit >= 0 ? '#1a6b2e' : '#c0392b';
+            const bg  = day.profit >= 0 ? '#edfaf2' : '#fff0f0';
+            const bdr = day.profit >= 0 ? '#7dcfa0' : '#f0a0a0';
+            return `<span style="font-size:11px;font-weight:700;color:${col};padding:2px 9px;border-radius:10px;border:1px solid ${bdr};background:${bg};">${day.profit>=0?'+':''}$${Math.abs(day.profit).toFixed(2)}</span>`;
+          })();
           return `
           <div class="card" style="${hasBorder ? `border-left:5px solid ${dgs.border};` : ''}">
             <div class="detail-section-title" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;${hasBorder&&dgs.bg?`background:${dgs.bg};border-radius:10px;padding:8px 10px;margin:-4px -4px 10px;`:''};" onclick="toggleShowDateGroup('${g.date}')">
               <span style="font-weight:700;">${collapsed ? '▸' : '▾'} ${fmtFullDate(g.date)}</span>
               <div style="display:flex;align-items:center;gap:8px;">
                 ${hasBorder ? `<span style="font-size:11px;font-weight:700;color:${dgs.text};padding:2px 9px;border-radius:10px;border:1px solid ${dgs.border};background:${dgs.bg};">${dgs.label}</span>` : ''}
+                ${profitPill}
                 <span class="count-pill">${g.instances.length} show${g.instances.length===1?'':'s'}</span>
               </div>
             </div>
