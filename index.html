@@ -895,9 +895,9 @@ function normalizeData(d){
     const isMulti = _scMultiDay.includes(cat);
     const fields = isMulti
       ? ['staff','transportPerDay','perDiems','accommodations','misc','tripDays','travelSetupDays','travelCostTrip','u4wAgreement','basePrice','pricingDiscount1','pricingDiscount2','pricingDiscount3','pricingDiscount4','pricingDiscount5']
-      : ['staff','fuel','perDiems','accommodations','misc','u4wAgreement'];
+      : ['staff','fuel','perDiems','accommodations','misc','u4wAgreement','showPrice1','showPrice2','showPrice3','showPrice4','showDiscount1','showDiscount2','showDiscount3','showDiscount4','showStaffHourlyRate'];
     fields.forEach(f=>{
-      if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = f==='tripDays' ? 1 : f==='u4wAgreement' ? 50 : f==='basePrice' ? 2500 : 0;
+      if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = f==='tripDays' ? 1 : f==='u4wAgreement' ? 50 : f==='basePrice' ? 2500 : f==='showPrice1' ? 350 : f==='showPrice2' ? 650 : f==='showPrice3' ? 900 : f==='showPrice4' ? 1050 : 0;
     });
   });
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases." };
@@ -12144,8 +12144,8 @@ function renderManager(){
         ${(()=>{
           // Categories: multiDay=true gets travel/setup days + trip-level travel cost
           const COST_CATS = [
-            {id:'outreach',            label:'Outreach',                sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
-            {id:'outreach2',           label:'Outreach w/ 2 Employees', sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
+            {id:'outreach',            label:'Outreach',                sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false, showPricing:true},
+            {id:'outreach2',           label:'Outreach w/ 2 Employees', sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false, showPricing:true},
             {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true, staffTravelDouble:true},
             {id:'display',             label:'Display',                 sub:'', multiDay:true, staffTravelDouble:true},
             {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true},
@@ -12325,9 +12325,79 @@ function renderManager(){
                   <span style="flex:1;font-size:14px;font-weight:700;">Total per day</span>
                   <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(perDayTotal)}</span>
                 </div>`;
+            const showPricingTable = cat.showPricing ? (()=>{
+              const cols = [1,2,3,4];
+              const staffHourlyRate = parseFloat(costs.showStaffHourlyRate)||0;
+              const colData = cols.map(n=>{
+                const price    = parseFloat(costs['showPrice'+n])||0;
+                const discount = parseFloat(costs['showDiscount'+n])||0;
+                const revenue  = price - discount;
+                const extraStaffCost = staffHourlyRate * (n-1);
+                const cost     = perDayTotal + extraStaffCost;
+                const profit   = revenue - cost;
+                return {n, price, discount, revenue, cost, profit};
+              });
+              const pc = v => v>=0 ? 'var(--green-dark)' : '#c0453a';
+              const pb = v => v>=0 ? '#e8f5ed' : '#fce8e8';
+              const mkSPInput = (field, val) => `<td style="padding:5px 6px;text-align:right;">
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;">
+                  <span style="color:#888;font-size:12px;">$</span>
+                  <input type="number" min="0" step="1" value="${val.toFixed(0)}"
+                    style="width:72px;padding:4px 5px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;"
+                    onchange="saveShowCostField('${cat.id}','${field}',this.value)"
+                    onblur="saveShowCostField('${cat.id}','${field}',this.value)">
+                </div>
+              </td>`;
+              return `<div style="border-top:2px solid var(--border);padding:12px 14px 14px;background:#f9f7f2;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:10px;">Pricing & Profit</div>
+                <div style="overflow-x:auto;">
+                  <table style="width:100%;border-collapse:collapse;min-width:340px;">
+                    <thead><tr style="border-bottom:2px solid var(--border);">
+                      <th style="padding:7px 8px;font-size:12px;color:var(--text-light);text-align:left;min-width:70px;"></th>
+                      ${cols.map(n=>`<th style="padding:7px 8px;font-size:12px;color:var(--text-light);text-align:right;white-space:nowrap;">${n} show${n===1?'':'s'}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                      <tr style="border-bottom:1px solid #f0ece3;background:#f5f3ee;">
+                        <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;" colspan="2">Staff rate / hr (extra shows)</td>
+                        <td colspan="3" style="padding:7px 8px;">
+                          <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="color:#888;font-size:12px;">$</span>
+                            <input type="number" min="0" step="1" value="${(parseFloat(costs.showStaffHourlyRate)||0).toFixed(0)}"
+                              style="width:72px;padding:4px 5px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;"
+                              onchange="saveShowCostField('${cat.id}','showStaffHourlyRate',this.value)"
+                              onblur="saveShowCostField('${cat.id}','showStaffHourlyRate',this.value)">
+                            <span style="color:#aaa;font-size:11px;">/hr &times; (shows &minus; 1)</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
+                        <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Rate</td>
+                        ${cols.map(n=>mkSPInput('showPrice'+n, parseFloat(costs['showPrice'+n])||0)).join('')}
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
+                        <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Discount</td>
+                        ${cols.map(n=>mkSPInput('showDiscount'+n, parseFloat(costs['showDiscount'+n])||0)).join('')}
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
+                        ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.discount>0?`<span style="font-size:11px;color:#888;text-decoration:line-through;margin-right:3px;">$${c.price.toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
+                        ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding:8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                        ${colData.map(c=>`<td style="padding:8px 6px;font-size:14px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+            })() : '';
             return `<div style="margin-bottom:8px;">
               ${header}
-              <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${tripSettings}${pricingTable}${rows}${totalRows}</div>
+              <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${tripSettings}${pricingTable}${rows}${totalRows}${showPricingTable}</div>
             </div>`;
           }).join('');
           return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
