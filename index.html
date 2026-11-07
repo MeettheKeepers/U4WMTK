@@ -888,11 +888,16 @@ function normalizeData(d){
   if(!d.scheduleOverrides) d.scheduleOverrides = [];
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
   if(!d.showCosts) d.showCosts = {};
-  const _scDefs = {outreach:'Outreach', mtkRacing:'MTK Racing', display:'Display', characterWalkaround:'Character Walkaround'};
+  const _scDefs = {outreach:'Outreach', outreach2:'Outreach w/ 2 Employees', mtkRacing:'MTK Racing', display:'Display', characterWalkaround:'Character Walkaround', wildPresentations:'Wild Presentations'};
+  const _scMultiDay = ['mtkRacing','display','characterWalkaround','wildPresentations'];
   Object.keys(_scDefs).forEach(cat=>{
     if(!d.showCosts[cat]) d.showCosts[cat] = {};
-    ['staff','fuel','perDiems','accommodations','animalFood','misc'].forEach(f=>{
-      if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = 0;
+    const isMulti = _scMultiDay.includes(cat);
+    const fields = isMulti
+      ? ['staff','transportPerDay','perDiems','accommodations','animalFood','misc','tripDays','travelSetupDays','travelCostTrip']
+      : ['staff','fuel','perDiems','accommodations','animalFood','misc'];
+    fields.forEach(f=>{
+      if(d.showCosts[cat][f]===undefined) d.showCosts[cat][f] = f==='tripDays' ? 1 : 0;
     });
   });
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases." };
@@ -11908,13 +11913,26 @@ function renderManager(){
             </div>`;
         })()}
         ${(()=>{
+          // Categories: multiDay=true gets travel/setup days + trip-level travel cost
           const COST_CATS = [
-            {id:'outreach',       label:'Outreach', sub:'Country, Continent, Science, Archeology, Battle Match'},
-            {id:'mtkRacing',      label:'MTK Racing', sub:''},
-            {id:'display',        label:'Display', sub:''},
-            {id:'characterWalkaround', label:'Character Walkaround', sub:''},
+            {id:'outreach',            label:'Outreach',                sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
+            {id:'outreach2',           label:'Outreach w/ 2 Employees', sub:'Country, Continent, Science, Archeology, Battle Match', multiDay:false},
+            {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true},
+            {id:'display',             label:'Display',                 sub:'', multiDay:true},
+            {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true},
+            {id:'wildPresentations',   label:'Wild Presentations',      sub:'', multiDay:true},
           ];
-          const COST_FIELDS = [
+          // Per-day cost fields (applies to all categories)
+          const COST_FIELDS_DAY = [
+            {id:'staff',          label:'Staff Cost'},
+            {id:'transportPerDay',label:'Daily Transport (Uber etc.)'},
+            {id:'perDiems',       label:'Per Diems'},
+            {id:'accommodations', label:'Accommodations'},
+            {id:'animalFood',     label:'Animal Food'},
+            {id:'misc',           label:'Misc'},
+          ];
+          // Single-day categories use fuel instead of daily transport
+          const COST_FIELDS_SINGLE = [
             {id:'staff',          label:'Staff Cost'},
             {id:'fuel',           label:'Fuel Cost'},
             {id:'perDiems',       label:'Per Diems'},
@@ -11923,44 +11941,89 @@ function renderManager(){
             {id:'misc',           label:'Misc'},
           ];
           const fmtDollar = v => '$' + (parseFloat(v)||0).toFixed(2);
+          const mkInput = (cat, field, val, w) => `<div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:#888;font-size:13px;">$</span>
+            <input type="number" min="0" step="0.01" value="${val.toFixed(2)}"
+              style="width:${w||90}px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
+              onchange="saveShowCostField('${cat}','${field}',this.value)"
+              onblur="saveShowCostField('${cat}','${field}',this.value)">
+          </div>`;
           const catCards = COST_CATS.map(cat => {
             const costs = (DATA.showCosts||{})[cat.id]||{};
-            const total = COST_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
-            const expanded = !!SHOW_COST_EXPANDED[cat.id];
+            const fields = cat.multiDay ? COST_FIELDS_DAY : COST_FIELDS_SINGLE;
+            const perDayTotal = fields.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
+            const tripDays     = cat.multiDay ? Math.max(1, parseInt(costs.tripDays)||1) : 1;
+            const travelDays   = cat.multiDay ? Math.max(0, parseInt(costs.travelSetupDays)||0) : 0;
+            const travelCost   = cat.multiDay ? (parseFloat(costs.travelCostTrip)||0) : 0;
+            const totalDays    = tripDays + travelDays;
+            const tripTotal    = travelCost + perDayTotal * tripDays;
+            const expanded     = !!SHOW_COST_EXPANDED[cat.id];
+            const unitLabel    = cat.multiDay ? `${tripDays} show day${tripDays===1?'':'s'}${travelDays?' + '+travelDays+' travel':''}` : 'per day';
             const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:${expanded?'10px 10px 0 0':'10px'};background:#f9f7f2;border:1px solid var(--border);" onclick="toggleShowCost('${cat.id}')">
               <span style="font-size:12px;color:#aaa;">${expanded?'▾':'▸'}</span>
               <div style="flex:1;">
                 <div style="font-weight:700;font-size:15px;">${cat.label}</div>
-                ${cat.sub?`<div style="font-size:12px;color:var(--text-light);margin-top:1px;">${cat.sub}</div>`:''}
+                <div style="font-size:12px;color:var(--text-light);margin-top:1px;">${cat.sub||unitLabel}</div>
               </div>
-              <div style="font-size:17px;font-weight:800;color:var(--green-dark);">${fmtDollar(total)}<span style="font-size:11px;font-weight:500;color:var(--text-light);margin-left:4px;">/ event</span></div>
+              <div style="text-align:right;">
+                <div style="font-size:17px;font-weight:800;color:var(--green-dark);">${fmtDollar(perDayTotal)}<span style="font-size:11px;font-weight:500;color:var(--text-light);margin-left:4px;">/ day</span></div>
+                ${cat.multiDay ? `<div style="font-size:12px;color:var(--text-light);">${fmtDollar(tripTotal)} total trip</div>` : ''}
+              </div>
             </div>`;
             if(!expanded) return `<div style="margin-bottom:8px;">${header}</div>`;
-            const rows = COST_FIELDS.map(f => {
+            // Trip settings block (multi-day only)
+            const tripSettings = cat.multiDay ? `<div style="padding:10px 14px 8px;background:#faf8f4;border-bottom:2px solid var(--border);">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">Trip Settings</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="flex:1;font-size:14px;color:#555;">Show days</span>
+                <input type="number" min="1" step="1" value="${tripDays}"
+                  style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
+                  onchange="saveShowCostField('${cat.id}','tripDays',this.value)"
+                  onblur="saveShowCostField('${cat.id}','tripDays',this.value)">
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="flex:1;font-size:14px;color:#555;">Travel / setup days</span>
+                <input type="number" min="0" step="1" value="${travelDays}"
+                  style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
+                  onchange="saveShowCostField('${cat.id}','travelSetupDays',this.value)"
+                  onblur="saveShowCostField('${cat.id}','travelSetupDays',this.value)">
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="flex:1;font-size:14px;color:#555;">Total travel cost (whole trip)</span>
+                ${mkInput(cat.id, 'travelCostTrip', travelCost)}
+              </div>
+            </div>
+            <div style="padding:6px 14px 2px;background:#faf8f4;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Per Show Day Costs</div>
+            </div>` : '';
+            const rows = fields.map(f => {
               const v = parseFloat(costs[f.id])||0;
               return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #f0ece3;">
                 <span style="flex:1;font-size:14px;color:#555;">${f.label}</span>
-                <div style="display:flex;align-items:center;gap:4px;">
-                  <span style="color:#888;font-size:13px;">$</span>
-                  <input type="number" min="0" step="0.01" value="${v.toFixed(2)}"
-                    style="width:90px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;"
-                    onchange="saveShowCostField('${cat.id}','${f.id}',this.value)"
-                    onblur="saveShowCostField('${cat.id}','${f.id}',this.value)">
-                </div>
+                ${mkInput(cat.id, f.id, v)}
               </div>`;
             }).join('');
-            const totalRow = `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f7f1;border-radius:0 0 10px 10px;">
-              <span style="flex:1;font-size:14px;font-weight:700;">Total per event</span>
-              <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(total)}</span>
-            </div>`;
+            const totalRows = cat.multiDay
+              ? `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:#f0f7f1;">
+                  <span style="flex:1;font-size:14px;font-weight:600;">Per show day</span>
+                  <span style="font-size:15px;font-weight:800;color:var(--green-dark);">${fmtDollar(perDayTotal)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:#e8f5ed;border-radius:0 0 10px 10px;">
+                  <span style="flex:1;font-size:14px;font-weight:700;">Total trip (${totalDays} day${totalDays===1?'':'s'})</span>
+                  <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(tripTotal)}</span>
+                </div>`
+              : `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f7f1;border-radius:0 0 10px 10px;">
+                  <span style="flex:1;font-size:14px;font-weight:700;">Total per day</span>
+                  <span style="font-size:16px;font-weight:800;color:var(--green-dark);">${fmtDollar(perDayTotal)}</span>
+                </div>`;
             return `<div style="margin-bottom:8px;">
               ${header}
-              <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${rows}${totalRow}</div>
+              <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${tripSettings}${rows}${totalRows}</div>
             </div>`;
           }).join('');
           return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
             <h3 style="margin:0 0 4px;">Average Cost per Show</h3>
-            <div class="sub" style="margin-bottom:16px;">Click a category to expand and edit its cost breakdown. All amounts are per event.</div>
+            <div class="sub" style="margin-bottom:16px;">Click a category to expand and edit its cost breakdown.</div>
             ${catCards}`;
         })()}`;
 
