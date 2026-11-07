@@ -1033,6 +1033,8 @@ function normalizeData(d){
     if(s.occasion===undefined) s.occasion='';
     if(s.animalsTaken===undefined) s.animalsTaken=[];
     if(s.requiresVSC===undefined) s.requiresVSC=false;
+    if(s.presentationCount===undefined) s.presentationCount=1;
+    if(s.discountPrice===undefined) s.discountPrice=null;
     // Ensure array fields always exist — prevents crashes in showDateGroupStatus and showConflictInfo
     if(!s.staffNames) s.staffNames = [];
     if(!s.showTypes) s.showTypes = s.showType ? [s.showType] : [];
@@ -6649,15 +6651,33 @@ function showShiftPlan(s){
 }
 // Global outreach pricing (matches financials tab SHOW_PRICES for outreach types)
 const OUTREACH_PRICES = {Country:350, Continent:475, Archeology:299, 'Battle Match':350, Science:299};
+// Multi-presentation pricing for Country and Continent (index = presentation count 1-4)
+const MULTI_PRICES = {
+  Country:   [0, 350,  650,  900,  1050],
+  Continent: [0, 475,  900, 1275,  1425],
+};
 // travelMinutes → one-way km estimate at 80 km/h
 function travelKm(mins){ return Math.round((Number(mins)||0) / 60 * 80 * 10) / 10; }
+// Get the effective revenue for a show (respects presentationCount and discountPrice)
+function outreachShowRevenue(s){
+  const outreachTypes = (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]);
+  if(!outreachTypes.length) return 0;
+  if(s.discountPrice != null && s.discountPrice !== '') return parseFloat(s.discountPrice)||0;
+  const count = Math.min(4, Math.max(1, parseInt(s.presentationCount)||1));
+  let total = 0;
+  outreachTypes.forEach(t=>{
+    if(MULTI_PRICES[t]) total += MULTI_PRICES[t][count] || OUTREACH_PRICES[t];
+    else total += OUTREACH_PRICES[t]||0;
+  });
+  return total;
+}
 
 // Calculate revenue, staff cost, mileage and profit for a SINGLE outreach show.
 // Used for the per-show breakdown panel inside each card.
 function calcOutreachProfit(s){
   const outreachTypes = (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]);
   if(!outreachTypes.length) return null;
-  const revenue = outreachTypes.reduce((sum,t)=>sum+(OUTREACH_PRICES[t]||0), 0);
+  const revenue = outreachShowRevenue(s);
   const plan = showShiftPlan(s);
   const shiftHours = Math.ceil(plan.totalMinutes / 60);
   let staffLines = [];
@@ -6683,9 +6703,8 @@ function calcOutreachProfit(s){
 function calcDayProfit(instances){
   const outreachShows = instances.map(i=>i.s).filter(s=>(s.showTypes||[]).some(t=>OUTREACH_PRICES[t]));
   if(!outreachShows.length) return null;
-  // Revenue: sum all outreach types across all shows
-  const revenue = outreachShows.reduce((sum,s)=>
-    sum + (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]).reduce((a,t)=>a+(OUTREACH_PRICES[t]||0),0), 0);
+  // Revenue: sum all outreach shows, respecting presentationCount and discountPrice
+  const revenue = outreachShows.reduce((sum,s)=>sum+outreachShowRevenue(s), 0);
   // Staff: per unique staff member, span from earliest packLoad to latest unloadFinished
   const staffMap = {}; // name → {earliest packLoadTime, latest unloadFinished}
   outreachShows.forEach(s=>{
@@ -9168,6 +9187,18 @@ const HISTORICAL_YEARS = [
 let EXPENSES_EDIT_OPEN = false;
 let SHOW_COST_EXPANDED = {}; // keyed by category id — true = expanded
 function toggleShowCost(cat){ SHOW_COST_EXPANDED[cat]=!SHOW_COST_EXPANDED[cat]; showTab('manager'); }
+function saveShowPresentationCount(id, count){
+  const s = DATA.shows.find(x=>x.id===id);
+  if(!s) return;
+  s.presentationCount = count;
+  saveData(); showTab('manager');
+}
+function saveShowDiscountPrice(id, val){
+  const s = DATA.shows.find(x=>x.id===id);
+  if(!s) return;
+  s.discountPrice = val===''||val==null ? null : parseFloat(val)||null;
+  saveData(); showTab('manager');
+}
 function saveShowCostField(cat,field,val){
   const v = parseFloat(val)||0;
   if(!DATA.showCosts[cat]) DATA.showCosts[cat]={};
@@ -10015,6 +10046,52 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
           ${getCharactersList().map(c=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${(s.characters||[]).includes(c)?'checked':''} onchange="toggleShowCharacter(${s.id},'${c}')"> ${c}</label>`).join('')}
         </div>
       </div>` : ''}
+      ${(()=>{
+        // Presentation count + discount — only for Country/Continent shows, manager only
+        if(!isManagerLogin()) return '';
+        const hasMulti = (s.showTypes||[]).some(t=>MULTI_PRICES[t]);
+        const hasOutreach = (s.showTypes||[]).some(t=>OUTREACH_PRICES[t]);
+        if(!hasOutreach) return '';
+        const count = Math.min(4, Math.max(1, parseInt(s.presentationCount)||1));
+        const hasDiscount = s.discountPrice != null && s.discountPrice !== '';
+        const stdRevenue = (()=>{ const tmp = s.discountPrice; const o = Object.assign({},s,{discountPrice:null}); return outreachShowRevenue(o); })();
+        const dispRevenue = hasDiscount ? parseFloat(s.discountPrice) : stdRevenue;
+        return `<div class="field-block" style="background:#f4f8ff;border:1px solid #b8d0f0;border-radius:8px;padding:10px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            ${hasMulti ? `<div style="flex:1;min-width:200px;">
+              <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Presentations this day</div>
+              <div style="display:flex;gap:6px;">
+                ${[1,2,3,4].map(n=>{
+                  const price = (()=>{
+                    let t=0;
+                    (s.showTypes||[]).forEach(type=>{ if(MULTI_PRICES[type]) t+=MULTI_PRICES[type][n]||0; else if(OUTREACH_PRICES[type]) t+=OUTREACH_PRICES[type]; });
+                    return t;
+                  })();
+                  const active = count===n;
+                  return `<button onclick="saveShowPresentationCount(${s.id},${n})" style="padding:5px 12px;border-radius:8px;border:2px solid ${active?'#2a5fa8':'#b8d0f0'};background:${active?'#2a5fa8':'#fff'};color:${active?'#fff':'#2a5fa8'};font-weight:700;font-size:13px;cursor:pointer;" title="$${price}+HST">${n}</button>`;
+                }).join('')}
+              </div>
+            </div>` : ''}
+            <div style="flex:1;min-width:200px;">
+              <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Show Price</div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:15px;font-weight:700;color:${hasDiscount?'#c08000':'#1a3a6a'};">${hasDiscount?'Discounted: ':'Standard: '}$${dispRevenue.toFixed(2)}+HST</span>
+                ${hasDiscount
+                  ? `<button onclick="saveShowDiscountPrice(${s.id},null)" style="padding:3px 8px;border-radius:6px;border:1px solid #c0392b;background:#fff5f5;color:#c0392b;font-size:12px;cursor:pointer;">✕ Clear discount</button>`
+                  : `<button onclick="document.getElementById('discount-box-${s.id}').style.display='flex'" style="padding:3px 10px;border-radius:6px;border:1px solid #b8d0f0;background:#fff;color:#2a5fa8;font-size:12px;cursor:pointer;">Apply Discount</button>`}
+              </div>
+              <div id="discount-box-${s.id}" style="display:${hasDiscount?'flex':'none'};align-items:center;gap:6px;margin-top:8px;">
+                <span style="font-size:13px;color:#555;">Custom price $</span>
+                <input type="number" min="0" step="0.01" value="${hasDiscount?parseFloat(s.discountPrice).toFixed(2):''}" placeholder="${stdRevenue.toFixed(2)}"
+                  style="width:100px;padding:4px 8px;border:1px solid #b8d0f0;border-radius:6px;font-size:14px;"
+                  onblur="if(this.value)saveShowDiscountPrice(${s.id},this.value)">
+                <span style="font-size:12px;color:#888;">+HST</span>
+                <button onclick="document.getElementById('discount-box-${s.id}').style.display='none'" style="padding:3px 8px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#666;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      })()}
       ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
       <div class="field-block" style="background:#f0faf0; border:1px solid #a0d4a0; border-radius:8px; padding:10px;">
         <label style="color:#1a6a1a; font-weight:700;">Occasion</label>
@@ -10110,7 +10187,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:10px;">Show Profit Breakdown</div>
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-            <span style="color:#555;">Revenue (${prof.outreachTypes.join(' + ')})</span>
+            <span style="color:#555;">Revenue (${prof.outreachTypes.join(' + ')}${(s.presentationCount||1)>1?' × '+s.presentationCount+' presentations':''})${s.discountPrice!=null?' — discounted':''}</span>
             <span style="font-weight:600;">${fmtC(prof.revenue)}</span>
           </div>
           ${prof.staffLines.map(l=>`
