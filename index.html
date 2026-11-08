@@ -12167,10 +12167,10 @@ function renderManager(){
             {id:'science',             label:'Science',                  sub:'', multiDay:false, showPricing:true},
             {id:'archeology',          label:'Archeology',               sub:'', multiDay:false, showPricing:true},
             {id:'battleMatch',         label:'Battle Match',             sub:'', multiDay:false, showPricing:true},
+            {id:'wildPresentations',   label:'Wild Presentations',      sub:'', multiDay:true, staffOptions:true},
+            {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true, charOptions:true},
             {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true, staffTravelDouble:true, noU4W:true},
             {id:'display',             label:'Display',                 sub:'', multiDay:true, staffTravelDouble:true},
-            {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true, charOptions:true},
-            {id:'wildPresentations',   label:'Wild Presentations',      sub:'', multiDay:true, staffOptions:true},
           ];
           // Per-day cost fields (applies to all categories)
           const COST_FIELDS_DAY = [
@@ -12769,15 +12769,15 @@ function renderManager(){
           }
 
           const PKGS_2 = [
-            ['mtkRacing','display'],
-            ['mtkRacing','characterWalkaround'],
             ['mtkRacing','wildPresentations'],
-            ['display','characterWalkaround'],
             ['characterWalkaround','wildPresentations'],
+            ['mtkRacing','characterWalkaround'],
+            ['display','characterWalkaround'],
+            ['mtkRacing','display'],
           ];
           const PKGS_3 = [
-            ['display','mtkRacing','characterWalkaround'],
             ['wildPresentations','mtkRacing','characterWalkaround'],
+            ['display','mtkRacing','characterWalkaround'],
           ];
           function pkgKey(ids){return ids.slice().sort().join('_');}
           function renderPkgCard(ids){
