@@ -12882,7 +12882,7 @@ function renderManager(){
             {id:'display',             label:'Display',              multiDay:true,  staffTravelDouble:true},
             {id:'mtkRacing',           label:'MTK Racing',           multiDay:true,  staffTravelDouble:true, noU4W:true},
           ];
-          const SINGLE_FIELDS = ['staff','fuel','perDiems','accommodations','misc'];
+          const SINGLE_FIELDS = ['staff','fuel','perDiems','accommodations','misc','u4wAgreement'];
           const MULTI_FIELDS  = ['staff','transportPerDay','perDiems','accommodations','misc'];
           const profitColor = v=>v>=0?'var(--green-dark)':'#c0453a';
           const profitBg    = v=>v>=0?'#e8f5ed':'#fce8e8';
@@ -12917,11 +12917,12 @@ function renderManager(){
               if(t.charOptions){
                 const rate = parseFloat(costs.charPrice1)||500;
                 revenue = rate*tripDays - disc;
-                note = `${tripDays}d · 1 character`;
+                note = `${tripDays}d · 2 staff`;
               } else {
                 const rate = parseFloat(costs.basePrice)||2500;
                 revenue = rate*tripDays - disc;
-                note = `${tripDays} day${tripDays===1?'':'s'} · 1 staff`;
+                const staffLabel = t.id==='display'||t.id==='mtkRacing' ? '3 staff' : '1 staff';
+                note = `${tripDays} day${tripDays===1?'':'s'} · ${staffLabel}`;
               }
             }
             const profit = revenue - cost;
