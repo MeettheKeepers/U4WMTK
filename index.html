@@ -9231,9 +9231,9 @@ let SHOW_COST_EXPANDED = {}; // keyed by category id — true = expanded
 function toggleShowCost(cat){ SHOW_COST_EXPANDED[cat]=!SHOW_COST_EXPANDED[cat]; showTab('manager'); }
 let PKG_EXPANDED = {};
 function togglePkg(key){ PKG_EXPANDED[key]=!PKG_EXPANDED[key]; showTab('manager'); }
-function savePkgDiscount(key,val){
+function savePkgDiscount(key,d,val){
   if(!DATA.packageDiscounts) DATA.packageDiscounts={};
-  DATA.packageDiscounts[key]=parseFloat(val)||0;
+  DATA.packageDiscounts[key+'_'+d]=parseFloat(val)||0;
   saveData(); showTab('manager');
 }
 function saveShowPresentationCount(id, count){
@@ -12724,21 +12724,23 @@ function renderManager(){
           COST_CATS.filter(c=>c.multiDay).forEach(cat=>{
             const costs = (DATA.showCosts||{})[cat.id]||{};
             const perDayTotal = COST_FIELDS_DAY.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
-            const tripDays = Math.max(1, parseInt(costs.tripDays)||1);
             const travelDays = Math.max(0, parseInt(costs.travelSetupDays)||0);
             const travelCost = parseFloat(costs.travelCostTrip)||0;
             const u4wCost = (cat.multiDay && !cat.noU4W) ? (parseFloat(costs.u4wAgreement)||0) : 0;
             const effectiveTravelDays = cat.staffTravelDouble ? travelDays*2 : travelDays;
             const staffPerDay = cat.staffTravelDouble ? (parseFloat(costs.staff)||0) : 0;
             const nonStaffPerDay = cat.staffTravelDouble ? perDayTotal-staffPerDay : perDayTotal;
-            const tripTotal = cat.staffTravelDouble
-              ? travelCost + u4wCost*tripDays + nonStaffPerDay*tripDays + staffPerDay*(tripDays+effectiveTravelDays)
-              : travelCost + u4wCost*tripDays + perDayTotal*tripDays;
-            const revenue = cat.charOptions
-              ? (parseFloat(costs.charPrice1)||500)*tripDays - (parseFloat(costs.pricingDiscount1)||0)
-              : (parseFloat(costs.basePrice)||2500)*tripDays - (parseFloat(costs.pricingDiscount1)||0);
-            catPkgInfo[cat.id] = {label:cat.label, tripDays, tripTotal, revenue};
+            const ratePerDay = cat.charOptions
+              ? (parseFloat(costs.charPrice1)||500)
+              : (parseFloat(costs.basePrice)||2500);
+            catPkgInfo[cat.id] = {label:cat.label, travelCost, u4wCost, perDayTotal, staffPerDay, nonStaffPerDay, effectiveTravelDays, ratePerDay, staffTravelDouble:!!cat.staffTravelDouble};
           });
+
+          function pkgCostForDays(info, d){
+            return info.staffTravelDouble
+              ? info.travelCost + info.u4wCost*d + info.nonStaffPerDay*d + info.staffPerDay*(d+info.effectiveTravelDays)
+              : info.travelCost + info.u4wCost*d + info.perDayTotal*d;
+          }
 
           const PKGS_2 = [
             ['mtkRacing','display'],
@@ -12755,59 +12757,70 @@ function renderManager(){
           function renderPkgCard(ids){
             const key = pkgKey(ids);
             const expanded = !!PKG_EXPANDED[key];
-            const pkgDisc = parseFloat((DATA.packageDiscounts||{})[key])||0;
-            const pkgCost = ids.reduce((s,id)=>s+catPkgInfo[id].tripTotal,0);
-            const pkgRevBase = ids.reduce((s,id)=>s+catPkgInfo[id].revenue,0);
-            const pkgRev = pkgRevBase - pkgDisc;
-            const pkgProfit = pkgRev - pkgCost;
-            const pColor = pkgProfit>=0?'var(--green-dark)':'#c0453a';
-            const pBg = pkgProfit>=0?'#e8f5ed':'#fce8e8';
-            const pSign = pkgProfit>=0?'+':'−';
+            const cols = [1,2,3,4,5];
+            const pdisc = DATA.packageDiscounts||{};
+            const colData = cols.map(d=>{
+              const disc = parseFloat(pdisc[key+'_'+d])||0;
+              const revBase = ids.reduce((s,id)=>s+catPkgInfo[id].ratePerDay*d, 0);
+              const cost = ids.reduce((s,id)=>s+pkgCostForDays(catPkgInfo[id],d), 0);
+              const revenue = revBase - disc;
+              const profit = revenue - cost;
+              return {d, disc, revBase, revenue, cost, profit};
+            });
             const chips = ids.map((id,i)=>`${i>0?'<span style="color:#aaa;padding:0 3px;font-size:13px;">+</span>':''}<span style="background:#e8f5ed;color:var(--green-dark);border-radius:5px;padding:3px 10px;font-size:12px;font-weight:700;">${catPkgInfo[id].label}</span>`).join('');
-            const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:${expanded?'10px 10px 0 0':'10px'};background:#f9f7f2;border:1px solid var(--border);" onclick="togglePkg('${key}')">
+            const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:10px 10px 0 0;background:#f9f7f2;border:1px solid var(--border);border-bottom:none;" onclick="togglePkg('${key}')">
               <span style="font-size:12px;color:#aaa;">${expanded?'▾':'▸'}</span>
               <div style="display:flex;align-items:center;gap:5px;flex:1;flex-wrap:wrap;">${chips}</div>
-              <div style="text-align:right;white-space:nowrap;">
-                <div style="font-size:11px;color:var(--text-light);margin-bottom:1px;">Package Profit</div>
-                <div style="font-size:16px;font-weight:800;color:${pColor};">${pSign}${fmtDollar(Math.abs(pkgProfit))}</div>
-              </div>
+              <div style="font-size:11px;color:var(--text-light);white-space:nowrap;">${expanded?'click to collapse':'click to edit discounts'}</div>
             </div>`;
-            if(!expanded) return `<div style="margin-bottom:8px;">${header}</div>`;
-            const catRows = ids.map(id=>{
-              const info = catPkgInfo[id];
-              const cp = info.revenue - info.tripTotal;
-              const cc = cp>=0?'var(--green-dark)':'#c0453a';
-              return `<tr style="border-bottom:1px solid #f0ece3;">
-                <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">${info.label} <span style="font-size:11px;color:#aaa;">${info.tripDays}d</span></td>
-                <td style="padding:7px 8px;font-size:13px;text-align:right;">${fmtDollar(info.revenue)}</td>
-                <td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;">${fmtDollar(info.tripTotal)}</td>
-                <td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;color:${cc};">${cp>=0?'+':'−'}${fmtDollar(Math.abs(cp))}</td>
-              </tr>`;
-            }).join('');
-            const totalRow = `<tr style="background:${pBg};">
-              <td style="padding:8px;font-size:13px;font-weight:700;white-space:nowrap;">Package Total${pkgDisc>0?` <span style="font-size:11px;font-weight:400;color:#888;">(−${fmtDollar(pkgDisc)} disc)</span>`:''}</td>
-              <td style="padding:8px;font-size:13px;text-align:right;font-weight:700;">${fmtDollar(pkgRev)}</td>
-              <td style="padding:8px;font-size:13px;text-align:right;color:#c0453a;font-weight:700;">${fmtDollar(pkgCost)}</td>
-              <td style="padding:8px;font-size:14px;text-align:right;font-weight:800;color:${pColor};">${pSign}${fmtDollar(Math.abs(pkgProfit))}</td>
-            </tr>`;
-            return `<div style="margin-bottom:8px;">${header}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">
-              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f0ece3;">
-                <span style="flex:1;font-size:14px;color:#555;">Package discount</span>
-                <input type="number" value="${pkgDisc||''}" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;text-align:right;"
-                  onchange="savePkgDiscount('${key}',this.value)" onblur="savePkgDiscount('${key}',this.value)">
-              </div>
-              <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;min-width:280px;">
-                  <thead><tr style="border-bottom:2px solid var(--border);">
-                    <th style="padding:5px 8px;font-size:11px;color:var(--text-light);text-align:left;"></th>
-                    <th style="padding:5px 8px;font-size:11px;color:var(--text-light);text-align:right;">Revenue</th>
-                    <th style="padding:5px 8px;font-size:11px;color:var(--text-light);text-align:right;">Cost</th>
-                    <th style="padding:5px 8px;font-size:11px;color:var(--text-light);text-align:right;">Profit</th>
-                  </tr></thead>
-                  <tbody>${catRows}${totalRow}</tbody>
-                </table>
-              </div>
-            </div></div>`;
+            const pc = v=>v>=0?'var(--green-dark)':'#c0453a';
+            const pb = v=>v>=0?'#e8f5ed':'#fce8e8';
+            const minTable = `<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;background:#f9f7f2;overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;min-width:340px;">
+                <thead><tr style="border-bottom:2px solid var(--border);">
+                  <th style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:left;min-width:65px;"></th>
+                  ${cols.map(d=>`<th style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:right;white-space:nowrap;">${d} day${d===1?'':'s'}</th>`).join('')}
+                </tr></thead>
+                <tbody>
+                  <tr style="border-bottom:1px solid #f0ece3;">
+                    <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
+                    ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;white-space:nowrap;">${c.disc>0?`<span style="font-size:10px;color:#aaa;text-decoration:line-through;margin-right:2px;">$${c.revBase.toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                  </tr>
+                  <tr style="border-bottom:1px solid #f0ece3;">
+                    <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
+                    ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                    ${colData.map(c=>`<td style="padding:7px 4px;font-size:13px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                  </tr>
+                </tbody>
+              </table>
+            </div>`;
+            if(!expanded) return `<div style="margin-bottom:8px;">${header}${minTable}</div>`;
+            const discRow = `<div style="border:1px solid var(--border);border-top:none;border-bottom:none;background:#fff;overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;min-width:340px;">
+                <tbody>
+                  <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
+                    <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Discount</td>
+                    ${cols.map(d=>{const dv=parseFloat(pdisc[key+'_'+d])||0; return `<td style="padding:4px 4px;text-align:right;"><input type="number" value="${dv||''}" placeholder="0" style="width:68px;padding:4px 6px;border:1px solid #ddd;border-radius:5px;font-size:12px;text-align:right;" onchange="savePkgDiscount('${key}',${d},this.value)" onblur="savePkgDiscount('${key}',${d},this.value)"></td>`;}).join('')}
+                  </tr>
+                  <tr style="border-bottom:1px solid #f0ece3;">
+                    <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
+                    ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;white-space:nowrap;">${c.disc>0?`<span style="font-size:10px;color:#aaa;text-decoration:line-through;margin-right:2px;">$${c.revBase.toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                  </tr>
+                  <tr style="border-bottom:1px solid #f0ece3;">
+                    <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
+                    ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                    ${colData.map(c=>`<td style="padding:7px 4px;font-size:13px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                  </tr>
+                </tbody>
+              </table>
+            </div>`;
+            return `<div style="margin-bottom:8px;">${header}${discRow}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;height:4px;background:#f9f7f2;"></div></div>`;
           }
 
           const packagesSection = `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 16px;">
