@@ -2571,10 +2571,11 @@ function renderAdmin(){
     {id:'training', label:'Training'},
     ...(hiringEnabled ? [{id:'hiring', label:'Hiring'}] : []),
     ...(isMgr ? [{id:'mileage', label:'Mileage'}] : []),
+    {id:'fairs', label:'Fairs & Festival Packages'},
     ...customTabs.map(ct=>({id:'custom_'+ct.id, label:ct.title}))
   ];
-  // Mileage is manager-only (always visible if isMgr); other tabs check access list
-  const visibleSubTabs = allSubTabs.filter(t => t.id==='mileage' ? isMgr : hasAdminTabAccess(t.id));
+  // Mileage is manager-only; fairs is visible to all; other tabs check access list
+  const visibleSubTabs = allSubTabs.filter(t => t.id==='mileage' ? isMgr : t.id==='fairs' ? true : hasAdminTabAccess(t.id));
   if(!visibleSubTabs.length) return '<div class="card"><div class="empty">No admin sections available.</div></div>';
   // Reset active tab if it's no longer visible
   if(!visibleSubTabs.find(t=>t.id===ADMIN_TAB)) ADMIN_TAB = visibleSubTabs[0].id;
@@ -2601,6 +2602,8 @@ function renderAdmin(){
     </div>`;
   } else if(ADMIN_TAB === 'mileage'){
     body = renderMileageAdmin();
+  } else if(ADMIN_TAB === 'fairs'){
+    body = renderFairsPackages();
   } else if(ADMIN_TAB === 'hiring'){
     const notes = (DATA.admin && DATA.admin.hiring && DATA.admin.hiring.notes) || '';
     body = `<div class="card">
@@ -2636,6 +2639,251 @@ function renderAdmin(){
       <div class="detail-tabs">${tabsHtml}</div>
     </div>
     ${body}`;
+}
+
+/* ---------- FAIRS & FESTIVAL PACKAGES ------------------------------------ */
+function _fairsData(){
+  // Shared helper: build pricing data from DATA.showCosts + DATA.packageDiscounts
+  const sc = DATA.showCosts || {};
+  const pd = DATA.packageDiscounts || {};
+  const days = [1,2,3,4,5];
+
+  // Individual multi-day show types (order: Wild Presentations, Character Walkaround, MTK Racing, Display)
+  const FAIR_CATS = [
+    {id:'wildPresentations',   label:'Wild Presentations',   staffOptions:true},
+    {id:'characterWalkaround', label:'Character Walkaround', charOptions:true},
+    {id:'mtkRacing',           label:'MTK Racing'},
+    {id:'display',             label:'Display'},
+  ];
+
+  const catInfo = FAIR_CATS.map(cat => {
+    const costs = sc[cat.id] || {};
+    const disc = parseFloat(costs.pricingDiscount1) || 0;
+    if(cat.charOptions){
+      // 3 character tiers × 5 days
+      const charPrices = [
+        parseFloat(costs.charPrice1) || 0,
+        parseFloat(costs.charPrice2) || 0,
+        parseFloat(costs.charPrice3) || 0,
+      ];
+      const cols = days.flatMap(d => [1,2,3].map(ch => ({
+        d, ch,
+        revenue: charPrices[ch-1] * d - disc,
+      })));
+      return {...cat, cols};
+    } else if(cat.staffOptions){
+      // Only 1 staff (staff option 1)
+      const basePrice = parseFloat(costs.basePrice) || 0;
+      const cols = days.map(d => ({d, revenue: basePrice * d - disc}));
+      return {...cat, cols};
+    } else {
+      const basePrice = parseFloat(costs.basePrice) || 0;
+      const cols = days.map(d => ({d, revenue: basePrice * d - disc}));
+      return {...cat, cols};
+    }
+  });
+
+  // Packages
+  const PKGS_2 = [
+    ['mtkRacing','wildPresentations'],
+    ['characterWalkaround','wildPresentations'],
+    ['mtkRacing','characterWalkaround'],
+    ['display','characterWalkaround'],
+    ['mtkRacing','display'],
+  ];
+  const PKGS_3 = [
+    ['wildPresentations','mtkRacing','characterWalkaround'],
+    ['display','mtkRacing','characterWalkaround'],
+  ];
+
+  function catLabel(id){ return FAIR_CATS.find(c=>c.id===id)?.label || id; }
+  function ratePerDay(id){
+    const costs = sc[id] || {};
+    if(id==='characterWalkaround') return parseFloat(costs.charPrice1) || 0;
+    return parseFloat(costs.basePrice) || 0;
+  }
+
+  function buildPkgCols(ids){
+    return days.map(d => {
+      const disc = parseFloat(pd[[...ids].sort().join('_')+'_'+d]) || 0;
+      const revBase = ids.reduce((s,id) => s + ratePerDay(id)*d, 0);
+      return {d, revenue: revBase - disc};
+    });
+  }
+
+  const pkgs2 = PKGS_2.map(ids => ({
+    label: ids.map(catLabel).join(' + '),
+    cols: buildPkgCols(ids),
+  }));
+  const pkgs3 = PKGS_3.map(ids => ({
+    label: ids.map(catLabel).join(' + '),
+    cols: buildPkgCols(ids),
+  }));
+
+  return {catInfo, pkgs2, pkgs3, days};
+}
+
+function renderFairsPackages(){
+  const {catInfo, pkgs2, pkgs3, days} = _fairsData();
+  const fmt = v => '$' + Math.round(v).toLocaleString();
+  const perDay = (v,d) => '$' + Math.round(v/d).toLocaleString();
+
+  function renderStdTable(cols){
+    return `<div style="overflow-x:auto;margin-top:6px;">
+      <table style="border-collapse:collapse;min-width:340px;">
+        <thead><tr>
+          <th style="padding:6px 14px 6px 0;font-size:11px;color:var(--text-light);text-align:left;"></th>
+          ${cols.map(c=>`<th style="padding:6px 12px;font-size:12px;color:var(--text-light);text-align:right;">${c.d} day${c.d===1?'':'s'}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:7px 14px 7px 0;font-size:13px;white-space:nowrap;">Price</td>
+            ${cols.map(c=>`<td style="padding:7px 12px;font-size:14px;font-weight:700;text-align:right;">${fmt(c.revenue)}</td>`).join('')}
+          </tr>
+          <tr>
+            <td style="padding:7px 14px 7px 0;font-size:12px;color:var(--text-light);white-space:nowrap;">Per Day</td>
+            ${cols.map(c=>`<td style="padding:7px 12px;font-size:12px;color:var(--text-light);text-align:right;">${perDay(c.revenue,c.d)}</td>`).join('')}
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  function renderCharCard(){
+    const cat = catInfo.find(c=>c.charOptions);
+    if(!cat) return '';
+    return `<div style="margin-bottom:28px;">
+      <div style="font-weight:800;font-size:18px;margin-bottom:10px;">${cat.label}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${days.map(d => {
+          const dayCols = cat.cols.filter(c=>c.d===d);
+          return `<div style="border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;min-width:140px;flex:1;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">${d} Day${d===1?'':'s'}</div>
+            ${dayCols.map(c=>`<div style="margin-bottom:6px;">
+              <div style="font-size:11px;color:#aaa;">${c.ch} Character${c.ch===1?'':'s'}</div>
+              <div style="font-size:15px;font-weight:700;">${fmt(c.revenue)}</div>
+              <div style="font-size:11px;color:var(--text-light);">${perDay(c.revenue,d)} / day</div>
+            </div>`).join('')}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  const indivHtml = catInfo.map(cat => {
+    if(cat.charOptions) return renderCharCard();
+    return `<div style="margin-bottom:28px;">
+      <div style="font-weight:800;font-size:18px;margin-bottom:4px;">${cat.label}</div>
+      ${renderStdTable(cat.cols)}
+    </div>`;
+  }).join('');
+
+  const sep = `<div style="border-top:2px solid var(--border);margin:20px 0 24px;"></div>`;
+
+  const pkgSections = [
+    {title:'2-Show Packages', list:pkgs2},
+    {title:'3-Show Packages', list:pkgs3},
+  ].map(({title,list}) => `
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:14px;">${title}</div>
+    ${list.map(pkg=>`<div style="margin-bottom:24px;">
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px;">${pkg.label}</div>
+      ${renderStdTable(pkg.cols)}
+    </div>`).join('')}
+  `).join(sep);
+
+  return `<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:10px;">
+      <h2 style="margin:0;">Fairs &amp; Festival Packages</h2>
+      <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;font-size:13px;" onclick="downloadFairsPackagesDoc()">⬇ Download Word Doc</button>
+    </div>
+    <div class="sub" style="margin-bottom:20px;">Pricing for client distribution. Edit pricing under Analytics → Average Cost per Show.</div>
+    ${indivHtml}
+    ${sep}
+    ${pkgSections}
+  </div>`;
+}
+
+function downloadFairsPackagesDoc(){
+  const {catInfo, pkgs2, pkgs3, days} = _fairsData();
+  const fmt = v => '$' + Math.round(v).toLocaleString();
+  const perDay = (v,d) => '$' + Math.round(v/d).toLocaleString();
+
+  function stdTableHtml(cols){
+    return `<table style="border-collapse:collapse;width:100%;margin-top:6px;">
+      <tr>
+        <td style="padding:5px 10px 5px 0;font-size:11pt;"></td>
+        ${cols.map(c=>`<td style="padding:5px 10px;font-size:10pt;color:#666;text-align:center;">${c.d} Day${c.d===1?'':'s'}</td>`).join('')}
+      </tr>
+      <tr style="border-top:1px solid #ddd;border-bottom:1px solid #ddd;">
+        <td style="padding:7px 10px 7px 0;font-size:11pt;white-space:nowrap;">Price</td>
+        ${cols.map(c=>`<td style="padding:7px 10px;font-size:13pt;font-weight:bold;text-align:center;">${fmt(c.revenue)}</td>`).join('')}
+      </tr>
+      <tr>
+        <td style="padding:5px 10px 5px 0;font-size:10pt;color:#666;white-space:nowrap;">Per Day</td>
+        ${cols.map(c=>`<td style="padding:5px 10px;font-size:10pt;color:#666;text-align:center;">${perDay(c.revenue,c.d)}</td>`).join('')}
+      </tr>
+    </table>`;
+  }
+
+  function charSectionHtml(){
+    const cat = catInfo.find(c=>c.charOptions);
+    if(!cat) return '';
+    const dayBlocks = days.map(d => {
+      const dayCols = cat.cols.filter(c=>c.d===d);
+      const cells = dayCols.map(c=>`<td style="padding:8px 12px;text-align:center;border:1px solid #d0d0d0;border-radius:4px;">
+          <div style="font-size:9pt;color:#888;margin-bottom:2px;">${c.ch} Char${c.ch===1?'':'s'}</div>
+          <div style="font-size:14pt;font-weight:bold;">${fmt(c.revenue)}</div>
+          <div style="font-size:9pt;color:#888;">${perDay(c.revenue,d)}/day</div>
+        </td>`).join('<td style="width:6px;"></td>');
+      return `<tr>
+        <td style="padding:6px 10px 6px 0;font-size:11pt;white-space:nowrap;vertical-align:middle;">${d} Day${d===1?'':'s'}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+    return `<h2 style="font-size:16pt;margin:24px 0 6px;">${cat.label}</h2>
+    <table style="border-collapse:separate;border-spacing:4px;">${dayBlocks}</table>`;
+  }
+
+  const indivSections = catInfo.map(cat => {
+    if(cat.charOptions) return charSectionHtml();
+    return `<h2 style="font-size:16pt;margin:24px 0 6px;">${cat.label}</h2>${stdTableHtml(cat.cols)}`;
+  }).join('\n<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">');
+
+  const pkgSections = [
+    {title:'2-Show Packages', list:pkgs2},
+    {title:'3-Show Packages', list:pkgs3},
+  ].map(({title,list}) =>
+    `<h2 style="font-size:14pt;font-weight:bold;text-transform:uppercase;color:#555;margin:28px 0 10px;">${title}</h2>` +
+    list.map(pkg =>
+      `<h3 style="font-size:14pt;margin:16px 0 4px;">${pkg.label}</h3>${stdTableHtml(pkg.cols)}`
+    ).join('\n<hr style="border:none;border-top:1px solid #eee;margin:12px 0;">')
+  ).join('\n<hr style="border:none;border-top:2px solid #ccc;margin:24px 0;">');
+
+  const docHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset="utf-8"><title>Fairs &amp; Festival Packages</title>
+<style>
+  body { font-family: Calibri, Arial, sans-serif; margin: 60px; color: #222; }
+  h1 { font-size: 22pt; margin-bottom: 4px; }
+  .sub { font-size: 10pt; color: #666; margin-bottom: 24px; }
+  hr.section { border: none; border-top: 2px solid #333; margin: 28px 0; }
+</style></head>
+<body>
+  <h1>Fairs &amp; Festival Packages</h1>
+  <div class="sub">Pricing as of ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
+  <hr class="section">
+  ${indivSections}
+  <hr class="section">
+  ${pkgSections}
+</body></html>`;
+
+  const blob = new Blob([docHtml], {type:'application/msword'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'MTK_Fairs_Festival_Packages.doc';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
 }
 
 /* ---------- WELCOME (read-only for staff, managed from Manager tab) ---------- */
