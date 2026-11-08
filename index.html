@@ -2845,7 +2845,7 @@ function downloadFairsPackagesDoc(){
   const LGY = '#f0f0f0'; // light gray row
   const MDG = '#888';    // mid gray label text
 
-  const saveStr = save => save > 0 ? `<div style="font-size:7pt;color:#444;font-style:italic;">(save ${fmt(save)})</div>` : '';
+  const saveStr = () => '';
 
   // Day header row
   const dayHdrs = days.map(d=>`<th style="padding:4px 8px;font-size:8pt;text-align:center;background:${LGY};color:#222;font-weight:bold;white-space:nowrap;border:1px solid #bbb;">${d} Day${d===1?'':'s'}</th>`).join('');
