@@ -12152,7 +12152,7 @@ function renderManager(){
             {id:'science',             label:'Science',                  sub:'', multiDay:false, showPricing:true},
             {id:'archeology',          label:'Archeology',               sub:'', multiDay:false, showPricing:true},
             {id:'battleMatch',         label:'Battle Match',             sub:'', multiDay:false, showPricing:true},
-            {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true, staffTravelDouble:true},
+            {id:'mtkRacing',           label:'MTK Racing',              sub:'', multiDay:true, staffTravelDouble:true, noU4W:true},
             {id:'display',             label:'Display',                 sub:'', multiDay:true, staffTravelDouble:true},
             {id:'characterWalkaround', label:'Character Walkaround',    sub:'', multiDay:true, charOptions:true},
             {id:'wildPresentations',   label:'Wild Presentations',      sub:'', multiDay:true, staffOptions:true},
@@ -12189,14 +12189,14 @@ function renderManager(){
             const tripDays     = cat.multiDay ? Math.max(1, parseInt(costs.tripDays)||1) : 1;
             const travelDays   = cat.multiDay ? Math.max(0, parseInt(costs.travelSetupDays)||0) : 0;
             const travelCost           = cat.multiDay ? (parseFloat(costs.travelCostTrip)||0) : 0;
-            const u4wCost              = cat.multiDay ? (parseFloat(costs.u4wAgreement)||0) : 0;
+            const u4wCost              = (cat.multiDay && !cat.noU4W) ? (parseFloat(costs.u4wAgreement)||0) : 0;
             const effectiveTravelDays  = cat.staffTravelDouble ? travelDays * 2 : travelDays;
             const staffPerDay          = cat.staffTravelDouble ? (parseFloat(costs.staff)||0) : 0;
             const nonStaffPerDay       = cat.staffTravelDouble ? perDayTotal - staffPerDay : perDayTotal;
             const totalDays            = tripDays + effectiveTravelDays;
             const tripTotal            = cat.staffTravelDouble
-              ? travelCost + u4wCost + nonStaffPerDay * tripDays + staffPerDay * (tripDays + effectiveTravelDays)
-              : travelCost + u4wCost + perDayTotal * tripDays;
+              ? travelCost + u4wCost * tripDays + nonStaffPerDay * tripDays + staffPerDay * (tripDays + effectiveTravelDays)
+              : travelCost + u4wCost * tripDays + perDayTotal * tripDays;
             const expanded     = !!SHOW_COST_EXPANDED[cat.id];
             const unitLabel    = cat.multiDay ? `${tripDays} show day${tripDays===1?'':'s'}${effectiveTravelDays?' + '+effectiveTravelDays+' travel day'+(effectiveTravelDays===1?'':'s'):''}` : 'per day';
             const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:${expanded?'10px 10px 0 0':'10px'};background:#f9f7f2;border:1px solid var(--border);" onclick="toggleShowCost('${cat.id}')">
@@ -12350,15 +12350,14 @@ function renderManager(){
               const pc = v => v>=0 ? 'var(--green-dark)' : '#c0453a';
               const pb = v => v>=0 ? '#e8f5ed' : '#fce8e8';
               if(cat.charOptions) {
-                // Cost same regardless of char count; discount per day count (pricingDiscount1-5)
-                const baseCostPerDay = travelCost + u4wCost + perDayTotal;
+                // Cost same regardless of char count; discount per day (pricingDiscount1-5)
                 const charCounts = [1,2,3];
                 const cols15 = cols.flatMap(d=>charCounts.map(ch=>({d,ch})));
                 const cd15 = cols15.map(({d,ch})=>{
                   const charPrice = parseFloat(costs['charPrice'+ch])||0;
                   const dayDisc   = parseFloat(costs['pricingDiscount'+d])||0;
                   const revenue   = charPrice*d - dayDisc;
-                  const cost      = baseCostPerDay * d;
+                  const cost      = travelCost + u4wCost * d + perDayTotal * d;
                   return {d, ch, revenue, cost, profit: revenue-cost, dayDisc, charPrice};
                 });
                 return `<div style="padding:10px 14px 12px;background:#f9f7f2;"><div style="overflow-x:auto;">
@@ -12397,7 +12396,7 @@ function renderManager(){
                 const cd10 = cols10.map(({d,s})=>{
                   const disc    = parseFloat(costs['pricingDiscount'+d])||0;
                   const revenue = basePrice*d - disc;
-                  const cost    = travelCost + u4wCost + (nonStaff + staffCost*s)*d;
+                  const cost    = travelCost + u4wCost*d + (nonStaff + staffCost*s)*d;
                   return {d, s, revenue, cost, profit: revenue-cost};
                 });
                 return `<div style="padding:10px 14px 12px;background:#f9f7f2;"><div style="overflow-x:auto;">
@@ -12430,7 +12429,7 @@ function renderManager(){
                 </div></div>`;
               }
               const colData = cols.map((d,i)=>{
-                const cost    = travelCost + u4wCost + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
+                const cost    = travelCost + u4wCost*d + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
                 const disc    = parseFloat(costs['pricingDiscount'+d])||0;
                 const revenue = basePrice*d - disc;
                 const profit  = revenue - cost;
@@ -12494,14 +12493,13 @@ function renderManager(){
               </td>`;
               if(cat.charOptions) {
                 // Cost same regardless of char count; discount per day (pricingDiscount1-5)
-                const baseCostPerDay = travelCost + u4wCost + perDayTotal;
                 const charCounts = [1,2,3];
                 const cols15 = cols.flatMap(d=>charCounts.map(ch=>({d,ch})));
                 const colData = cols15.map(({d,ch})=>{
                   const charPrice = parseFloat(costs['charPrice'+ch])||0;
                   const dayDisc   = parseFloat(costs['pricingDiscount'+d])||0;
                   const revenue   = charPrice*d - dayDisc;
-                  const cost      = baseCostPerDay * d;
+                  const cost      = travelCost + u4wCost * d + perDayTotal * d;
                   return {d, ch, revenue, cost, profit: revenue-cost, dayDisc, charPrice};
                 });
                 const mkCharPriceInput = (field, val) => `<div style="display:flex;align-items:center;gap:3px;">
@@ -12567,7 +12565,7 @@ function renderManager(){
                 const colData = cols10.map(({d,s})=>{
                   const disc    = discounts[d-1];
                   const revenue = basePrice*d - disc;
-                  const cost    = travelCost + u4wCost + (nonStaff + staffCost*s)*d;
+                  const cost    = travelCost + u4wCost*d + (nonStaff + staffCost*s)*d;
                   return {d, s, revenue, cost, profit: revenue-cost, disc};
                 });
                 return `<div style="border-top:2px solid var(--border);padding:12px 14px 14px;background:#f9f7f2;">
@@ -12611,7 +12609,7 @@ function renderManager(){
                 </div>`;
               }
               const colData = cols.map((d,i)=>{
-                const cost = travelCost + u4wCost + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
+                const cost = travelCost + u4wCost*d + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
                 const revenue = basePrice*d - discounts[i];
                 const profit = revenue - cost;
                 return {d, cost, revenue, profit, discount: discounts[i]};
@@ -12675,10 +12673,10 @@ function renderManager(){
                 <span style="flex:1;font-size:14px;color:#555;">Total travel cost (whole trip)</span>
                 ${mkInput(cat.id, 'travelCostTrip', travelCost)}
               </div>
-              <div style="display:flex;align-items:center;gap:10px;">
+              ${cat.noU4W ? '' : `<div style="display:flex;align-items:center;gap:10px;">
                 <span style="flex:1;font-size:14px;color:#555;">U4W Animals Agreement</span>
                 ${mkInput(cat.id, 'u4wAgreement', u4wCost)}
-              </div>
+              </div>`}
             </div>
             <div style="padding:6px 14px 2px;background:#faf8f4;">
               <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Per Show Day Costs</div>
