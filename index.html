@@ -2948,7 +2948,7 @@ function downloadFairsPackagesDoc(){
   ${indivTable}
 
   <!-- Bundle & Save teaser at bottom of page 1 -->
-  <div style="text-align:center;margin-top:16px;padding:12px 0 10px;border:2px solid #111;background:#f0f0f0;">
+  <div style="text-align:center;margin-top:16px;padding:12px 0 10px;border:2px solid #111;">
     <div style="font-size:16pt;font-weight:bold;font-family:Calibri,Arial,sans-serif;letter-spacing:.06em;">BUNDLE &amp; SAVE!</div>
     <div style="font-size:9pt;color:#333;margin-top:4px;">Check out the next page for multi-show discounts!</div>
   </div>
@@ -12851,7 +12851,7 @@ function renderManager(){
                   onchange="saveShowCostField('${cat.id}','${field}',this.value)"
                   onblur="saveShowCostField('${cat.id}','${field}',this.value)">
               </div>`;
-              const mkDiscInput = (d, span) => `<td${span?` colspan="${span}"`:''}style="padding:5px 6px;text-align:right;">
+              const mkDiscInput = (d, span) => `<td${span?` colspan="${span}"`:''} style="padding:5px 6px;text-align:right;">
                 <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;">
                   <span style="color:#888;font-size:12px;">$</span>
                   <input type="number" min="0" step="1" value="${(parseFloat(costs['pricingDiscount'+d])||0).toFixed(0)}"
