@@ -7482,11 +7482,10 @@ function staffOnDate(dateStr){
   return [...names].sort();
 }
 function calEventColor(s){
-  if(s.status==='completed') return {bg:'#2a7a2a',text:'#fff'};
-  if(isLangMismatch(s))      return {bg:'#7c3fad',text:'#fff'}; // French show, no French/bilingual staff
-  if(!s.paid)                return {bg:'#c0392b',text:'#fff'};
-  if(clientShowCount(s)>1)   return {bg:'#d4900f',text:'#fff'};
-  return {bg:'#1a5a8a',text:'#fff'}; // paid, not yet completed → blue
+  if(isLangMismatch(s)) return {bg:'#7c3fad',text:'#fff'}; // French show, no French/bilingual staff
+  const isOutreach = (s.showTypes||[]).some(t=>OUTREACH_PRICES[t]);
+  if(isOutreach) return {bg:'#2d6e2d',text:'#fff'}; // green for outreach
+  return {bg:'#b03a2a',text:'#fff'}; // red for fairs/festivals
 }
 
 function renderCalDetail(){
@@ -12341,9 +12340,46 @@ function renderManager(){
                 </div>
               </div>`;
             })() : '';
+            const pricingTableMin = cat.multiDay ? (()=>{
+              const basePrice = parseFloat(costs.basePrice)||2500;
+              const cols = [1,2,3,4,5];
+              const colData = cols.map((d,i)=>{
+                const cost    = travelCost + u4wCost + nonStaffPerDay*d + staffPerDay*(d + effectiveTravelDays);
+                const disc    = parseFloat(costs['pricingDiscount'+d])||0;
+                const revenue = basePrice*d - disc;
+                const profit  = revenue - cost;
+                return {d, cost, revenue, profit, disc};
+              });
+              const pc = v => v>=0 ? 'var(--green-dark)' : '#c0453a';
+              const pb = v => v>=0 ? '#e8f5ed' : '#fce8e8';
+              return `<div style="padding:10px 14px 12px;background:#f9f7f2;">
+                <div style="overflow-x:auto;">
+                  <table style="width:100%;border-collapse:collapse;min-width:340px;">
+                    <thead><tr style="border-bottom:2px solid var(--border);">
+                      <th style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:left;min-width:70px;"></th>
+                      ${cols.map(d=>`<th style="padding:3px 8px;font-size:11px;color:var(--text-light);text-align:right;white-space:nowrap;">${d} day${d===1?'':'s'}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
+                        ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.disc>0?`<span style="font-size:10px;color:#888;text-decoration:line-through;margin-right:2px;">$${(basePrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                      </tr>
+                      <tr style="border-bottom:1px solid #f0ece3;">
+                        <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
+                        ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
+                      </tr>
+                      <tr>
+                        <td style="padding:7px 8px;font-size:13px;font-weight:700;white-space:nowrap;">Profit</td>
+                        ${colData.map(c=>`<td style="padding:7px 4px;font-size:13px;text-align:right;font-weight:800;color:${pc(c.profit)};background:${pb(c.profit)};white-space:nowrap;">${c.profit>=0?'+':'−'}$${Math.abs(c.profit).toFixed(0)}</td>`).join('')}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+            })() : '';
             if(!expanded) {
-              // For single-day outreach categories, still show the pricing table when collapsed
-              const collapsedPricing = cat.showPricing ? showPricingTableMin : '';
+              // Show pricing preview even when collapsed
+              const collapsedPricing = cat.showPricing ? showPricingTableMin : (cat.multiDay ? pricingTableMin : '');
               if(collapsedPricing) {
                 return `<div style="margin-bottom:8px;">${header}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">${collapsedPricing}</div></div>`;
               }
