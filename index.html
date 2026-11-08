@@ -12350,16 +12350,16 @@ function renderManager(){
               const pc = v => v>=0 ? 'var(--green-dark)' : '#c0453a';
               const pb = v => v>=0 ? '#e8f5ed' : '#fce8e8';
               if(cat.charOptions) {
-                // Cost is same regardless of character count — staff stays the same
+                // Cost same regardless of char count; discount per day count (pricingDiscount1-5)
                 const baseCostPerDay = travelCost + u4wCost + perDayTotal;
                 const charCounts = [1,2,3];
                 const cols15 = cols.flatMap(d=>charCounts.map(ch=>({d,ch})));
                 const cd15 = cols15.map(({d,ch})=>{
                   const charPrice = parseFloat(costs['charPrice'+ch])||0;
-                  const charDisc  = parseFloat(costs['charDiscount'+ch])||0;
-                  const revenue   = charPrice*d - charDisc;
+                  const dayDisc   = parseFloat(costs['pricingDiscount'+d])||0;
+                  const revenue   = charPrice*d - dayDisc;
                   const cost      = baseCostPerDay * d;
-                  return {d, ch, revenue, cost, profit: revenue-cost, charDisc, charPrice};
+                  return {d, ch, revenue, cost, profit: revenue-cost, dayDisc, charPrice};
                 });
                 return `<div style="padding:10px 14px 12px;background:#f9f7f2;"><div style="overflow-x:auto;">
                   <table style="width:100%;border-collapse:collapse;min-width:680px;">
@@ -12376,7 +12376,7 @@ function renderManager(){
                     <tbody>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
-                        ${cd15.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.charDisc>0?`<span style="font-size:10px;color:#888;text-decoration:line-through;margin-right:2px;">$${(c.charPrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                        ${cd15.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.dayDisc>0?`<span style="font-size:10px;color:#888;text-decoration:line-through;margin-right:2px;">$${(c.charPrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
@@ -12493,15 +12493,16 @@ function renderManager(){
                 </div>
               </td>`;
               if(cat.charOptions) {
+                // Cost same regardless of char count; discount per day (pricingDiscount1-5)
                 const baseCostPerDay = travelCost + u4wCost + perDayTotal;
                 const charCounts = [1,2,3];
                 const cols15 = cols.flatMap(d=>charCounts.map(ch=>({d,ch})));
                 const colData = cols15.map(({d,ch})=>{
                   const charPrice = parseFloat(costs['charPrice'+ch])||0;
-                  const charDisc  = parseFloat(costs['charDiscount'+ch])||0;
-                  const revenue   = charPrice*d - charDisc;
+                  const dayDisc   = parseFloat(costs['pricingDiscount'+d])||0;
+                  const revenue   = charPrice*d - dayDisc;
                   const cost      = baseCostPerDay * d;
-                  return {d, ch, revenue, cost, profit: revenue-cost, charDisc, charPrice};
+                  return {d, ch, revenue, cost, profit: revenue-cost, dayDisc, charPrice};
                 });
                 const mkCharPriceInput = (field, val) => `<div style="display:flex;align-items:center;gap:3px;">
                   <span style="color:#888;font-size:12px;">$</span>
@@ -12510,6 +12511,15 @@ function renderManager(){
                     onchange="saveShowCostField('${cat.id}','${field}',this.value)"
                     onblur="saveShowCostField('${cat.id}','${field}',this.value)">
                 </div>`;
+                const mkDayDiscInput = (d) => `<td colspan="3" style="padding:5px 8px;">
+                  <div style="display:flex;align-items:center;gap:3px;">
+                    <span style="color:#888;font-size:12px;">$</span>
+                    <input type="number" min="0" step="1" value="${(parseFloat(costs['pricingDiscount'+d])||0).toFixed(0)}"
+                      style="width:72px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;"
+                      onchange="saveShowCostField('${cat.id}','pricingDiscount${d}',this.value)"
+                      onblur="saveShowCostField('${cat.id}','pricingDiscount${d}',this.value)">
+                  </div>
+                </td>`;
                 return `<div style="border-top:2px solid var(--border);padding:12px 14px 14px;background:#f9f7f2;">
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:10px;">Pricing & Profit</div>
                   <div style="overflow-x:auto;">
@@ -12531,19 +12541,11 @@ function renderManager(){
                         </tr>
                         <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
                           <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Discount</td>
-                          ${charCounts.map(ch=>`<td colspan="3" style="padding:5px 8px;">
-                            <div style="display:flex;align-items:center;gap:3px;">
-                              <span style="color:#888;font-size:12px;">$</span>
-                              <input type="number" min="0" step="1" value="${(parseFloat(costs['charDiscount'+ch])||0).toFixed(0)}"
-                                style="width:72px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;"
-                                onchange="saveShowCostField('${cat.id}','charDiscount${ch}',this.value)"
-                                onblur="saveShowCostField('${cat.id}','charDiscount${ch}',this.value)">
-                            </div>
-                          </td>`).join('')}
+                          ${cols.map(d=>mkDayDiscInput(d)).join('')}
                         </tr>
                         <tr style="border-bottom:1px solid #f0ece3;">
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
-                          ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.charDisc>0?`<span style="font-size:10px;color:#888;text-decoration:line-through;margin-right:2px;">$${(c.charPrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
+                          ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">${c.dayDisc>0?`<span style="font-size:10px;color:#888;text-decoration:line-through;margin-right:2px;">$${(c.charPrice*c.d).toFixed(0)}</span>`:''}<span>$${c.revenue.toFixed(0)}</span></td>`).join('')}
                         </tr>
                         <tr style="border-bottom:1px solid #f0ece3;">
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
