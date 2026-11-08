@@ -889,6 +889,7 @@ function normalizeData(d){
   if(!d.vehicles) d.vehicles = DEFAULT_VEHICLES.slice();
   if(!d.showCosts) d.showCosts = {};
   if(!d.packageDiscounts) d.packageDiscounts = {};
+  if(!d.packageCosts) d.packageCosts = {};
   const _scDefs = {country:'Country', continent:'Continent', science:'Science', archeology:'Archeology', battleMatch:'Battle Match', mtkRacing:'MTK Racing', display:'Display', characterWalkaround:'Character Walkaround', wildPresentations:'Wild Presentations'};
   const _scMultiDay = ['mtkRacing','display','characterWalkaround','wildPresentations'];
   Object.keys(_scDefs).forEach(cat=>{
@@ -9236,6 +9237,13 @@ function savePkgDiscount(key,d,val){
   DATA.packageDiscounts[key+'_'+d]=parseFloat(val)||0;
   saveData(); showTab('manager');
 }
+function savePkgCost(key,catId,field,val){
+  if(!DATA.packageCosts) DATA.packageCosts={};
+  if(!DATA.packageCosts[key]) DATA.packageCosts[key]={};
+  if(!DATA.packageCosts[key][catId]) DATA.packageCosts[key][catId]={};
+  DATA.packageCosts[key][catId][field]=parseFloat(val)||0;
+  saveData(); showTab('manager');
+}
 function saveShowPresentationCount(id, count){
   const s = DATA.shows.find(x=>x.id===id);
   if(!s) return;
@@ -12720,26 +12728,46 @@ function renderManager(){
             </div>`;
           }).join('');
           // ---- Packages section ----
+          // catPkgInfo: static config per category for packages
           const catPkgInfo = {};
           COST_CATS.filter(c=>c.multiDay).forEach(cat=>{
-            const costs = (DATA.showCosts||{})[cat.id]||{};
-            const perDayTotal = COST_FIELDS_DAY.reduce((s,f)=>s+(parseFloat(costs[f.id])||0),0);
-            const travelDays = Math.max(0, parseInt(costs.travelSetupDays)||0);
-            const travelCost = parseFloat(costs.travelCostTrip)||0;
-            const u4wCost = (cat.multiDay && !cat.noU4W) ? (parseFloat(costs.u4wAgreement)||0) : 0;
+            const baseCosts = (DATA.showCosts||{})[cat.id]||{};
+            // effectiveTravelDays uses base trip settings (structural, not a cost field)
+            const travelDays = Math.max(0, parseInt(baseCosts.travelSetupDays)||0);
             const effectiveTravelDays = cat.staffTravelDouble ? travelDays*2 : travelDays;
-            const staffPerDay = cat.staffTravelDouble ? (parseFloat(costs.staff)||0) : 0;
-            const nonStaffPerDay = cat.staffTravelDouble ? perDayTotal-staffPerDay : perDayTotal;
             const ratePerDay = cat.charOptions
-              ? (parseFloat(costs.charPrice1)||500)
-              : (parseFloat(costs.basePrice)||2500);
-            catPkgInfo[cat.id] = {label:cat.label, travelCost, u4wCost, perDayTotal, staffPerDay, nonStaffPerDay, effectiveTravelDays, ratePerDay, staffTravelDouble:!!cat.staffTravelDouble};
+              ? (parseFloat(baseCosts.charPrice1)||500)
+              : (parseFloat(baseCosts.basePrice)||2500);
+            catPkgInfo[cat.id] = {
+              label: cat.label,
+              baseCosts,
+              ratePerDay,
+              effectiveTravelDays,
+              staffTravelDouble: !!cat.staffTravelDouble,
+              noU4W: !!cat.noU4W,
+              charOptions: !!cat.charOptions,
+            };
           });
 
-          function pkgCostForDays(info, d){
-            return info.staffTravelDouble
-              ? info.travelCost + info.u4wCost*d + info.nonStaffPerDay*d + info.staffPerDay*(d+info.effectiveTravelDays)
-              : info.travelCost + info.u4wCost*d + info.perDayTotal*d;
+          // Read a cost field for a package — package override takes priority over base
+          function getPkgField(key, catId, field){
+            const ov = (DATA.packageCosts||{})[key];
+            if(ov && ov[catId] && ov[catId][field]!==undefined) return parseFloat(ov[catId][field])||0;
+            return parseFloat(catPkgInfo[catId].baseCosts[field])||0;
+          }
+
+          // Compute cost for one category for d days within a specific package
+          function pkgCatCostForDays(key, catId, d){
+            const info = catPkgInfo[catId];
+            const perDayTotal = COST_FIELDS_DAY.reduce((s,f)=>s+getPkgField(key,catId,f.id), 0);
+            const travelCost = getPkgField(key, catId, 'travelCostTrip');
+            const u4wCost = info.noU4W ? 0 : getPkgField(key, catId, 'u4wAgreement');
+            if(info.staffTravelDouble){
+              const staffPerDay = getPkgField(key, catId, 'staff');
+              const nonStaffPerDay = perDayTotal - staffPerDay;
+              return travelCost + u4wCost*d + nonStaffPerDay*d + staffPerDay*(d + info.effectiveTravelDays);
+            }
+            return travelCost + u4wCost*d + perDayTotal*d;
           }
 
           const PKGS_2 = [
@@ -12762,16 +12790,15 @@ function renderManager(){
             const colData = cols.map(d=>{
               const disc = parseFloat(pdisc[key+'_'+d])||0;
               const revBase = ids.reduce((s,id)=>s+catPkgInfo[id].ratePerDay*d, 0);
-              const cost = ids.reduce((s,id)=>s+pkgCostForDays(catPkgInfo[id],d), 0);
+              const cost = ids.reduce((s,id)=>s+pkgCatCostForDays(key,id,d), 0);
               const revenue = revBase - disc;
-              const profit = revenue - cost;
-              return {d, disc, revBase, revenue, cost, profit};
+              return {d, disc, revBase, revenue, cost, profit: revenue-cost};
             });
             const chips = ids.map((id,i)=>`${i>0?'<span style="color:#aaa;padding:0 3px;font-size:13px;">+</span>':''}<span style="background:#e8f5ed;color:var(--green-dark);border-radius:5px;padding:3px 10px;font-size:12px;font-weight:700;">${catPkgInfo[id].label}</span>`).join('');
             const header = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 14px;border-radius:10px 10px 0 0;background:#f9f7f2;border:1px solid var(--border);border-bottom:none;" onclick="togglePkg('${key}')">
               <span style="font-size:12px;color:#aaa;">${expanded?'▾':'▸'}</span>
               <div style="display:flex;align-items:center;gap:5px;flex:1;flex-wrap:wrap;">${chips}</div>
-              <div style="font-size:11px;color:var(--text-light);white-space:nowrap;">${expanded?'click to collapse':'click to edit discounts'}</div>
+              <div style="font-size:11px;color:var(--text-light);white-space:nowrap;">${expanded?'collapse':'edit costs & discounts'}</div>
             </div>`;
             const pc = v=>v>=0?'var(--green-dark)':'#c0453a';
             const pb = v=>v>=0?'#e8f5ed':'#fce8e8';
@@ -12798,12 +12825,43 @@ function renderManager(){
               </table>
             </div>`;
             if(!expanded) return `<div style="margin-bottom:8px;">${header}${minTable}</div>`;
-            const discRow = `<div style="border:1px solid var(--border);border-top:none;border-bottom:none;background:#fff;overflow-x:auto;">
+            // Expanded: cost overrides per category + discount row + full table
+            const mkPkgInput = (catId, field) => {
+              const v = getPkgField(key, catId, field);
+              const isOverridden = !!((DATA.packageCosts||{})[key]?.[catId]?.[field] !== undefined);
+              return `<input type="number" value="${v||''}" placeholder="0" style="width:80px;padding:4px 7px;border:1px solid ${isOverridden?'var(--green-dark)':'#ddd'};border-radius:5px;font-size:12px;text-align:right;${isOverridden?'background:#f0faf3;':''}"
+                onchange="savePkgCost('${key}','${catId}','${field}',this.value)"
+                onblur="savePkgCost('${key}','${catId}','${field}',this.value)">`;
+            };
+            const costSections = ids.map(id=>{
+              const info = catPkgInfo[id];
+              const perDayFields = COST_FIELDS_DAY;
+              const rows = perDayFields.map(f=>`<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
+                <span style="flex:1;font-size:13px;color:#555;">${f.label}</span>
+                ${mkPkgInput(id,f.id)}
+              </div>`).join('');
+              const travelRow = `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
+                <span style="flex:1;font-size:13px;color:#555;">Travel Cost (whole trip)</span>
+                ${mkPkgInput(id,'travelCostTrip')}
+              </div>`;
+              const u4wRow = info.noU4W ? '' : `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
+                <span style="flex:1;font-size:13px;color:#555;">U4W Agreement</span>
+                ${mkPkgInput(id,'u4wAgreement')}
+              </div>`;
+              return `<div style="border-bottom:2px solid var(--border);">
+                <div style="padding:6px 12px;background:#f0f7f1;">
+                  <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green-dark);">${info.label}</span>
+                  <span style="font-size:11px;color:#aaa;margin-left:6px;">— overrides only affect this package</span>
+                </div>
+                ${rows}${travelRow}${u4wRow}
+              </div>`;
+            }).join('');
+            const discRow = `<div style="border-bottom:2px solid var(--border);overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;min-width:340px;">
                 <tbody>
-                  <tr style="border-bottom:1px solid #f0ece3;background:#fffdf8;">
-                    <td style="padding:7px 8px;font-size:13px;color:#888;white-space:nowrap;font-style:italic;">Discount</td>
-                    ${cols.map(d=>{const dv=parseFloat(pdisc[key+'_'+d])||0; return `<td style="padding:4px 4px;text-align:right;"><input type="number" value="${dv||''}" placeholder="0" style="width:68px;padding:4px 6px;border:1px solid #ddd;border-radius:5px;font-size:12px;text-align:right;" onchange="savePkgDiscount('${key}',${d},this.value)" onblur="savePkgDiscount('${key}',${d},this.value)"></td>`;}).join('')}
+                  <tr style="background:#fffdf8;">
+                    <td style="padding:7px 8px;font-size:13px;color:#888;font-style:italic;white-space:nowrap;">Discount</td>
+                    ${cols.map(d=>{const dv=parseFloat(pdisc[key+'_'+d])||0;return `<td style="padding:4px 4px;text-align:right;"><input type="number" value="${dv||''}" placeholder="0" style="width:68px;padding:4px 6px;border:1px solid #ddd;border-radius:5px;font-size:12px;text-align:right;" onchange="savePkgDiscount('${key}',${d},this.value)" onblur="savePkgDiscount('${key}',${d},this.value)"></td>`;}).join('')}
                   </tr>
                   <tr style="border-bottom:1px solid #f0ece3;">
                     <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
@@ -12820,12 +12878,12 @@ function renderManager(){
                 </tbody>
               </table>
             </div>`;
-            return `<div style="margin-bottom:8px;">${header}${discRow}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;height:4px;background:#f9f7f2;"></div></div>`;
+            return `<div style="margin-bottom:8px;">${header}<div style="border-left:1px solid var(--border);border-right:1px solid var(--border);">${costSections}</div>${discRow}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;height:4px;background:#f9f7f2;"></div></div>`;
           }
 
           const packagesSection = `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 16px;">
             <h3 style="margin:0 0 4px;">Show Packages</h3>
-            <div class="sub" style="margin-bottom:16px;">Package deals combining show types — revenue and cost based on each category's current settings.</div>
+            <div class="sub" style="margin-bottom:16px;">Package deals combining show types. Costs default to each category's settings — override below to reflect shared savings.</div>
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">2-Category Packages</div>
             ${PKGS_2.map(renderPkgCard).join('')}
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin:14px 0 8px;">3-Category Packages</div>
