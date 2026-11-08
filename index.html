@@ -2660,25 +2660,36 @@ function _fairsData(){
     const costs = sc[cat.id] || {};
     const disc = parseFloat(costs.pricingDiscount1) || 0;
     if(cat.charOptions){
-      // 3 character tiers × 5 days
       const charPrices = [
         parseFloat(costs.charPrice1) || 0,
         parseFloat(costs.charPrice2) || 0,
         parseFloat(costs.charPrice3) || 0,
       ];
-      const cols = days.flatMap(d => [1,2,3].map(ch => ({
-        d, ch,
-        revenue: charPrices[ch-1] * d - disc,
-      })));
+      // savings vs booking d individual 1-day slots per char tier
+      const base1 = charPrices.map(p => p * 1 - disc); // 1-day rev per tier
+      const cols = days.flatMap(d => [1,2,3].map(ch => {
+        const revenue = charPrices[ch-1] * d - disc;
+        const save = d > 1 ? Math.max(0, base1[ch-1] * d - revenue) : 0;
+        return {d, ch, revenue, save};
+      }));
       return {...cat, cols};
     } else if(cat.staffOptions){
-      // Only 1 staff (staff option 1)
       const basePrice = parseFloat(costs.basePrice) || 0;
-      const cols = days.map(d => ({d, revenue: basePrice * d - disc}));
+      const rev1 = basePrice * 1 - disc;
+      const cols = days.map(d => {
+        const revenue = basePrice * d - disc;
+        const save = d > 1 ? Math.max(0, rev1 * d - revenue) : 0;
+        return {d, revenue, save};
+      });
       return {...cat, cols};
     } else {
       const basePrice = parseFloat(costs.basePrice) || 0;
-      const cols = days.map(d => ({d, revenue: basePrice * d - disc}));
+      const rev1 = basePrice * 1 - disc;
+      const cols = days.map(d => {
+        const revenue = basePrice * d - disc;
+        const save = d > 1 ? Math.max(0, rev1 * d - revenue) : 0;
+        return {d, revenue, save};
+      });
       return {...cat, cols};
     }
   });
@@ -2703,11 +2714,25 @@ function _fairsData(){
     return parseFloat(costs.basePrice) || 0;
   }
 
+  // Revenue for a single show type at d days (uses 1-char rate for charOptions)
+  function indivRevForD(id, d){
+    const costs = sc[id] || {};
+    const disc = parseFloat(costs.pricingDiscount1) || 0;
+    const rate = id==='characterWalkaround'
+      ? (parseFloat(costs.charPrice1)||0)
+      : (parseFloat(costs.basePrice)||0);
+    return rate * d - disc;
+  }
+
   function buildPkgCols(ids){
     return days.map(d => {
-      const disc = parseFloat(pd[[...ids].sort().join('_')+'_'+d]) || 0;
+      const pkgDisc = parseFloat(pd[[...ids].sort().join('_')+'_'+d]) || 0;
       const revBase = ids.reduce((s,id) => s + ratePerDay(id)*d, 0);
-      return {d, revenue: revBase - disc};
+      const revenue = revBase - pkgDisc;
+      // Savings vs booking each show individually at their d-day prices
+      const indivTotal = ids.reduce((s,id) => s + indivRevForD(id, d), 0);
+      const save = Math.max(0, indivTotal - revenue);
+      return {d, revenue, save};
     });
   }
 
@@ -2728,6 +2753,8 @@ function renderFairsPackages(){
   const fmt = v => '$' + Math.round(v).toLocaleString();
   const perDay = (v,d) => '$' + Math.round(v/d).toLocaleString();
 
+  const saveTag = save => save > 0 ? `<span style="font-size:10px;color:var(--green-dark);font-weight:600;white-space:nowrap;">save ${fmt(save)}</span>` : '';
+
   function renderStdTable(cols){
     return `<div style="overflow-x:auto;margin-top:6px;">
       <table style="border-collapse:collapse;min-width:340px;">
@@ -2738,7 +2765,7 @@ function renderFairsPackages(){
         <tbody>
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:7px 14px 7px 0;font-size:13px;white-space:nowrap;">Price</td>
-            ${cols.map(c=>`<td style="padding:7px 12px;font-size:14px;font-weight:700;text-align:right;">${fmt(c.revenue)}</td>`).join('')}
+            ${cols.map(c=>`<td style="padding:7px 12px;text-align:right;"><div style="font-size:14px;font-weight:700;">${fmt(c.revenue)}</div>${saveTag(c.save)}</td>`).join('')}
           </tr>
           <tr>
             <td style="padding:7px 14px 7px 0;font-size:12px;color:var(--text-light);white-space:nowrap;">Per Day</td>
@@ -2759,10 +2786,11 @@ function renderFairsPackages(){
           const dayCols = cat.cols.filter(c=>c.d===d);
           return `<div style="border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;min-width:140px;flex:1;">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">${d} Day${d===1?'':'s'}</div>
-            ${dayCols.map(c=>`<div style="margin-bottom:6px;">
+            ${dayCols.map(c=>`<div style="margin-bottom:8px;">
               <div style="font-size:11px;color:#aaa;">${c.ch} Character${c.ch===1?'':'s'}</div>
               <div style="font-size:15px;font-weight:700;">${fmt(c.revenue)}</div>
               <div style="font-size:11px;color:var(--text-light);">${perDay(c.revenue,d)} / day</div>
+              ${c.save > 0 ? `<div style="font-size:10px;color:var(--green-dark);font-weight:600;">save ${fmt(c.save)}</div>` : ''}
             </div>`).join('')}
           </div>`;
         }).join('')}
@@ -2805,75 +2833,126 @@ function renderFairsPackages(){
 
 function downloadFairsPackagesDoc(){
   const {catInfo, pkgs2, pkgs3, days} = _fairsData();
+  const GOLD = '#c9a227';
+  const DARK = '#2d2d2d';
+  const LGOLD = '#f5e6b0';
   const fmt = v => '$' + Math.round(v).toLocaleString();
-  const perDay = (v,d) => '$' + Math.round(v/d).toLocaleString();
+  const pd  = (v,d) => '$' + Math.round(v/d).toLocaleString();
 
-  function stdTableHtml(cols){
-    return `<table style="border-collapse:collapse;width:100%;margin-top:6px;">
-      <tr>
-        <td style="padding:5px 10px 5px 0;font-size:11pt;"></td>
-        ${cols.map(c=>`<td style="padding:5px 10px;font-size:10pt;color:#666;text-align:center;">${c.d} Day${c.d===1?'':'s'}</td>`).join('')}
+  // Day header cells (shared)
+  const dayHdrs = days.map(d=>`<th style="padding:4px 8px;font-size:8pt;text-align:center;background:${DARK};color:${GOLD};font-weight:bold;white-space:nowrap;">${d} Day${d===1?'':'s'}</th>`).join('');
+
+  const GREEN = '#2a6630';
+  const saveStr = save => save > 0 ? `<div style="font-size:7pt;color:${GREEN};font-weight:bold;">save ${fmt(save)}</div>` : '';
+
+  // 2-row block: Price (with savings) + Per Day
+  function stdRows(cols){
+    return `<tr style="background:#f7f4ec;">
+        <td style="padding:4px 8px;font-size:8pt;font-weight:bold;white-space:nowrap;border-right:2px solid ${DARK};">Price</td>
+        ${cols.map(c=>`<td style="padding:4px 8px;font-size:9pt;font-weight:bold;text-align:center;color:${DARK};">${fmt(c.revenue)}${saveStr(c.save)}</td>`).join('')}
       </tr>
-      <tr style="border-top:1px solid #ddd;border-bottom:1px solid #ddd;">
-        <td style="padding:7px 10px 7px 0;font-size:11pt;white-space:nowrap;">Price</td>
-        ${cols.map(c=>`<td style="padding:7px 10px;font-size:13pt;font-weight:bold;text-align:center;">${fmt(c.revenue)}</td>`).join('')}
-      </tr>
-      <tr>
-        <td style="padding:5px 10px 5px 0;font-size:10pt;color:#666;white-space:nowrap;">Per Day</td>
-        ${cols.map(c=>`<td style="padding:5px 10px;font-size:10pt;color:#666;text-align:center;">${perDay(c.revenue,c.d)}</td>`).join('')}
-      </tr>
-    </table>`;
+      <tr style="background:#fff;">
+        <td style="padding:3px 8px;font-size:7pt;color:#777;white-space:nowrap;border-right:2px solid ${DARK};">Per Day</td>
+        ${cols.map(c=>`<td style="padding:3px 8px;font-size:7pt;color:#777;text-align:center;">${pd(c.revenue,c.d)}</td>`).join('')}
+      </tr>`;
   }
 
-  function charSectionHtml(){
-    const cat = catInfo.find(c=>c.charOptions);
-    if(!cat) return '';
-    const dayBlocks = days.map(d => {
-      const dayCols = cat.cols.filter(c=>c.d===d);
-      const cells = dayCols.map(c=>`<td style="padding:8px 12px;text-align:center;border:1px solid #d0d0d0;border-radius:4px;">
-          <div style="font-size:9pt;color:#888;margin-bottom:2px;">${c.ch} Char${c.ch===1?'':'s'}</div>
-          <div style="font-size:14pt;font-weight:bold;">${fmt(c.revenue)}</div>
-          <div style="font-size:9pt;color:#888;">${perDay(c.revenue,d)}/day</div>
-        </td>`).join('<td style="width:6px;"></td>');
-      return `<tr>
-        <td style="padding:6px 10px 6px 0;font-size:11pt;white-space:nowrap;vertical-align:middle;">${d} Day${d===1?'':'s'}</td>
-        ${cells}
+  // Build the individual shows section — one big table
+  const wildCat  = catInfo.find(c=>c.staffOptions);
+  const charCat  = catInfo.find(c=>c.charOptions);
+  const mtkCat   = catInfo.find(c=>c.id==='mtkRacing');
+  const dispCat  = catInfo.find(c=>c.id==='display');
+
+  // Character rows: 3 char tiers × 5 days grid
+  function charRows(){
+    if(!charCat) return '';
+    return [1,2,3].map(ch=>{
+      const chCols = days.map(d=>{
+        const col = charCat.cols.find(c=>c.d===d&&c.ch===ch)||{};
+        return {d, revenue: col.revenue||0, save: col.save||0};
+      });
+      return `<tr style="background:${ch%2===0?'#fff':'#f7f4ec'};">
+        <td style="padding:4px 8px;font-size:8pt;font-weight:bold;white-space:nowrap;border-right:2px solid ${DARK};">${ch===1?'1 Character':ch===2?'2 Characters':'3 Characters'}</td>
+        ${chCols.map(c=>`<td style="padding:4px 8px;font-size:9pt;font-weight:bold;text-align:center;color:${DARK};">${fmt(c.revenue)}${saveStr(c.save)}</td>`).join('')}
+      </tr>
+      <tr style="background:${ch%2===0?'#f9f9f9':'#f0ede5'};">
+        <td style="padding:2px 8px;font-size:7pt;color:#777;border-right:2px solid ${DARK};">Per Day</td>
+        ${chCols.map(c=>`<td style="padding:2px 8px;font-size:7pt;color:#777;text-align:center;">${pd(c.revenue,c.d)}</td>`).join('')}
       </tr>`;
     }).join('');
-    return `<h2 style="font-size:16pt;margin:24px 0 6px;">${cat.label}</h2>
-    <table style="border-collapse:separate;border-spacing:4px;">${dayBlocks}</table>`;
   }
 
-  const indivSections = catInfo.map(cat => {
-    if(cat.charOptions) return charSectionHtml();
-    return `<h2 style="font-size:16pt;margin:24px 0 6px;">${cat.label}</h2>${stdTableHtml(cat.cols)}`;
-  }).join('\n<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">');
+  function sectionHdr(label){
+    return `<tr><td colspan="6" style="padding:5px 8px;font-size:9pt;font-weight:bold;background:${DARK};color:#fff;letter-spacing:.04em;">${label}</td></tr>
+    <tr style="background:${DARK};">
+      <td style="padding:3px 8px;font-size:7pt;color:${GOLD};border-right:2px solid ${GOLD};"></td>
+      ${dayHdrs}
+    </tr>`;
+  }
 
-  const pkgSections = [
-    {title:'2-Show Packages', list:pkgs2},
-    {title:'3-Show Packages', list:pkgs3},
-  ].map(({title,list}) =>
-    `<h2 style="font-size:14pt;font-weight:bold;text-transform:uppercase;color:#555;margin:28px 0 10px;">${title}</h2>` +
-    list.map(pkg =>
-      `<h3 style="font-size:14pt;margin:16px 0 4px;">${pkg.label}</h3>${stdTableHtml(pkg.cols)}`
-    ).join('\n<hr style="border:none;border-top:1px solid #eee;margin:12px 0;">')
-  ).join('\n<hr style="border:none;border-top:2px solid #ccc;margin:24px 0;">');
+  const indivTable = `<table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif;border:1.5px solid ${DARK};">
+    ${sectionHdr('WILD PRESENTATIONS')}
+    ${wildCat ? stdRows(wildCat.cols) : ''}
+    ${sectionHdr('MTK RACING')}
+    ${mtkCat  ? stdRows(mtkCat.cols)  : ''}
+    ${sectionHdr('DISPLAY')}
+    ${dispCat ? stdRows(dispCat.cols) : ''}
+    ${sectionHdr('CHARACTER WALKAROUND')}
+    ${charRows()}
+  </table>`;
+
+  // Packages: one table, each package is a 2-row block with a label col
+  function pkgBlock(pkg, shade){
+    return `<tr style="background:${shade?'#f7f4ec':'#fff'};">
+      <td style="padding:4px 8px 2px;font-size:8pt;font-weight:bold;white-space:nowrap;border-right:2px solid ${DARK};max-width:140px;">${pkg.label}</td>
+      ${pkg.cols.map(c=>`<td style="padding:4px 8px;font-size:9pt;font-weight:bold;text-align:center;color:${DARK};">${fmt(c.revenue)}${saveStr(c.save)}</td>`).join('')}
+    </tr>
+    <tr style="background:${shade?'#f0ede5':'#f9f9f9'};">
+      <td style="padding:2px 8px 4px;font-size:7pt;color:#777;border-right:2px solid ${DARK};"></td>
+      ${pkg.cols.map(c=>`<td style="padding:2px 8px;font-size:7pt;color:#777;text-align:center;">${pd(c.revenue,c.d)}</td>`).join('')}
+    </tr>`;
+  }
+
+  const pkgTable = `<table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif;border:1.5px solid ${DARK};margin-top:8px;">
+    ${sectionHdr('2-SHOW PACKAGES')}
+    ${pkgs2.map((p,i)=>pkgBlock(p,i%2===0)).join('')}
+    ${sectionHdr('3-SHOW PACKAGES')}
+    ${pkgs3.map((p,i)=>pkgBlock(p,i%2===0)).join('')}
+  </table>`;
+
+  const today = new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
 
   const docHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head><meta charset="utf-8"><title>Fairs &amp; Festival Packages</title>
+<head><meta charset="utf-8"><title>MTK Entertainment — Fairs &amp; Festival Packages</title>
 <style>
-  body { font-family: Calibri, Arial, sans-serif; margin: 60px; color: #222; }
-  h1 { font-size: 22pt; margin-bottom: 4px; }
-  .sub { font-size: 10pt; color: #666; margin-bottom: 24px; }
-  hr.section { border: none; border-top: 2px solid #333; margin: 28px 0; }
+  @page { size: letter portrait; margin: 0.45in 0.5in; }
+  body { font-family: Calibri, Arial, sans-serif; margin: 0; padding: 0; color: #222; font-size: 9pt; }
+  table { border-spacing: 0; }
 </style></head>
 <body>
-  <h1>Fairs &amp; Festival Packages</h1>
-  <div class="sub">Pricing as of ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
-  <hr class="section">
-  ${indivSections}
-  <hr class="section">
-  ${pkgSections}
+  <!-- Header bar -->
+  <table style="width:100%;border-collapse:collapse;background:${DARK};margin-bottom:8px;">
+    <tr>
+      <td style="padding:8px 14px;vertical-align:middle;">
+      </td>
+      <td style="padding:8px 14px;vertical-align:middle;text-align:center;">
+        <div style="font-size:17pt;font-weight:bold;color:${GOLD};letter-spacing:.05em;font-family:Calibri,Arial,sans-serif;">MTK ENTERTAINMENT</div>
+        <div style="font-size:10pt;color:#ccc;letter-spacing:.12em;margin-top:1px;">FAIRS &amp; FESTIVAL PACKAGES</div>
+      </td>
+      <td style="padding:8px 14px;vertical-align:middle;text-align:right;">
+        <div style="font-size:8pt;color:#aaa;">Pricing as of</div>
+        <div style="font-size:9pt;color:${GOLD};font-weight:bold;">${today}</div>
+      </td>
+    </tr>
+  </table>
+
+  ${indivTable}
+  ${pkgTable}
+
+  <!-- Footer -->
+  <div style="margin-top:8px;text-align:center;font-size:7pt;color:#aaa;border-top:1px solid #ddd;padding-top:4px;">
+    MTK Entertainment · Meet The Keepers Wildlife Rescue · All prices in CAD · Subject to change
+  </div>
 </body></html>`;
 
   const blob = new Blob([docHtml], {type:'application/msword'});
