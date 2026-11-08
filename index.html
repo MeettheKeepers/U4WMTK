@@ -9237,11 +9237,10 @@ function savePkgDiscount(key,d,val){
   DATA.packageDiscounts[key+'_'+d]=parseFloat(val)||0;
   saveData(); showTab('manager');
 }
-function savePkgCost(key,catId,field,val){
+function savePkgCost(key,field,val){
   if(!DATA.packageCosts) DATA.packageCosts={};
   if(!DATA.packageCosts[key]) DATA.packageCosts[key]={};
-  if(!DATA.packageCosts[key][catId]) DATA.packageCosts[key][catId]={};
-  DATA.packageCosts[key][catId][field]=parseFloat(val)||0;
+  DATA.packageCosts[key][field]=parseFloat(val)||0;
   saveData(); showTab('manager');
 }
 function saveShowPresentationCount(id, count){
@@ -12728,45 +12727,28 @@ function renderManager(){
             </div>`;
           }).join('');
           // ---- Packages section ----
-          // catPkgInfo: static config per category for packages
           const catPkgInfo = {};
           COST_CATS.filter(c=>c.multiDay).forEach(cat=>{
             const baseCosts = (DATA.showCosts||{})[cat.id]||{};
-            // effectiveTravelDays uses base trip settings (structural, not a cost field)
-            const travelDays = Math.max(0, parseInt(baseCosts.travelSetupDays)||0);
-            const effectiveTravelDays = cat.staffTravelDouble ? travelDays*2 : travelDays;
             const ratePerDay = cat.charOptions
               ? (parseFloat(baseCosts.charPrice1)||500)
               : (parseFloat(baseCosts.basePrice)||2500);
-            catPkgInfo[cat.id] = {
-              label: cat.label,
-              baseCosts,
-              ratePerDay,
-              effectiveTravelDays,
-              staffTravelDouble: !!cat.staffTravelDouble,
-              noU4W: !!cat.noU4W,
-              charOptions: !!cat.charOptions,
-            };
+            catPkgInfo[cat.id] = {label:cat.label, baseCosts, ratePerDay, noU4W:!!cat.noU4W};
           });
 
-          // Read a cost field for a package — package override takes priority over base
-          function getPkgField(key, catId, field){
+          // Get a shared package cost field — package override or sum of individual category defaults
+          function getPkgShared(key, field, ids){
             const ov = (DATA.packageCosts||{})[key];
-            if(ov && ov[catId] && ov[catId][field]!==undefined) return parseFloat(ov[catId][field])||0;
-            return parseFloat(catPkgInfo[catId].baseCosts[field])||0;
+            if(ov && ov[field]!==undefined) return parseFloat(ov[field])||0;
+            return ids.reduce((s,id)=>s+(parseFloat(catPkgInfo[id].baseCosts[field])||0), 0);
           }
 
-          // Compute cost for one category for d days within a specific package
-          function pkgCatCostForDays(key, catId, d){
-            const info = catPkgInfo[catId];
-            const perDayTotal = COST_FIELDS_DAY.reduce((s,f)=>s+getPkgField(key,catId,f.id), 0);
-            const travelCost = getPkgField(key, catId, 'travelCostTrip');
-            const u4wCost = info.noU4W ? 0 : getPkgField(key, catId, 'u4wAgreement');
-            if(info.staffTravelDouble){
-              const staffPerDay = getPkgField(key, catId, 'staff');
-              const nonStaffPerDay = perDayTotal - staffPerDay;
-              return travelCost + u4wCost*d + nonStaffPerDay*d + staffPerDay*(d + info.effectiveTravelDays);
-            }
+          // Package total cost for d days (single shared cost set)
+          function pkgTotalCostForDays(key, ids, d){
+            const perDayTotal = COST_FIELDS_DAY.reduce((s,f)=>s+getPkgShared(key,f.id,ids), 0);
+            const travelCost = getPkgShared(key, 'travelCostTrip', ids);
+            const hasU4W = ids.some(id=>!catPkgInfo[id].noU4W);
+            const u4wCost = hasU4W ? getPkgShared(key, 'u4wAgreement', ids) : 0;
             return travelCost + u4wCost*d + perDayTotal*d;
           }
 
@@ -12790,7 +12772,7 @@ function renderManager(){
             const colData = cols.map(d=>{
               const disc = parseFloat(pdisc[key+'_'+d])||0;
               const revBase = ids.reduce((s,id)=>s+catPkgInfo[id].ratePerDay*d, 0);
-              const cost = ids.reduce((s,id)=>s+pkgCatCostForDays(key,id,d), 0);
+              const cost = pkgTotalCostForDays(key, ids, d);
               const revenue = revBase - disc;
               return {d, disc, revBase, revenue, cost, profit: revenue-cost};
             });
@@ -12825,38 +12807,26 @@ function renderManager(){
               </table>
             </div>`;
             if(!expanded) return `<div style="margin-bottom:8px;">${header}${minTable}</div>`;
-            // Expanded: cost overrides per category + discount row + full table
-            const mkPkgInput = (catId, field) => {
-              const v = getPkgField(key, catId, field);
-              const isOverridden = !!((DATA.packageCosts||{})[key]?.[catId]?.[field] !== undefined);
-              return `<input type="number" value="${v||''}" placeholder="0" style="width:80px;padding:4px 7px;border:1px solid ${isOverridden?'var(--green-dark)':'#ddd'};border-radius:5px;font-size:12px;text-align:right;${isOverridden?'background:#f0faf3;':''}"
-                onchange="savePkgCost('${key}','${catId}','${field}',this.value)"
-                onblur="savePkgCost('${key}','${catId}','${field}',this.value)">`;
+            // Expanded: shared cost fields + per-day discounts + table
+            const pkgOv = (DATA.packageCosts||{})[key]||{};
+            const hasU4W = ids.some(id=>!catPkgInfo[id].noU4W);
+            const mkSharedInput = (field) => {
+              const v = getPkgShared(key, field, ids);
+              const isSet = pkgOv[field]!==undefined;
+              return `<input type="number" value="${v||''}" placeholder="0"
+                style="width:80px;padding:4px 7px;border:1px solid ${isSet?'var(--green-dark)':'#ddd'};border-radius:5px;font-size:12px;text-align:right;${isSet?'background:#f0faf3;':''}"
+                onchange="savePkgCost('${key}','${field}',this.value)"
+                onblur="savePkgCost('${key}','${field}',this.value)">`;
             };
-            const costSections = ids.map(id=>{
-              const info = catPkgInfo[id];
-              const perDayFields = COST_FIELDS_DAY;
-              const rows = perDayFields.map(f=>`<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
-                <span style="flex:1;font-size:13px;color:#555;">${f.label}</span>
-                ${mkPkgInput(id,f.id)}
-              </div>`).join('');
-              const travelRow = `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
-                <span style="flex:1;font-size:13px;color:#555;">Travel Cost (whole trip)</span>
-                ${mkPkgInput(id,'travelCostTrip')}
-              </div>`;
-              const u4wRow = info.noU4W ? '' : `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #f7f4ee;">
-                <span style="flex:1;font-size:13px;color:#555;">U4W Agreement</span>
-                ${mkPkgInput(id,'u4wAgreement')}
-              </div>`;
-              return `<div style="border-bottom:2px solid var(--border);">
-                <div style="padding:6px 12px;background:#f0f7f1;">
-                  <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green-dark);">${info.label}</span>
-                  <span style="font-size:11px;color:#aaa;margin-left:6px;">— overrides only affect this package</span>
-                </div>
-                ${rows}${travelRow}${u4wRow}
-              </div>`;
-            }).join('');
-            const discRow = `<div style="border-bottom:2px solid var(--border);overflow-x:auto;">
+            const costFields = [...COST_FIELDS_DAY,
+              {id:'travelCostTrip', label:'Travel Cost (whole trip)'},
+              ...(hasU4W ? [{id:'u4wAgreement', label:'U4W Agreement'}] : [])
+            ];
+            const costRows = costFields.map(f=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #f0ece3;">
+              <span style="flex:1;font-size:14px;color:#555;">${f.label}</span>
+              ${mkSharedInput(f.id)}
+            </div>`).join('');
+            const discRow = `<div style="border-bottom:1px solid var(--border);overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;min-width:340px;">
                 <tbody>
                   <tr style="background:#fffdf8;">
@@ -12878,12 +12848,17 @@ function renderManager(){
                 </tbody>
               </table>
             </div>`;
-            return `<div style="margin-bottom:8px;">${header}<div style="border-left:1px solid var(--border);border-right:1px solid var(--border);">${costSections}</div>${discRow}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;height:4px;background:#f9f7f2;"></div></div>`;
+            return `<div style="margin-bottom:8px;">${header}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;background:#fff;">
+              <div style="padding:6px 14px 2px;background:#faf8f4;border-bottom:1px solid #f0ece3;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Package Costs <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;color:#aaa;">— defaults to sum of included categories; adjust to reflect shared savings</span></div>
+              </div>
+              ${costRows}${discRow}
+            </div></div>`;
           }
 
           const packagesSection = `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 16px;">
             <h3 style="margin:0 0 4px;">Show Packages</h3>
-            <div class="sub" style="margin-bottom:16px;">Package deals combining show types. Costs default to each category's settings — override below to reflect shared savings.</div>
+            <div class="sub" style="margin-bottom:16px;">Package deals combining show types. Costs default to the sum of included categories — reduce them to reflect shared savings.</div>
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin-bottom:8px;">2-Category Packages</div>
             ${PKGS_2.map(renderPkgCard).join('')}
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);margin:14px 0 8px;">3-Category Packages</div>
