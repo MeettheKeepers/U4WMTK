@@ -2753,7 +2753,7 @@ function renderFairsPackages(){
   const fmt = v => '$' + Math.round(v).toLocaleString();
   const perDay = (v,d) => '$' + Math.round(v/d).toLocaleString();
 
-  const saveTag = save => save > 0 ? `<span style="font-size:10px;color:var(--green-dark);font-weight:600;white-space:nowrap;">save ${fmt(save)}</span>` : '';
+  const saveTag = () => '';
 
   function renderStdTable(cols){
     return `<div style="overflow-x:auto;margin-top:6px;">
@@ -2790,7 +2790,6 @@ function renderFairsPackages(){
               <div style="font-size:11px;color:#aaa;">${c.ch} Character${c.ch===1?'':'s'}</div>
               <div style="font-size:15px;font-weight:700;">${fmt(c.revenue)}</div>
               <div style="font-size:11px;color:var(--text-light);">${perDay(c.revenue,d)} / day</div>
-              ${c.save > 0 ? `<div style="font-size:10px;color:var(--green-dark);font-weight:600;">save ${fmt(c.save)}</div>` : ''}
             </div>`).join('')}
           </div>`;
         }).join('')}
@@ -2954,6 +2953,7 @@ function downloadFairsPackagesDoc(){
     <div style="font-size:9pt;color:#333;margin-top:4px;">Check out the next page for multi-show discounts!</div>
   </div>
 
+  <p style="margin:0;padding:0;">&nbsp;</p>
   <p style="margin:0;padding:0;">&nbsp;</p>
   <p style="margin:0;padding:0;">&nbsp;</p>
   <p style="margin:0;padding:0;">&nbsp;</p>
