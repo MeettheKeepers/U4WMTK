@@ -12870,69 +12870,94 @@ function renderManager(){
             ${catCards}${packagesSection}`;
         })()}
         ${isOwnerOrManager() ? (()=>{
-          const OUTREACH_TYPES_LIST = ['Country','Continent','Science','Archeology','Battle Match'];
-          const typeStats = {};
-          OUTREACH_TYPES_LIST.forEach(t => { typeStats[t] = {count:0,totalRevenue:0,totalCost:0,totalProfit:0}; });
-          completedShows.forEach(s => {
-            const matchTypes = (s.showTypes||[]).filter(t => OUTREACH_PRICES[t]);
-            if(!matchTypes.length) return;
-            const p = calcOutreachProfit(s);
-            if(!p) return;
-            const cnt = Math.min(4,Math.max(1,parseInt(s.presentationCount)||1));
-            const typeRevs = {};
-            if(s.discountPrice!=null && s.discountPrice!==''){
-              const basePrices = matchTypes.map(t=>OUTREACH_PRICES[t]||0);
-              const baseTotal = basePrices.reduce((a,b)=>a+b,0);
-              matchTypes.forEach((t,i)=>{ typeRevs[t] = baseTotal>0 ? (p.revenue*basePrices[i]/baseTotal) : p.revenue/matchTypes.length; });
+          // All 9 show types — ordered as outreach first, then fair/event types
+          const ALL_SHOW_TYPES = [
+            {id:'country',             label:'Country',              multiDay:false},
+            {id:'continent',           label:'Continent',            multiDay:false},
+            {id:'science',             label:'Science',              multiDay:false},
+            {id:'archeology',          label:'Archeology',           multiDay:false},
+            {id:'battleMatch',         label:'Battle Match',         multiDay:false},
+            {id:'characterWalkaround', label:'Character Walkaround', multiDay:true,  charOptions:true},
+            {id:'wildPresentations',   label:'Wild Presentations',   multiDay:true},
+            {id:'display',             label:'Display',              multiDay:true,  staffTravelDouble:true},
+            {id:'mtkRacing',           label:'MTK Racing',           multiDay:true,  staffTravelDouble:true, noU4W:true},
+          ];
+          const SINGLE_FIELDS = ['staff','fuel','perDiems','accommodations','misc'];
+          const MULTI_FIELDS  = ['staff','transportPerDay','perDiems','accommodations','misc'];
+          const profitColor = v=>v>=0?'var(--green-dark)':'#c0453a';
+          const profitBg    = v=>v>=0?'#e8f5ed':'#fce8e8';
+          // Section divider between outreach and fair/event types
+          const dividerRow = `<tr><td colspan="6" style="padding:0;"><div style="border-top:2px solid var(--border);margin:4px 0;"></div></td></tr>
+            <tr><td colspan="6" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Fair &amp; Event Types</td></tr>`;
+          const rows = ALL_SHOW_TYPES.map((t,i)=>{
+            const costs = (DATA.showCosts||{})[t.id]||{};
+            let revenue, cost, note;
+            if(!t.multiDay){
+              // Single-day outreach: 1-show pricing (showPrice1 − showDiscount1)
+              const price = parseFloat(costs.showPrice1)||0;
+              const disc  = parseFloat(costs.showDiscount1)||0;
+              revenue = price - disc;
+              cost = SINGLE_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f])||0), 0);
+              note = '1 show · 1 staff';
             } else {
-              matchTypes.forEach(t=>{ typeRevs[t] = MULTI_PRICES[t] ? (MULTI_PRICES[t][cnt]||OUTREACH_PRICES[t]) : (OUTREACH_PRICES[t]||0); });
+              const tripDays  = Math.max(1, parseInt(costs.tripDays)||1);
+              const travelDays= Math.max(0, parseInt(costs.travelSetupDays)||0);
+              const travelCost= parseFloat(costs.travelCostTrip)||0;
+              const u4wCost   = t.noU4W ? 0 : (parseFloat(costs.u4wAgreement)||0);
+              const perDayTotal = MULTI_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f])||0), 0);
+              if(t.staffTravelDouble){
+                const effectiveTravelDays = travelDays*2;
+                const staffPerDay    = parseFloat(costs.staff)||0;
+                const nonStaffPerDay = perDayTotal - staffPerDay;
+                cost = travelCost + u4wCost*tripDays + nonStaffPerDay*tripDays + staffPerDay*(tripDays+effectiveTravelDays);
+              } else {
+                cost = travelCost + u4wCost*tripDays + perDayTotal*tripDays;
+              }
+              const disc = parseFloat(costs.pricingDiscount1)||0;
+              if(t.charOptions){
+                const rate = parseFloat(costs.charPrice1)||500;
+                revenue = rate*tripDays - disc;
+                note = `${tripDays}d · 1 character`;
+              } else {
+                const rate = parseFloat(costs.basePrice)||2500;
+                revenue = rate*tripDays - disc;
+                note = `${tripDays} day${tripDays===1?'':'s'} · 1 staff`;
+              }
             }
-            const costPerType = p.totalKnownCost / matchTypes.length;
-            matchTypes.forEach(t => {
-              if(!typeStats[t]) return;
-              const rev = typeRevs[t]||0;
-              typeStats[t].count++;
-              typeStats[t].totalRevenue += rev;
-              typeStats[t].totalCost += costPerType;
-              typeStats[t].totalProfit += rev - costPerType;
-            });
-          });
-          const activeTypes = OUTREACH_TYPES_LIST.filter(t=>typeStats[t].count>0);
-          if(!activeTypes.length) return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;"><h3 style="margin:0 0 8px;">Average Profit / Loss by Show Type</h3><div class="sub">No completed outreach shows with full data yet.</div>`;
-          const profitColor = v => parseFloat(v)>=0 ? 'var(--green-dark)' : '#c0453a';
-          const profitBg = v => parseFloat(v)>=0 ? '#e8f5ed' : '#fce8e8';
-          const signedD = v => { const n=parseFloat(v)||0; return (n>=0?'+$':'-$')+Math.abs(n).toFixed(2); };
-          const totalOutreachWithData = completedShows.filter(s=>(s.showTypes||[]).some(t=>OUTREACH_PRICES[t])).length;
-          const rows = activeTypes.map(t=>{
-            const st=typeStats[t];
-            const avgRev=st.totalRevenue/st.count;
-            const avgCost=st.totalCost/st.count;
-            const avgProfit=st.totalProfit/st.count;
-            const margin=avgRev>0?Math.round(avgProfit/avgRev*100):0;
-            return `<tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:11px 12px;font-weight:700;font-size:14px;">${t}</td>
-              <td style="padding:11px 12px;text-align:center;color:var(--text-light);font-size:13px;">${st.count}</td>
-              <td style="padding:11px 12px;text-align:right;font-size:14px;">$${avgRev.toFixed(2)}</td>
-              <td style="padding:11px 12px;text-align:right;font-size:14px;color:#c0453a;">$${avgCost.toFixed(2)}</td>
-              <td style="padding:11px 12px;text-align:right;font-weight:700;font-size:14px;color:${profitColor(avgProfit)};">${signedD(avgProfit)}</td>
-              <td style="padding:11px 12px;text-align:right;">
-                <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:${profitBg(avgProfit)};color:${profitColor(avgProfit)};">${margin}%</span>
+            const profit = revenue - cost;
+            const margin = revenue>0 ? Math.round(profit/revenue*100) : 0;
+            const pc = profitColor(profit);
+            const pb = profitBg(profit);
+            const pSign = profit>=0?'+$':'-$';
+            const isFirstFair = t.id==='characterWalkaround';
+            return `${isFirstFair?dividerRow:''}<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;">
+                <div style="font-weight:700;font-size:14px;">${t.label}</div>
+                <div style="font-size:11px;color:var(--text-light);margin-top:1px;">${note}</div>
+              </td>
+              <td style="padding:10px 12px;text-align:right;font-size:14px;">$${revenue.toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:14px;color:#c0453a;">$${cost.toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px;color:${pc};">${pSign}${Math.abs(profit).toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;">
+                <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:${pb};color:${pc};">${margin}%</span>
               </td>
             </tr>`;
           }).join('');
           return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
-            <h3 style="margin:0 0 4px;">Average Profit / Loss by Show Type</h3>
-            <div class="sub" style="margin-bottom:12px;">Based on ${totalOutreachWithData} completed outreach show${totalOutreachWithData===1?'':'s'}. Staff without hourly rates set are excluded from cost.</div>
+            <h3 style="margin:0 0 4px;">Profit / Loss by Show Type</h3>
+            <div class="sub" style="margin-bottom:12px;">Based on configured settings from Average Cost per Show above. Revenue shown at base pricing (1 show / 1 staff / 1 character).</div>
             <div style="overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;min-width:450px;">
-                <thead><tr style="border-bottom:2px solid var(--border);">
-                  <th style="padding:8px 12px 8px 0;font-size:12px;color:var(--text-light);text-align:left;">Type</th>
-                  <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:center;">Shows</th>
-                  <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Revenue</th>
-                  <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Cost</th>
-                  <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Profit</th>
-                  <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Margin</th>
-                </tr></thead>
+                <thead>
+                  <tr><td colspan="6" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Outreach Types</td></tr>
+                  <tr style="border-bottom:2px solid var(--border);">
+                    <th style="padding:8px 12px 8px 0;font-size:12px;color:var(--text-light);text-align:left;">Type</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Revenue</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Cost</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Profit</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Margin</th>
+                  </tr>
+                </thead>
                 <tbody>${rows}</tbody>
               </table>
             </div>`;
