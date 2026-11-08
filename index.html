@@ -12384,6 +12384,10 @@ function renderManager(){
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                         ${cd15.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                       </tr>
+                       <tr style="border-bottom:1px solid #f0ece3;">
+                         <td style="padding:6px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                         ${cd15.map(c=>`<td style="padding:6px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                         ${cd15.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12423,6 +12427,10 @@ function renderManager(){
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                         ${cd10.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                       </tr>
+                       <tr style="border-bottom:1px solid #f0ece3;">
+                         <td style="padding:6px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                         ${cd10.map(c=>`<td style="padding:6px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                         ${cd10.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12454,6 +12462,10 @@ function renderManager(){
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                         ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                       </tr>
+                       <tr style="border-bottom:1px solid #f0ece3;">
+                         <td style="padding:6px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                         ${colData.map(c=>`<td style="padding:6px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                         ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12552,6 +12564,10 @@ function renderManager(){
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                         </tr>
+                         <tr style="border-bottom:1px solid #f0ece3;">
+                           <td style="padding:7px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                         </tr>
                         <tr style="border-bottom:1px solid #f0ece3;">
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12602,6 +12618,10 @@ function renderManager(){
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                         </tr>
+                         <tr style="border-bottom:1px solid #f0ece3;">
+                           <td style="padding:7px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                         </tr>
                         <tr style="border-bottom:1px solid #f0ece3;">
                           <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                           ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12642,6 +12662,10 @@ function renderManager(){
                         <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                         ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                       </tr>
+                       <tr style="border-bottom:1px solid #f0ece3;">
+                         <td style="padding:7px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                         ${colData.map(c=>`<td style="padding:7px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                       </tr>
                       <tr style="border-bottom:1px solid #f0ece3;">
                         <td style="padding:7px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                         ${colData.map(c=>`<td style="padding:7px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12786,6 +12810,10 @@ function renderManager(){
                     <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                   </tr>
+                   <tr style="border-bottom:1px solid #f0ece3;">
+                     <td style="padding:6px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                   </tr>
                   <tr style="border-bottom:1px solid #f0ece3;">
                     <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
@@ -12828,6 +12856,10 @@ function renderManager(){
                     <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Revenue</td>
                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:600;white-space:nowrap;">$${c.revenue.toFixed(0)}</td>`).join('')}
                   </tr>
+                   <tr style="border-bottom:1px solid #f0ece3;">
+                     <td style="padding:6px 8px;font-size:12px;color:var(--text-light);white-space:nowrap;">Rev / Day</td>
+                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:12px;text-align:right;color:var(--text-light);white-space:nowrap;">$${(c.revenue/c.d).toFixed(0)}</td>`).join('')}
+                   </tr>
                   <tr style="border-bottom:1px solid #f0ece3;">
                     <td style="padding:6px 8px;font-size:13px;color:#555;white-space:nowrap;">Cost</td>
                     ${colData.map(c=>`<td style="padding:6px 8px;font-size:13px;text-align:right;color:#c0453a;white-space:nowrap;">$${c.cost.toFixed(0)}</td>`).join('')}
