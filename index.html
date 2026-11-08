@@ -2954,24 +2954,25 @@ function downloadFairsPackagesDoc(){
     <div style="font-size:9pt;color:#333;margin-top:4px;">Check out the next page for multi-show discounts!</div>
   </div>
 
-  <!-- Page 2 — forced onto new page via mso-page-break-before -->
-  <div style="mso-page-break-before:always;page-break-before:always;">
-    <div style="border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-end;">
-      <div>
-        <div style="font-size:18pt;font-weight:bold;font-family:Calibri,Arial,sans-serif;letter-spacing:.02em;">MEET THE KEEPERS</div>
-        <div style="font-size:10pt;letter-spacing:.1em;color:#444;">FAIRS &amp; FESTIVAL PACKAGES — BUNDLES</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:11pt;font-weight:bold;">Prices for ${priceYear}</div>
-        <div style="font-size:7pt;color:#666;">All prices in CAD · Subject to change</div>
-      </div>
-    </div>
+  <!-- Page break paragraph — Word respects mso-page-break-before on <p> reliably -->
+  <p style="mso-page-break-before:always;margin:0;padding:0;font-size:1pt;line-height:1pt;">&nbsp;</p>
 
-    ${pkgTable}
-
-    <div style="margin-top:8px;text-align:center;font-size:7pt;color:#888;border-top:1px solid #ccc;padding-top:4px;">
-      Meet The Keepers Wildlife Rescue · meetthekeepers@gmail.com
+  <!-- Page 2 header -->
+  <div style="border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-end;">
+    <div>
+      <div style="font-size:18pt;font-weight:bold;font-family:Calibri,Arial,sans-serif;letter-spacing:.02em;">MEET THE KEEPERS</div>
+      <div style="font-size:10pt;letter-spacing:.1em;color:#444;">FAIRS &amp; FESTIVAL PACKAGES — BUNDLES</div>
     </div>
+    <div style="text-align:right;">
+      <div style="font-size:11pt;font-weight:bold;">Prices for ${priceYear}</div>
+      <div style="font-size:7pt;color:#666;">All prices in CAD · Subject to change</div>
+    </div>
+  </div>
+
+  ${pkgTable}
+
+  <div style="margin-top:8px;text-align:center;font-size:7pt;color:#888;border-top:1px solid #ccc;padding-top:4px;">
+    Meet The Keepers Wildlife Rescue · meetthekeepers@gmail.com
   </div>
 </body></html>`;
 
