@@ -4062,9 +4062,20 @@ function startPreShowMode(){
     [15, 10, 5].forEach(mark => {
       if(!_showAnnouncedMins[mark] && remaining <= mark && remaining > mark - 0.25){
         _showAnnouncedMins[mark] = true;
-        speak(`Meet The Keepers presentation starting in ${mark} minutes. Come have a seat if you want to meet, learn about, and interact with amazing exotic rescued animals from around the world. Meet the Keepers starts in ${mark} minutes.`);
+        speak(`Hey kids! Meet The Keepers is starting in ${mark} minutes! Come grab a seat and get ready to meet, learn about, and even interact with some of the most amazing exotic rescued animals from around the world! You are NOT going to want to miss this! Meet the Keepers — ${mark} minutes away!`);
       }
     });
+
+    // At 2:55 remaining, switch to the vocals track to kick off the show
+    if(!_showAnnouncedMins['vocals'] && remaining <= (2 + 55/60) && remaining > (2 + 40/60)){
+      _showAnnouncedMins['vocals'] = true;
+      const instrumental = document.getElementById('keepers-instrumental');
+      if(instrumental){ _fadeAudio(instrumental, instrumental.volume, 0, 1500); setTimeout(()=>{ instrumental.pause(); instrumental.loop = false; }, 1500); }
+      setTimeout(()=>{
+        const vocals = document.getElementById('keepers-vocals');
+        if(vocals){ vocals.volume = 0; vocals.play().catch(()=>{}); _fadeAudio(vocals, 0, 1, 1500); }
+      }, 1200);
+    }
   };
 
   updateDisplay();
@@ -4088,14 +4099,50 @@ function stopPreShowMode(){
   if(startBtn) startBtn.style.display = 'inline-block';
   if(stopBtn) stopBtn.style.display = 'none';
 }
+function getBestVoice(){
+  const voices = window.speechSynthesis.getVoices();
+  // Priority: Google natural voices > Apple premium > any English
+  const preferred = [
+    v => v.name.includes('Google') && v.lang.startsWith('en'),
+    v => v.name === 'Samantha' || v.name === 'Karen' || v.name === 'Moira',
+    v => v.name.includes('Natural') && v.lang.startsWith('en'),
+    v => v.lang.startsWith('en-US') && !v.name.includes('compact'),
+    v => v.lang.startsWith('en'),
+  ];
+  for(const test of preferred){
+    const match = voices.find(test);
+    if(match) return match;
+  }
+  return null;
+}
 function speak(text){
   if(!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.95;
-  u.pitch = 1;
+  u.rate = 1.05;
+  u.pitch = 1.15;
   u.volume = 1;
+  const voice = getBestVoice();
+  if(voice) u.voice = voice;
+
+  // Duck the music while speaking
+  const audio = document.getElementById('keepers-instrumental');
+  if(audio) _fadeAudio(audio, audio.volume, 0.08, 400);
+  u.onend = () => {
+    if(audio) _fadeAudio(audio, audio.volume, 1, 600);
+  };
   window.speechSynthesis.speak(u);
+}
+function _fadeAudio(audio, from, to, durationMs){
+  const steps = 20;
+  const stepMs = durationMs / steps;
+  const delta = (to - from) / steps;
+  let step = 0;
+  const timer = setInterval(()=>{
+    step++;
+    audio.volume = Math.min(1, Math.max(0, from + delta * step));
+    if(step >= steps) clearInterval(timer);
+  }, stepMs);
 }
 function renderKeepersSong(){
   return `
@@ -4116,7 +4163,7 @@ function renderKeepersSong(){
 
       <div style="margin-bottom:28px;">
         <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Full Version (with vocals)</div>
-        <audio controls style="width:100%;border-radius:8px;" preload="none">
+        <audio id="keepers-vocals" controls style="width:100%;border-radius:8px;" preload="none">
           <source src="./The Keepers.mp3" type="audio/mpeg">
           Your browser does not support audio playback.
         </audio>
