@@ -16347,7 +16347,7 @@ function renderChatPanel(){
   panel.innerHTML = `
     <div class="chat-panel-hdr">
       <span style="flex:1;">${convoTitle}</span>
-      <button onclick="closeChatPanel()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;"></button>
+      <button onclick="closeChatPanel()" title="Close chat" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.9;">&#10005;</button>
     </div>
     <div class="chat-convo-list">${convoListHTML}</div>
     <div class="chat-msgs" id="chat-msgs-area">${msgsHTML}</div>
@@ -16590,7 +16590,7 @@ function showCreateGroupForm(){
   panel.innerHTML = `
     <div class="chat-panel-hdr">
       <span style="flex:1;">New Group Chat</span>
-      <button onclick="renderChatPanel()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;"></button>
+      <button onclick="closeChatPanel()" title="Close chat" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.9;">&#10005;</button>
     </div>
     <div style="padding:16px;flex:1;overflow-y:auto;">
       <div style="margin-bottom:12px;">
