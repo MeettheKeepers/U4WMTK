@@ -6156,11 +6156,21 @@ function renderHabitatGroup(g){
   let statusIcon = '';
   if(hasCritical){ cardStyle += 'border:2px solid var(--red);background:rgba(200,40,40,0.06);'; statusIcon=' '; }
   else if(allDone && all.length){ cardStyle += 'border:2px solid #2a9d5c;background:rgba(42,157,92,0.06);'; statusIcon=' '; }
-  // Check for dangerous animals in this habitat group
-  const dangerAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous && (
-    g.id.toLowerCase()===a.cardId.toLowerCase() ||
-    g.name.toLowerCase().startsWith(a.cardId.toLowerCase())
-  ));
+  // Check for dangerous animals in this task group.
+  // Task group IDs (grp_xxx) and animal cardIds (c12) are unrelated systems,
+  // so we match by checking if the animal's name or habitat card title appears
+  // in the task group's display name.
+  const _gn = g.name.toLowerCase();
+  const dangerAnimals = (DATA.animals||[]).filter(a=>{
+    if(a.archived || !a.dangerous) return false;
+    if(_gn.includes(a.name.toLowerCase())) return true;
+    const hab = (DATA.habitats||[]).find(h=>h.cardId===a.cardId);
+    if(hab && hab.cardTitle){
+      // Match on any significant word (4+ chars) of the cardTitle
+      return hab.cardTitle.toLowerCase().split(/[\s\/]+/).filter(w=>w.length>=4).some(w=>_gn.includes(w));
+    }
+    return false;
+  });
   const dangerBanner = dangerAnimals.length ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
     ${dangerAnimals.map(a=>`<div style="font-size:13px;color:#92400e;"><strong>&#9888; ${a.name}:</strong> ${a.protocols||'Exercise caution — experience required.'}</div>`).join('')}
   </div>` : '';
