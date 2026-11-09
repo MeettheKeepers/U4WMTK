@@ -1730,6 +1730,7 @@ const TABS = [
   {id:'familyfunfest', label:'Family Fun Fest'},
   {id:'u4w', label:'Unite for Wildlife'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
+  {id:'keepers-song', label:'Keepers Song'},
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
@@ -1851,6 +1852,7 @@ function visibleTabs(){
     if(t.id === 'admin') return hasAdminAccess();
     if(t.id === 'u4w') return isManagerLogin() || hasNonProfitAccess() || hasFoundationAccess();
     if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
+    if(t.id === 'keepers-song') return true; // visible to all staff
     // Supervisor: block the restricted tabs
     if(getLoginLevel()==='supervisor') return canAccessTab(t.id);
     return true;
@@ -1932,6 +1934,7 @@ function showTab(id){
     foundation: renderFoundation,
     u4w: renderU4W,
     'wildlife-show': renderWildlifeShow,
+    'keepers-song': renderKeepersSong,
     familyfunfest: renderFamilyFunFest,
     manager: renderManager
   }[id];
@@ -4001,6 +4004,30 @@ function youtubeEmbedUrl(url){
 function vimeoEmbedUrl(url){
   const m = url.match(/vimeo\.com\/(\d+)/);
   return m ? `https://player.vimeo.com/video/${m[1]}` : url;
+}
+function renderKeepersSong(){
+  return `
+    <div class="card" style="max-width:560px;margin:0 auto;">
+      <h2 style="margin-bottom:4px;">The Keepers Song</h2>
+      <div class="sub" style="margin-bottom:20px;">Play before a show to get the team pumped up!</div>
+
+      <div style="margin-bottom:28px;">
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Full Version (with vocals)</div>
+        <audio controls style="width:100%;border-radius:8px;" preload="none">
+          <source src="./The Keepers.mp3" type="audio/mpeg">
+          Your browser does not support audio playback.
+        </audio>
+      </div>
+
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Instrumental Version</div>
+        <audio controls style="width:100%;border-radius:8px;" preload="none">
+          <source src="./The Keepers (Instrumental).mp3" type="audio/mpeg">
+          Your browser does not support audio playback.
+        </audio>
+      </div>
+    </div>
+  `;
 }
 function renderWildlifeShow(){
   const isMgr = isManagerLogin();
