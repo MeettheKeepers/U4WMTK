@@ -4062,7 +4062,7 @@ function startPreShowMode(){
     [15, 10, 5].forEach(mark => {
       if(!_showAnnouncedMins[mark] && remaining <= mark && remaining > mark - 0.25){
         _showAnnouncedMins[mark] = true;
-        speak(`Hey kids! Meet The Keepers is starting in ${mark} minutes! Come grab a seat and get ready to meet, learn about, and even interact with some of the most amazing exotic rescued animals from around the world! You are NOT going to want to miss this! Meet the Keepers — ${mark} minutes away!`);
+        playAnnouncement(mark);
       }
     });
 
@@ -4098,6 +4098,16 @@ function stopPreShowMode(){
   const stopBtn = document.getElementById('pre-show-stop-btn');
   if(startBtn) startBtn.style.display = 'inline-block';
   if(stopBtn) stopBtn.style.display = 'none';
+}
+function playAnnouncement(mark){
+  const instrumental = document.getElementById('keepers-instrumental');
+  if(instrumental) _fadeAudio(instrumental, instrumental.volume, 0.08, 400);
+  const ann = new Audio(`./announcement-${mark}.mp3`);
+  ann.volume = 1;
+  ann.play().catch(()=>{});
+  ann.onended = () => {
+    if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 600);
+  };
 }
 function getBestVoice(){
   const voices = window.speechSynthesis.getVoices();
