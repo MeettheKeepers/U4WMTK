@@ -1584,6 +1584,7 @@ async function initCloudSync(){
     });
   }catch(e){
     console.warn('Cloud sync unavailable, running on this device only.', e);
+    CLOUD_READY = true; // allow local saves even if cloud sync failed
     markLoginReady('error', e);
   }
 }
