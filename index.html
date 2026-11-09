@@ -4222,7 +4222,7 @@ function renderContractStaffCard(memberId){
   const contract = getContractForMember(memberId); if(!contract) return '';
   const needsAck = !contract.acknowledged || (contract.pendingChanges && contract.pendingChanges.length > 0);
   const expanded = CONTRACT_EXPANDED.has(memberId);
-  return `<div class="card" ${needsAck?'style="border-left:4px solid #c0392b;"':''}>
+  return `<div class="card" ${needsAck?'style="border-left:4px solid #d97706;"':''}>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer;" onclick="toggleContractExpanded(${memberId})">
       <h2 style="margin:0;">My Employment Contract</h2>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -5341,7 +5341,7 @@ function renderDeadlineTasks(myName){
       if(due){
         if(isOverdue) dueLabel = `<span style="color:var(--red);font-weight:700;">${fmtShortDate(due)} (${Math.abs(daysLeft)} day${Math.abs(daysLeft)===1?'':'s'} overdue)</span>`;
         else if(daysLeft === 0) dueLabel = `<span style="color:var(--red);font-weight:700;">${fmtShortDate(due)} (Due today!)</span>`;
-        else if(daysLeft <= 2) dueLabel = `<span style="color:#c0392b;font-weight:700;">${fmtShortDate(due)} (${daysLeft} day${daysLeft===1?'':'s'} left)</span>`;
+        else if(daysLeft <= 2) dueLabel = `<span style="color:#b45309;font-weight:700;">${fmtShortDate(due)} (${daysLeft} day${daysLeft===1?'':'s'} left)</span>`;
         else dueLabel = `<span>${fmtShortDate(due)} (${daysLeft} days left)</span>`;
       }
       return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);">
@@ -6228,6 +6228,24 @@ function renderTasks(){
         ` : ''}
       </div>
     </div>
+    ${(()=>{
+      const watchAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous);
+      if(!watchAnimals.length) return '';
+      return `<div class="card" style="border-left:4px solid #d97706;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:16px;">&#9888;</span>
+          <h3 style="margin:0;color:#b45309;font-size:15px;text-transform:uppercase;letter-spacing:.04em;">Animal Watch List</h3>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${watchAnimals.map(a=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:#fffbeb;border-radius:8px;border:1px solid #fcd34d;">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#b45309;">${a.name} <span style="font-size:11px;color:#888;font-weight:400;">${a.species}</span></div>
+              ${a.protocols ? `<div style="font-size:13px;color:#555;margin-top:3px;white-space:pre-wrap;">${a.protocols}</div>` : '<div style="font-size:12px;color:#aaa;margin-top:2px;">No protocols added yet.</div>'}
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    })()}
     ${renderMyRoadTasksCard()}
     ${groups.map(g=>renderHabitatGroup(g)).join('')}
   `;
@@ -6792,7 +6810,8 @@ function renderAnimalDetail(a){
   return `
     <div class="card">
       <button class="pill-btn" onclick="backToAnimals()">&larr; Back to Animals</button>
-      <h2 style="margin-top:18px;">${a.name}</h2>
+      <h2 style="margin-top:18px;">${a.name}${a.dangerous?' <span style="font-size:14px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:8px;vertical-align:middle;">&#9888; WATCH</span>':''}</h2>
+      ${a.dangerous && a.protocols ? `<div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">&#9888; Protocols &amp; Handling Notes</div><div style="font-size:14px;color:#78350f;white-space:pre-wrap;">${a.protocols}</div></div>` : a.dangerous ? `<div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:13px;color:#b45309;font-weight:600;">&#9888; This animal requires experience and added protocols. Add protocols in Manager.</div>` : ''}
       <div class="detail-sub">${a.species}</div>
       <div class="detail-tabs">${tabsHtml}</div>
       <div class="detail-divider"></div>
@@ -6841,18 +6860,21 @@ function renderAnimalCard(card){
               }
               if(out){
                 return `<span class="animal-pill-group">
-                  <button class="animal-pill" onclick="viewAnimal(${a.id})" style="border-color:#c0392b;color:#c0392b;">${a.name}</button>
+                  <button class="animal-pill" onclick="viewAnimal(${a.id})" style="border-color:#d97706;color:#d97706;">${a.name}</button>
                   ${iAmApproved ? `<button class="btn-animal-out" onclick="returnAnimal(${out.id})" title="Out with ${out.staffName} — tap to return">↩ Return</button>` : `<span style="font-size:11px;color:#c0392b;font-weight:700;padding:3px 8px;background:#fde2e2;border-radius:10px;">OUT</span>`}
                 </span>`;
               }
               if(!iAmApproved){
                 return `<span class="animal-pill-group">
                   <button class="animal-pill" onclick="viewAnimal(${a.id})" style="border-color:#aaa;color:#888;">${a.name}</button>
+                  ${a.dangerous?'<span style="font-size:11px;color:#c0392b;font-weight:700;padding:3px 8px;background:#fef3c7;border-radius:10px;color:#b45309;">&#9888; WATCH</span>':''}
                 </span>`;
               }
-              return `<span class="animal-pill-group">
-                <button class="animal-pill" onclick="viewAnimal(${a.id})">${a.name}</button>
+              return `<span class="animal-pill-group" style="flex-wrap:wrap;">
+                <button class="animal-pill" onclick="viewAnimal(${a.id})" ${a.dangerous?'style="border-color:#d97706;color:#d97706;"':''}>${a.name}</button>
+                ${a.dangerous?'<span style="font-size:11px;font-weight:700;padding:3px 8px;background:#fef3c7;border-radius:10px;color:#b45309;">&#9888; WATCH</span>':''}
                 <button class="btn-animal-take" onclick="takeAnimal(${a.id})">Take</button>${countBadge}
+                ${a.dangerous && a.protocols ? `<div style="width:100%;font-size:11px;color:#92400e;background:#fef3c7;border-radius:6px;padding:3px 8px;margin-top:2px;">&#9888; ${a.protocols}</div>` : ''}
               </span>`;
             }).join('')}
           </div>
@@ -9307,6 +9329,9 @@ function saveAnimalCard(id){
   a.water = val(`m-water-${id}`);
   a.dietNotes = val(`m-dietnotes-${id}`);
   a.trainingVideos = val(`m-training-${id}`);
+  const dangerEl = document.getElementById(`m-dangerous-${id}`);
+  if(dangerEl) a.dangerous = dangerEl.checked;
+  a.protocols = val(`m-protocols-${id}`);
   const scriptSel = document.getElementById(`m-scriptid-${id}`);
   if(scriptSel) a.scriptId = scriptSel.value === '' ? null : parseInt(scriptSel.value,10);
   a._updatedAt = Date.now(); // timestamp used by mergeAnimals to protect recent edits during cloud sync
@@ -9468,6 +9493,17 @@ function renderAnimalManagerCard(a){
       <div class="field-block">
         <label>Overview notes</label>
         <textarea id="m-overview-${a.id}" placeholder="General notes shown on the animal's overview page." oninput="saveAnimalCard(${a.id})">${a.overviewNotes||''}</textarea>
+      </div>
+      <div class="field-block" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 14px;">
+        <label style="color:#b45309;font-weight:700;">&#9888; Experience Required / Watch Animal</label>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+          <input type="checkbox" id="m-dangerous-${a.id}" ${a.dangerous?'checked':''} onchange="saveAnimalCard(${a.id})" style="width:18px;height:18px;accent-color:#d97706;cursor:pointer;">
+          <span style="font-size:14px;color:#555;">Mark this animal as requiring experience &amp; added protocols</span>
+        </div>
+        ${a.dangerous ? `<div class="field-block" style="margin-top:10px;margin-bottom:0;">
+          <label style="color:#b45309;">Why is this animal dangerous? / Handling protocols</label>
+          <textarea id="m-protocols-${a.id}" placeholder="Describe the experience requirements and special handling protocols for this animal." oninput="saveAnimalCard(${a.id})" style="border-color:#fcd34d;">${a.protocols||''}</textarea>
+        </div>` : `<textarea id="m-protocols-${a.id}" style="display:none;">${a.protocols||''}</textarea>`}
       </div>
       <div class="field-block">
         <label>Fun facts</label>
@@ -13664,7 +13700,7 @@ function renderManager(){
         analyticsBody = `
           <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
           <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-            <div class="stat-box" style="border-left:4px solid #c0392b;">
+            <div class="stat-box" style="border-left:4px solid #d97706;">
               <div class="num" style="color:#c0392b;">${fmtE(totalMonthly)}</div>
               <div class="lbl">Total Monthly Expenses</div>
             </div>
@@ -13813,7 +13849,7 @@ function renderManager(){
             <div class="num" style="color:#1a6b35;">${fmt(totalReceived)}</div>
             <div class="lbl">Received (paid &amp; completed)</div>
           </div>
-          <div class="stat-box" style="border-left:4px solid #c0392b;">
+          <div class="stat-box" style="border-left:4px solid #d97706;">
             <div class="num" style="color:#c0392b;">${fmt(totalOwed)}</div>
             <div class="lbl">Earned — awaiting payment</div>
           </div>
@@ -13960,7 +13996,7 @@ function renderManager(){
             <div class="num" style="color:#27ae60;">${fmtH(totalInc)}</div>
             <div class="lbl">Total Income (All Time)</div>
           </div>
-          <div class="stat-box" style="border-left:4px solid #c0392b;">
+          <div class="stat-box" style="border-left:4px solid #d97706;">
             <div class="num" style="color:#c0392b;">${fmtH(totalExp)}</div>
             <div class="lbl">Total Expenses (All Time)</div>
           </div>
