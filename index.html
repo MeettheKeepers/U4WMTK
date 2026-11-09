@@ -4185,6 +4185,11 @@ function renderKeepersSong(){
           <source src="./The Keepers.mp3" type="audio/mpeg">
           Your browser does not support audio playback.
         </audio>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <label style="font-size:12px;color:#888;white-space:nowrap;">Volume</label>
+          <input type="range" min="0" max="1" step="0.05" value="1" style="flex:1;accent-color:var(--green-dark);" oninput="document.getElementById('keepers-vocals').volume=this.value;document.getElementById('vocals-vol-label').textContent=Math.round(this.value*100)+'%'">
+          <span id="vocals-vol-label" style="font-size:12px;color:#888;width:32px;text-align:right;">100%</span>
+        </div>
       </div>
 
       <div>
@@ -4193,6 +4198,11 @@ function renderKeepersSong(){
           <source src="./The Keepers (Instrumental).mp3" type="audio/mpeg">
           Your browser does not support audio playback.
         </audio>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <label style="font-size:12px;color:#888;white-space:nowrap;">Volume</label>
+          <input type="range" min="0" max="1" step="0.05" value="1" style="flex:1;accent-color:var(--green-dark);" oninput="document.getElementById('keepers-instrumental').volume=this.value;document.getElementById('instrumental-vol-label').textContent=Math.round(this.value*100)+'%'">
+          <span id="instrumental-vol-label" style="font-size:12px;color:#888;width:32px;text-align:right;">100%</span>
+        </div>
         <button id="keepers-loop-btn" onclick="toggleKeeperLoop()" style="margin-top:10px;padding:8px 20px;border-radius:20px;border:2px solid #ccc;background:#fff;color:#888;font-size:13px;font-weight:700;cursor:pointer;">&#8635; Loop: OFF</button>
       </div>
 
