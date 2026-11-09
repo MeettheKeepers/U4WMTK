@@ -5373,7 +5373,7 @@ function downloadHoursReport(){
   const periodDays  = getPeriodDays(periodStart);
   const periodEnd   = addDays(periodStart, periodDays - 1);
   const generated   = new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
-  const members     = sortedTeamMembers();
+  const members     = sortedTeamMembers().filter(m=>m.onPayroll);
 
   const rows = members.map(m=>{
     const hrs  = parseFloat(currentPayPeriodHoursFor(m.name)) || 0;
@@ -6152,16 +6152,20 @@ function renderHabitatGroup(g){
   if(hasCritical){ cardStyle += 'border:2px solid var(--red);background:rgba(200,40,40,0.06);'; statusIcon=' '; }
   else if(allDone && all.length){ cardStyle += 'border:2px solid #2a9d5c;background:rgba(42,157,92,0.06);'; statusIcon=' '; }
   // Check for dangerous animals in this habitat group
-  const dangerAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous && a.cardTitle && g.name && g.name.includes(a.cardId));
+  const dangerAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous && (
+    g.id.toLowerCase()===a.cardId.toLowerCase() ||
+    g.name.toLowerCase().startsWith(a.cardId.toLowerCase())
+  ));
+  const dangerBanner = dangerAnimals.length ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+    ${dangerAnimals.map(a=>`<div style="font-size:13px;color:#92400e;"><strong>&#9888; ${a.name}:</strong> ${a.protocols||'Exercise caution — experience required.'}</div>`).join('')}
+  </div>` : '';
   return `
     <div class="card" style="${cardStyle}">
       <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('${g.id}')">
         <h2>${isOpen?'▾':'▸'} ${statusIcon}${esc(g.name)}${dangerAnimals.length?` <span style="font-size:12px;font-weight:700;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:8px;vertical-align:middle;">&#9888; WATCH</span>`:''}</h2>
         <span class="count-pill">${doneTasks.length}/${all.length}</span>
       </div>
-      ${dangerAnimals.length ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
-        ${dangerAnimals.map(a=>`<div style="font-size:13px;color:#92400e;"><strong>&#9888; ${a.name}:</strong> ${a.protocols||'Exercise caution — experience required.'}</div>`).join('')}
-      </div>` : ''}
+      ${dangerBanner}
       ${isOpen ? `
         ${activeTasks.map((t,i)=>renderTaskCard(t,i+1)).join('')}
         ${doneTasks.map(t=>`
@@ -12028,7 +12032,7 @@ function renderManager(){
           <div class="sub">Open a staff member's Employee File to see their Welcome acknowledgments, contact info, write-ups, incidents, and emergency contact.</div>
           <div class="sub" style="margin-bottom:6px;">Work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong></div>
           <table>
-            <tr><th>Name</th><th>Role</th><th>Main Roles</th><th>Language</th><th style="text-align:center;">Hours This Period</th><th></th></tr>
+            <tr><th>Name</th><th>Role</th><th>Main Roles</th><th>Language</th><th style="text-align:center;">Hours This Period</th><th style="text-align:center;">Payroll</th><th></th></tr>
             ${DATA.team.filter(m=>!m.archived).map(m=>{
               const hrs = currentPayPeriodHoursFor(m.name);
               const hrsDisplay = hrs > 0
@@ -12055,6 +12059,11 @@ function renderManager(){
                   </select>
                 </td>
                 <td style="text-align:center;">${hrsDisplay}</td>
+                <td style="text-align:center;">
+                  <button onclick="togglePayroll(${m.id})" style="padding:5px 14px;border-radius:20px;border:2px solid ${m.onPayroll?'var(--green-dark)':'#ccc'};background:${m.onPayroll?'var(--green-dark)':'#fff'};color:${m.onPayroll?'#fff':'#aaa'};font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                    ${m.onPayroll?'✓ On Payroll':'Off Payroll'}
+                  </button>
+                </td>
                 <td style="white-space:nowrap;">
                   <button class="btn-ghost" onclick="openEmployeeFile(${m.id})">View Employee File</button>
                   <button class="btn-ghost" onclick="archiveTeamMember(${m.id})">Archive</button>
@@ -14383,6 +14392,13 @@ function addTeamMember(){
   if(!name) return;
   DATA.team.push({id:nextId(DATA.team), name, role, biz, photoOptional:false, welcomeAck:blankWelcomeAck(), ...blankStaffExtras()});
   saveData(); showTab('manager');
+}
+function togglePayroll(id){
+  const m = DATA.team.find(x=>x.id===id);
+  if(!m) return;
+  m.onPayroll = !m.onPayroll;
+  saveData();
+  showTab('manager');
 }
 function updateTeamField(id, field, value){
   const m = DATA.team.find(x=>x.id===id);
