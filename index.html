@@ -6151,12 +6151,17 @@ function renderHabitatGroup(g){
   let statusIcon = '';
   if(hasCritical){ cardStyle += 'border:2px solid var(--red);background:rgba(200,40,40,0.06);'; statusIcon=' '; }
   else if(allDone && all.length){ cardStyle += 'border:2px solid #2a9d5c;background:rgba(42,157,92,0.06);'; statusIcon=' '; }
+  // Check for dangerous animals in this habitat group
+  const dangerAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous && a.cardTitle && g.name && g.name.includes(a.cardId));
   return `
     <div class="card" style="${cardStyle}">
       <div class="group-header" style="cursor:pointer;" onclick="toggleTaskGroup('${g.id}')">
-        <h2>${isOpen?'▾':'▸'} ${statusIcon}${esc(g.name)}</h2>
+        <h2>${isOpen?'▾':'▸'} ${statusIcon}${esc(g.name)}${dangerAnimals.length?` <span style="font-size:12px;font-weight:700;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:8px;vertical-align:middle;">&#9888; WATCH</span>`:''}</h2>
         <span class="count-pill">${doneTasks.length}/${all.length}</span>
       </div>
+      ${dangerAnimals.length ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+        ${dangerAnimals.map(a=>`<div style="font-size:13px;color:#92400e;"><strong>&#9888; ${a.name}:</strong> ${a.protocols||'Exercise caution — experience required.'}</div>`).join('')}
+      </div>` : ''}
       ${isOpen ? `
         ${activeTasks.map((t,i)=>renderTaskCard(t,i+1)).join('')}
         ${doneTasks.map(t=>`
@@ -6228,24 +6233,6 @@ function renderTasks(){
         ` : ''}
       </div>
     </div>
-    ${(()=>{
-      const watchAnimals = (DATA.animals||[]).filter(a=>!a.archived && a.dangerous);
-      if(!watchAnimals.length) return '';
-      return `<div class="card" style="border-left:4px solid #d97706;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <span style="font-size:16px;">&#9888;</span>
-          <h3 style="margin:0;color:#b45309;font-size:15px;text-transform:uppercase;letter-spacing:.04em;">Animal Watch List</h3>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${watchAnimals.map(a=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:#fffbeb;border-radius:8px;border:1px solid #fcd34d;">
-            <div>
-              <div style="font-size:14px;font-weight:700;color:#b45309;">${a.name} <span style="font-size:11px;color:#888;font-weight:400;">${a.species}</span></div>
-              ${a.protocols ? `<div style="font-size:13px;color:#555;margin-top:3px;white-space:pre-wrap;">${a.protocols}</div>` : '<div style="font-size:12px;color:#aaa;margin-top:2px;">No protocols added yet.</div>'}
-            </div>
-          </div>`).join('')}
-        </div>
-      </div>`;
-    })()}
     ${renderMyRoadTasksCard()}
     ${groups.map(g=>renderHabitatGroup(g)).join('')}
   `;
@@ -6841,6 +6828,9 @@ function renderAnimalCard(card){
         <h3>${card.cardTitle}</h3>
         <span class="animal-count-pill">${card.animals.length} animal${card.animals.length===1?'':'s'}</span>
       </div>
+      ${card.animals.some(a=>a.dangerous) ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:7px 12px;margin-bottom:8px;">
+        ${card.animals.filter(a=>a.dangerous).map(a=>`<div style="font-size:12px;color:#92400e;"><strong>&#9888; ${a.name}:</strong> ${a.protocols||'Exercise caution — experience required.'}</div>`).join('')}
+      </div>` : ''}
       ${speciesOrder.map(sp=>`
         <div class="species-group">
           <div class="species-label">${sp}</div>
@@ -9305,6 +9295,25 @@ function toggleArchivedAnimalsMgr(){
   SHOW_ARCHIVED_ANIMALS_MGR = !SHOW_ARCHIVED_ANIMALS_MGR;
   showTab('manager');
 }
+function setAnimalDangerous(id){
+  const a = DATA.animals.find(x=>x.id===id);
+  if(!a) return;
+  if(a.dangerous){
+    // Turn off
+    a.dangerous = false;
+    a.protocols = '';
+    saveData();
+    showTab('manager');
+  } else {
+    // Turn on — prompt for reason
+    const reason = prompt('Why does this animal require extra caution?\nExamples: Bites, Feeding Response, Aggressive when stressed, etc.', a.protocols||'');
+    if(reason === null) return; // cancelled
+    a.dangerous = true;
+    a.protocols = reason.trim();
+    saveData();
+    showTab('manager');
+  }
+}
 function saveAnimalCard(id){
   const a = DATA.animals.find(x=>x.id===id);
   if(!a) return;
@@ -9329,9 +9338,7 @@ function saveAnimalCard(id){
   a.water = val(`m-water-${id}`);
   a.dietNotes = val(`m-dietnotes-${id}`);
   a.trainingVideos = val(`m-training-${id}`);
-  const dangerEl = document.getElementById(`m-dangerous-${id}`);
-  if(dangerEl) a.dangerous = dangerEl.checked;
-  a.protocols = val(`m-protocols-${id}`);
+
   const scriptSel = document.getElementById(`m-scriptid-${id}`);
   if(scriptSel) a.scriptId = scriptSel.value === '' ? null : parseInt(scriptSel.value,10);
   a._updatedAt = Date.now(); // timestamp used by mergeAnimals to protect recent edits during cloud sync
@@ -9496,14 +9503,13 @@ function renderAnimalManagerCard(a){
       </div>
       <div class="field-block" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 14px;">
         <label style="color:#b45309;font-weight:700;">&#9888; Experience Required / Watch Animal</label>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
-          <input type="checkbox" id="m-dangerous-${a.id}" ${a.dangerous?'checked':''} onchange="saveAnimalCard(${a.id})" style="width:18px;height:18px;accent-color:#d97706;cursor:pointer;">
-          <span style="font-size:14px;color:#555;">Mark this animal as requiring experience &amp; added protocols</span>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button onclick="setAnimalDangerous(${a.id})" style="padding:7px 16px;border-radius:8px;border:2px solid ${a.dangerous?'#d97706':'#ccc'};background:${a.dangerous?'#fef3c7':'#fff'};color:${a.dangerous?'#b45309':'#888'};font-weight:700;font-size:13px;cursor:pointer;">
+            ${a.dangerous?'&#9888; WATCH — Click to remove':'Mark as Watch Animal'}
+          </button>
+          ${a.dangerous && a.protocols ? `<span style="font-size:13px;color:#92400e;">&#9888; ${a.protocols}</span>` : ''}
         </div>
-        ${a.dangerous ? `<div class="field-block" style="margin-top:10px;margin-bottom:0;">
-          <label style="color:#b45309;">Why is this animal dangerous? / Handling protocols</label>
-          <textarea id="m-protocols-${a.id}" placeholder="Describe the experience requirements and special handling protocols for this animal." oninput="saveAnimalCard(${a.id})" style="border-color:#fcd34d;">${a.protocols||''}</textarea>
-        </div>` : `<textarea id="m-protocols-${a.id}" style="display:none;">${a.protocols||''}</textarea>`}
+        ${a.dangerous ? `<div style="margin-top:8px;font-size:12px;color:#b45309;">Click the button again to remove the watch flag, or re-click to edit the reason.</div>` : ''}
       </div>
       <div class="field-block">
         <label>Fun facts</label>
