@@ -4299,7 +4299,7 @@ function renderStaffFileReadOnly(m){
         <h2>Hours</h2>
         <button class="btn-ghost" onclick="toggleHoursSection()" style="flex-shrink:0;">${HOURS_SECTION_OPEN ? '▾ Collapse' : '▸ Expand'}</button>
       </div>
-      <div class="sub">Current work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong>. Total: <strong>${currentPayPeriodHoursFor(m.name)} hrs</strong>.</div>
+      <div class="sub">Current work period: <strong>${periodRangeLabel(currentPeriodStart())}</strong>. Total: <strong>${fmtQ(currentPayPeriodHoursFor(m.name))}</strong>.</div>
       ${HOURS_SECTION_OPEN ? hoursTableHtml(m.name, false) : ''}
     </div>
     <div class="card">
@@ -4913,7 +4913,7 @@ function renderTeam(){
         <h2>My Hours</h2>
         <button class="btn-ghost" onclick="toggleHoursSection()" style="flex-shrink:0;">${HOURS_SECTION_OPEN ? '▾ Collapse' : '▸ Expand'}</button>
       </div>
-      <div class="sub">Clock in/out times recorded from your shifts. Current work period total: <strong>${currentPayPeriodHoursFor(me.name)} hrs</strong>. See a manager if any of these need correcting.</div>
+      <div class="sub">Clock in/out times recorded from your shifts. Current work period total: <strong>${fmtQ(currentPayPeriodHoursFor(me.name))}</strong>. See a manager if any of these need correcting.</div>
       ${HOURS_SECTION_OPEN ? hoursTableHtml(me.name, false) : ''}
     </div>
     <div class="card">
@@ -5377,13 +5377,15 @@ function downloadHoursReport(){
   const members     = sortedTeamMembers().filter(m=>m.onPayroll);
 
   const rows = members.map(m=>{
-    const hrs  = parseFloat(currentPayPeriodHoursFor(m.name)) || 0;
-    const rate = parseFloat(m.hourlyRate) || 0;
-    const gross = rate ? (hrs * rate).toFixed(2) : '—';
-    return { name: m.name, role: m.role||'Keeper', hrs, rate, gross };
+    const rawHrs = parseFloat(currentPayPeriodHoursFor(m.name)) || 0;
+    const hrs    = roundDownQ(rawHrs); // round down to nearest 15 min
+    const rate   = parseFloat(m.hourlyRate) || 0;
+    const gross  = rate ? (hrs * rate).toFixed(2) : '—';
+    return { name: m.name, role: m.role||'Keeper', hrs, hrsLabel: fmtQ(rawHrs), rate, gross };
   });
 
-  const totalHrs   = rows.reduce((s,r)=>s+r.hrs,0).toFixed(2);
+  const totalHrs   = roundDownQ(rows.reduce((s,r)=>s+r.hrs,0));
+  const totalHrsLabel = fmtQ(rows.reduce((s,r)=>s+r.hrs,0));
   const totalGross = rows.every(r=>r.gross!=='—')
     ? '$'+rows.reduce((s,r)=>s+parseFloat(r.gross),0).toFixed(2)
     : '—';
@@ -5392,7 +5394,7 @@ function downloadHoursReport(){
     <tr style="background:${i%2===0?'#ffffff':'#f7f7f7'};">
       <td style="padding:8px 12px;border:1px solid #ddd;font-weight:600;">${r.name}</td>
       <td style="padding:8px 12px;border:1px solid #ddd;color:#555;">${r.role}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;">${r.hrs}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;font-weight:600;">${r.hrsLabel}</td>
       <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;">${r.rate ? '$'+r.rate.toFixed(2)+'/hr' : '—'}</td>
       <td style="padding:8px 12px;border:1px solid #ddd;text-align:right;font-weight:600;">${r.gross!=='—'?'$'+r.gross:r.gross}</td>
     </tr>`).join('');
@@ -5410,6 +5412,7 @@ function downloadHoursReport(){
   .totrow td { padding: 10px 12px; border: 1px solid #ddd; font-weight: 700; background: #eef3ee; }
   .totrow td.r { text-align: right; }
   .footer { margin-top: 32px; font-size: 11px; color: #aaa; }
+  .note { margin-top: 12px; font-size: 11px; color: #888; }
 </style>
 </head>
 <body>
@@ -5420,18 +5423,19 @@ function downloadHoursReport(){
     <tr>
       <th>Full Name</th>
       <th>Role</th>
-      <th class="r">Hours</th>
+      <th class="r">Hours Worked</th>
       <th class="r">Hourly Rate</th>
       <th class="r">Gross Pay</th>
     </tr>
     ${rowsHtml}
     <tr class="totrow">
       <td colspan="2"><strong>TOTAL</strong></td>
-      <td class="r"><strong>${totalHrs}</strong></td>
+      <td class="r"><strong>${totalHrsLabel}</strong></td>
       <td class="r">—</td>
       <td class="r"><strong>${totalGross}</strong></td>
     </tr>
   </table>
+  <div class="note">Hours rounded down to the nearest 15-minute increment.</div>
   <div class="footer">Meet the Keepers &amp; Unite for Wildlife &nbsp;·&nbsp; Dunvegan, Ontario &nbsp;·&nbsp; Confidential — for payroll purposes only</div>
 </body>
 </html>`;
@@ -8452,6 +8456,18 @@ function currentPayPeriodHoursFor(name){
   });
   return Math.round(total*100)/100;
 }
+// Round decimal hours DOWN to nearest 15-minute increment (0.25 hr)
+function roundDownQ(h){
+  return Math.floor((h||0) * 4) / 4;
+}
+// Format decimal hours as "8h 15m" after rounding down to nearest 15 min
+function fmtQ(h){
+  const q = roundDownQ(h);
+  const totalMins = Math.round(q * 60);
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins === 0 ? `${hrs}h 00m` : `${hrs}h ${mins}m`;
+}
 function setTimeClockField(id, field, value){
   const t = DATA.timeClock.find(x=>x.id===id);
   if(!t) return;
@@ -10827,7 +10843,7 @@ function renderEmployeeFile(m){
           <h2>Hours — Work Period</h2>
           <button class="btn-ghost" onclick="toggleHoursSection()" style="flex-shrink:0;">${HOURS_SECTION_OPEN ? '▾ Collapse' : '▸ Expand'}</button>
         </div>
-        <div class="sub">Work period: <strong>${periodRangeLabel(periodStart)}</strong>. Clock-in/out times below. Current work period total: <strong>${currentPayPeriodHoursFor(m.name)} hrs</strong>${ovr ? ' <em>(manager override active)</em>' : ''}.</div>
+        <div class="sub">Work period: <strong>${periodRangeLabel(periodStart)}</strong>. Clock-in/out times below. Current work period total: <strong>${fmtQ(currentPayPeriodHoursFor(m.name))}</strong>${ovr ? ' <em>(manager override active)</em>' : ''}.</div>
         ${HOURS_SECTION_OPEN ? hoursTableHtml(m.name, true) : ''}
         <div class="add-row" style="margin-top:12px;align-items:flex-end;">
           <div class="field-block" style="flex:1;">
@@ -12037,7 +12053,7 @@ function renderManager(){
             ${DATA.team.filter(m=>!m.archived).map(m=>{
               const hrs = currentPayPeriodHoursFor(m.name);
               const hrsDisplay = hrs > 0
-                ? `<span style="font-weight:700;color:var(--green-dark);">${hrs}</span>`
+                ? `<span style="font-weight:700;color:var(--green-dark);">${fmtQ(hrs)}</span>`
                 : `<span style="color:var(--text-light);">—</span>`;
               const specs = m.specialties || [];
               const summaryText = specs.length ? specs.join(', ') : 'None selected';
