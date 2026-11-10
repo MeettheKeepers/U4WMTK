@@ -1029,6 +1029,8 @@ function normalizeData(d){
     if(a.approvedCrate===undefined) a.approvedCrate='';
   });
   if(d.welcome && !d.welcome.customTabs) d.welcome.customTabs=[];
+  if(d.welcome && d.welcome.keeperssong===undefined) d.welcome.keeperssong='';
+  if(d.welcome && d.welcome.soundsystems===undefined) d.welcome.soundsystems='';
   (d.shows||[]).forEach(s=>{
     if(s.packUpMinutes===undefined) s.packUpMinutes=SHOW_PACK_UP_MIN;
     if(s.endDate===undefined) s.endDate='';
@@ -1083,6 +1085,9 @@ function normalizeData(d){
     if(m.vsc.fileUrl===undefined) m.vsc.fileUrl = '';
     if(m.vsc.storagePath===undefined) m.vsc.storagePath = '';
     if(m.vsc.fileName===undefined) m.vsc.fileName = '';
+    if(!m.driversLicense) m.driversLicense = { front:{}, back:{} };
+    if(!m.driversLicense.front) m.driversLicense.front = {};
+    if(!m.driversLicense.back)  m.driversLicense.back  = {};
   });
   (d.animals||[]).forEach(a=>{ if(a.scriptFr===undefined) a.scriptFr=''; });
   if(!Array.isArray(d.chatMessages)) d.chatMessages = [];
@@ -1108,6 +1113,14 @@ function normalizeData(d){
   if(!d.wildlifeShow) d.wildlifeShow = { access: [], videos: [], notes: '' };
   if(!Array.isArray(d.wildlifeShow.access)) d.wildlifeShow.access = [];
   if(!Array.isArray(d.wildlifeShow.videos)) d.wildlifeShow.videos = [];
+  if(!Array.isArray(d.vehicleFiles)) d.vehicleFiles = [];
+  d.vehicleFiles.forEach(v=>{
+    if(!v.id) v.id = Date.now() + Math.random();
+    if(!v.name) v.name = '';
+    if(v.notes===undefined) v.notes = '';
+    if(!v.ownership) v.ownership = {};
+    if(!v.insurance) v.insurance = {};
+  });
   return d;
 }
 function loadData(){
@@ -1723,6 +1736,7 @@ const TABS = [
   {id:'schedule', label:'Schedule'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
+  {id:'vehicles', label:'Vehicles'},
   {id:'incidents', label:'Incidents'},
   {id:'team', label:'Team'},
   {id:'supervisor', label:'Supervisor'},
@@ -1853,6 +1867,7 @@ function visibleTabs(){
     if(t.id === 'u4w') return isManagerLogin() || hasNonProfitAccess() || hasFoundationAccess();
     if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
     if(t.id === 'keepers-song') return true; // visible to all staff
+    if(t.id === 'vehicles') return isManagerLogin(); // managers + supervisors only
     // Supervisor: block the restricted tabs
     if(getLoginLevel()==='supervisor') return canAccessTab(t.id);
     return true;
@@ -1923,6 +1938,7 @@ function showTab(id){
     schedule: renderSchedule,
     repairs: renderRepairs,
     inventory: renderInventory,
+    vehicles: renderVehicles,
     incidents: renderIncidents,
     welcome: renderWelcome,
     team: renderTeam,
@@ -3001,6 +3017,8 @@ const WELCOME_TABS = [
   {id:'policies', label:'Policies & Procedures'},
   {id:'safety', label:'Health & Safety'},
   {id:'vehicles', label:'Vehicles'},
+  {id:'keeperssong', label:'Keepers Song'},
+  {id:'soundsystems', label:'Sound Systems'},
   {id:'shows', label:'Shows & Presentations'}
 ];
 let WELCOME_TAB = 'about';
@@ -5277,6 +5295,20 @@ function renderTeam(){
         }
         <div class="sub" style="margin-top:4px;">Your SIN is stored securely and visible only to managers and owners — never displayed back to you.</div>
       </div>
+      <div style="font-weight:600;font-size:13px;color:var(--text-light);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px;">Driver's Licence</div>
+      <div class="sub" style="margin-bottom:10px;">Upload a photo of the front and back of your driver's licence for our insurance records. Once uploaded it is only visible to managers.</div>
+      ${['front','back'].map(side=>{
+        const dl = (me.driversLicense||{})[side]||{};
+        const label = side==='front'?'Front':'Back';
+        return `<div style="margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${label} of Licence</div>
+          ${dl.fileUrl
+            ? `<div style="font-size:13px;color:var(--green-dark);"> On file — visible to managers only</div>`
+            : `<button class="btn-ghost" id="dl-btn-${me.id}-${side}" onclick="document.getElementById('dl-file-${me.id}-${side}').click()">Upload ${label}</button>
+               <span id="dl-status-${me.id}-${side}" style="font-size:13px;color:var(--gray);margin-left:8px;"></span>`}
+          <input type="file" id="dl-file-${me.id}-${side}" accept="image/*,application/pdf" style="display:none" onchange="uploadDlFile(${me.id},'${side}')">
+        </div>`;
+      }).join('')}
       <div class="sub" style="margin-top:10px;font-style:italic;">Changes save automatically as you fill them in.</div>
     </div>
     <div class="card">
@@ -9100,6 +9132,7 @@ function renderSchedule(){
 
 /* ---------- INVENTORY ---------- */
 let INVENTORY_TAB = 1;
+let VEHICLES_SUB = null; // id of active vehicle subtab
 function setInventoryTab(id){ INVENTORY_TAB = id; showTab(CURRENT_TAB); }
 function addInventoryTab(){
   const name = prompt('New inventory tab name:');
@@ -9148,6 +9181,192 @@ function renderInventory(){
     </div>` : ''}
   `;
 }
+
+/* ---- VEHICLES TAB ---- */
+function renderVehicles(){
+  const vehicles = DATA.vehicleFiles || [];
+  const canEdit = isManagerLogin();
+  if(!vehicles.length){
+    return `
+      <div class="card">
+        <h2>Vehicles</h2>
+        <div class="sub">Vehicle information, notes, ownership and insurance documents. ${canEdit ? 'Add vehicles from Manager → Vehicles.' : 'No vehicles added yet.'}</div>
+        ${canEdit ? `<button class="btn" onclick="showTab('manager');setTimeout(()=>{ MANAGER_TAB='vehicles'; showTab('manager'); },50)">Go to Manager → Vehicles</button>` : ''}
+        <div class="empty" style="margin-top:16px;">No vehicles added yet.</div>
+      </div>`;
+  }
+  // Set default active sub
+  if(!VEHICLES_SUB || !vehicles.find(v=>v.id===VEHICLES_SUB)) VEHICLES_SUB = vehicles[0].id;
+  const active = vehicles.find(v=>v.id===VEHICLES_SUB) || vehicles[0];
+  const tabBtns = vehicles.map(v=>`
+    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB=${JSON.stringify(v.id)};showTab('vehicles')">${esc(v.name||'Unnamed')}</button>
+  `).join('');
+  function docSlot(label, slot, docType){
+    if(slot && slot.fileUrl){
+      return `
+        <div style="margin-top:12px;">
+          <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <a href="${slot.fileUrl}" target="_blank" style="color:var(--accent);font-size:14px;">View ${label}</a>
+            ${canEdit ? `
+              <button class="btn-ghost" onclick="deleteVehicleDoc(${JSON.stringify(active.id)},'${docType}')">Remove</button>
+              <label class="btn-ghost" style="cursor:pointer;font-size:13px;">Replace
+                <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+              </label>
+            ` : ''}
+          </div>
+        </div>`;
+    }
+    if(!canEdit) return `<div style="margin-top:12px;color:#999;font-size:14px;">${label}: not uploaded</div>`;
+    return `
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
+        <label class="btn" style="cursor:pointer;font-size:14px;">Upload ${label}
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+        </label>
+        <span id="vdoc-status-${active.id}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
+      </div>`;
+  }
+  return `
+    <div class="card">
+      <h2>Vehicles</h2>
+      <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;">
+        ${tabBtns}
+        ${canEdit ? `<button class="detail-tab-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="showTab('manager');setTimeout(()=>{ MANAGER_TAB='vehicles'; showTab('manager'); },50)">Manage Vehicles</button>` : ''}
+      </div>
+    </div>
+    <div class="card">
+      <h2>${esc(active.name||'Unnamed Vehicle')}</h2>
+      ${docSlot('Ownership Document', active.ownership, 'ownership')}
+      ${docSlot('Insurance Slip', active.insurance, 'insurance')}
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
+        ${canEdit ? `
+          <textarea style="width:100%;min-height:260px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues…" onchange="saveVehicleNotes(${JSON.stringify(active.id)},this.value)">${esc(active.notes||'')}</textarea>
+        ` : (active.notes ? `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:15px;margin:0;line-height:1.6;">${esc(active.notes)}</pre>` : '<div class="empty">No notes added yet.</div>')}
+      </div>
+    </div>`;
+}
+function renderVehiclesManager(){
+  const vehicles = DATA.vehicleFiles || [];
+  if(!VEHICLES_SUB || !vehicles.find(v=>v.id===VEHICLES_SUB)) VEHICLES_SUB = vehicles.length ? vehicles[0].id : null;
+  const active = vehicles.find(v=>v.id===VEHICLES_SUB) || null;
+  const tabBtns = vehicles.map(v=>`
+    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB=${JSON.stringify(v.id)};showTab('manager')">${esc(v.name||'Unnamed')}</button>
+  `).join('');
+  function docSlotMgr(label, slot, docType){
+    if(!active) return '';
+    if(slot && slot.fileUrl){
+      return `
+        <div style="margin-top:12px;">
+          <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <a href="${slot.fileUrl}" target="_blank" style="color:var(--accent);font-size:14px;">View ${label}</a>
+            <button class="btn-ghost" onclick="deleteVehicleDoc(${JSON.stringify(active.id)},'${docType}')">Remove</button>
+            <label class="btn-ghost" style="cursor:pointer;font-size:13px;">Replace
+              <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+            </label>
+          </div>
+        </div>`;
+    }
+    return `
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
+        <label class="btn" style="cursor:pointer;font-size:14px;">Upload ${label}
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+        </label>
+        <span id="vdoc-status-${active.id}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
+      </div>`;
+  }
+  return `
+    <div class="card">
+      <h2>Vehicles</h2>
+      <div class="sub">Manage vehicle records. Add or remove vehicles, update notes, and upload ownership and insurance documents.</div>
+      <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;">
+        ${tabBtns}
+        <button class="detail-tab-btn" onclick="addVehicleFile()">+ Add Vehicle</button>
+      </div>
+    </div>
+    ${active ? `
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <input type="text" value="${esc(active.name||'')}" style="font-size:17px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;padding:2px 4px;flex:1;" placeholder="Vehicle name…" onchange="renameVehicleFile(${JSON.stringify(active.id)},this.value)">
+        <button class="btn-ghost" onclick="deleteVehicleFile(${JSON.stringify(active.id)})">Delete Vehicle</button>
+      </div>
+      ${docSlotMgr('Ownership Document', active.ownership, 'ownership')}
+      ${docSlotMgr('Insurance Slip', active.insurance, 'insurance')}
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
+        <textarea style="width:100%;min-height:300px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues, inspection dates…" onchange="saveVehicleNotes(${JSON.stringify(active.id)},this.value)">${esc(active.notes||'')}</textarea>
+      </div>
+    </div>` : '<div class="card"><div class="empty">No vehicles yet. Click + Add Vehicle to get started.</div></div>'}
+  `;
+}
+function addVehicleFile(){
+  if(!DATA.vehicleFiles) DATA.vehicleFiles = [];
+  const id = 'v' + Date.now();
+  DATA.vehicleFiles.push({ id, name: 'New Vehicle', notes: '', ownership: {}, insurance: {} });
+  VEHICLES_SUB = id;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function renameVehicleFile(id, name){
+  const v = (DATA.vehicleFiles||[]).find(x=>x.id===id);
+  if(!v) return;
+  v.name = name;
+  saveData();
+}
+function deleteVehicleFile(id){
+  if(!confirm('Delete this vehicle record? This cannot be undone.')) return;
+  DATA.vehicleFiles = (DATA.vehicleFiles||[]).filter(v=>v.id!==id);
+  VEHICLES_SUB = DATA.vehicleFiles.length ? DATA.vehicleFiles[0].id : null;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+function saveVehicleNotes(id, notes){
+  const v = (DATA.vehicleFiles||[]).find(x=>x.id===id);
+  if(!v) return;
+  v.notes = notes;
+  saveData();
+}
+async function uploadVehicleDoc(vehicleId, docType, inputEl){
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById(`vdoc-status-${vehicleId}-${docType}`);
+  if(statusEl) statusEl.textContent = 'Uploading…';
+  try{
+    const v = (DATA.vehicleFiles||[]).find(x=>x.id===vehicleId);
+    if(!v) throw new Error('Vehicle not found');
+    const slot = v[docType];
+    if(slot && slot.storagePath && sb){
+      await sb.storage.from('vehicle-documents').remove([slot.storagePath]);
+    }
+    const ext  = file.name.split('.').pop();
+    const path = `${vehicleId}/${docType}-${Date.now()}.${ext}`;
+    const { data: upData, error: upErr } = await sb.storage.from('vehicle-documents').upload(path, file, { cacheControl:'3600', upsert:true });
+    if(upErr) throw upErr;
+    const { data: urlData } = sb.storage.from('vehicle-documents').getPublicUrl(upData.path);
+    v[docType] = { fileUrl: urlData.publicUrl, storagePath: upData.path, fileName: file.name };
+    saveData();
+    showTab(CURRENT_TAB);
+  } catch(e){
+    if(statusEl) statusEl.textContent = 'Upload failed: ' + (e.message||e);
+  }
+}
+async function deleteVehicleDoc(vehicleId, docType){
+  const label = docType === 'ownership' ? 'ownership document' : 'insurance slip';
+  if(!confirm(`Remove the ${label}?`)) return;
+  const v = (DATA.vehicleFiles||[]).find(x=>x.id===vehicleId);
+  if(!v) return;
+  const slot = v[docType];
+  if(slot && slot.storagePath && sb){
+    await sb.storage.from('vehicle-documents').remove([slot.storagePath]);
+  }
+  v[docType] = {};
+  saveData();
+  showTab(CURRENT_TAB);
+}
+
 function renderInventoryManager(){
   // Manager-facing: full edit controls.
   const tabs = DATA.inventory.tabs||[];
@@ -11237,6 +11456,47 @@ async function deleteVscFile(memberId){
   saveData();
   showTab(CURRENT_TAB);
 }
+async function uploadDlFile(memberId, side){
+  const input = document.getElementById(`dl-file-${memberId}-${side}`);
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById(`dl-status-${memberId}-${side}`);
+  const btnEl    = document.getElementById(`dl-btn-${memberId}-${side}`);
+  if(statusEl) statusEl.textContent = 'Uploading…';
+  if(btnEl) btnEl.disabled = true;
+  try{
+    const m = DATA.team.find(x=>x.id===memberId);
+    if(!m) throw new Error('Member not found');
+    if(!m.driversLicense) m.driversLicense = { front:{}, back:{} };
+    const slot = m.driversLicense[side];
+    if(slot && slot.storagePath && sb){
+      await sb.storage.from('drivers-license').remove([slot.storagePath]);
+    }
+    const ext  = file.name.split('.').pop();
+    const path = `${memberId}/${side}-${Date.now()}.${ext}`;
+    const { data: upData, error: upErr } = await sb.storage.from('drivers-license').upload(path, file, { cacheControl:'3600', upsert:true });
+    if(upErr) throw upErr;
+    const { data: urlData } = sb.storage.from('drivers-license').getPublicUrl(upData.path);
+    m.driversLicense[side] = { fileUrl: urlData.publicUrl, storagePath: upData.path, fileName: file.name };
+    saveData();
+    showTab(CURRENT_TAB);
+  } catch(e){
+    if(statusEl) statusEl.textContent = 'Upload failed: ' + (e.message||e);
+    if(btnEl) btnEl.disabled = false;
+  }
+}
+async function deleteDlFile(memberId, side){
+  if(!confirm(`Remove the ${side} of licence photo?`)) return;
+  const m = DATA.team.find(x=>x.id===memberId);
+  if(!m||!m.driversLicense) return;
+  const slot = m.driversLicense[side];
+  if(slot && slot.storagePath && sb){
+    await sb.storage.from('drivers-license').remove([slot.storagePath]);
+  }
+  m.driversLicense[side] = {};
+  saveData();
+  showTab(CURRENT_TAB);
+}
 function addWriteUp(id){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
@@ -11407,6 +11667,31 @@ function renderEmployeeFile(m){
         </div>
         <div class="sub" style="margin-top:6px;">Upload a scan or photo of the VSC document. The link can be copied and sent directly to clients who require it.</div>
       </div>` : ''}
+    </div>
+    ${renderContractManagerCard(m.id)}
+    <div class="card">
+      <h2>Driver's Licence</h2>
+      <div class="sub" style="margin-bottom:16px;">Visible to managers and owners only. Upload front and back photos for insurance records.</div>
+      ${['front','back'].map(side=>{
+        const dl = (m.driversLicense||{})[side]||{};
+        const label = side === 'front' ? 'Front' : 'Back';
+        return `<div style="margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">${label} of Licence</div>
+          ${dl.fileUrl ? `
+            <div style="margin-bottom:8px;">
+              <a href="${esc(dl.fileUrl)}" target="_blank"><img src="${esc(dl.fileUrl)}" alt="${label}" style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--border);display:block;"></a>
+              <div style="font-size:12px;color:var(--gray);margin-top:4px;">${esc(dl.fileName||'')}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <a href="${esc(dl.fileUrl)}" target="_blank" class="btn-ghost" style="font-size:13px;padding:3px 10px;">View Full Size</a>
+              <button class="btn-ghost" style="font-size:13px;padding:3px 10px;" onclick="document.getElementById('dl-file-${m.id}-${side}').click()">Replace</button>
+              <button class="btn-ghost" style="font-size:13px;padding:3px 10px;color:var(--red);" onclick="deleteDlFile(${m.id},'${side}')">Remove</button>
+            </div>` : `
+            <button class="btn-ghost" id="dl-btn-${m.id}-${side}" onclick="document.getElementById('dl-file-${m.id}-${side}').click()">Upload Photo</button>
+            <span id="dl-status-${m.id}-${side}" style="font-size:13px;color:var(--gray);margin-left:8px;"></span>`}
+          <input type="file" id="dl-file-${m.id}-${side}" accept="image/*,application/pdf" style="display:none" onchange="uploadDlFile(${m.id},'${side}')">
+        </div>`;
+      }).join('')}
     </div>
     <div class="card">
       <h2>Write-Ups</h2>
@@ -11817,6 +12102,7 @@ const MANAGER_TABS = [
   {id:'schedule', label:'Schedule'},
   {id:'repairs', label:'Supplies & Repairs'},
   {id:'inventory', label:'Inventory'},
+  {id:'vehicles', label:'Vehicles'},
   {id:'incidents', label:'Incidents'},
   {id:'staff', label:'Team'},
   {id:'admin', label:'Admin'},
@@ -11832,6 +12118,8 @@ const WELCOME_EDIT_SECTIONS = [
   {key:'policies', label:'Policies & Procedures'},
   {key:'safety', label:'Health & Safety'},
   {key:'vehicles', label:'Vehicles'},
+  {key:'keeperssong', label:'Keepers Song'},
+  {key:'soundsystems', label:'Sound Systems'},
   {key:'shows', label:'Shows & Presentations'}
 ];
 function renderManagerQuizBody(){
@@ -12764,6 +13052,8 @@ function renderManager(){
     `;
   } else if(MANAGER_TAB === 'inventory'){
     body = renderInventoryManager() + renderSupervisorAccessPanel('inventory');
+  } else if(MANAGER_TAB === 'vehicles'){
+    body = renderVehiclesManager();
   } else if(MANAGER_TAB === 'incidents'){
     const activeI = DATA.incidents.filter(i=>!i.archived);
     const archivedI = DATA.incidents.filter(i=>i.archived);
