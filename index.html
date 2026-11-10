@@ -4025,6 +4025,23 @@ function toggleKeeperLoop(){
 
 let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
+let _unlockedAudio = {}; // pre-unlocked Audio objects keyed by src — required for iOS
+
+function _unlockAudioSrc(src){
+  try {
+    const a = new Audio(src);
+    a.volume = 0;
+    const p = a.play();
+    if(p) p.then(()=>{ a.pause(); a.currentTime=0; a.volume=1; }).catch(()=>{});
+    _unlockedAudio[src] = a;
+  } catch(e){}
+}
+
+function _getAudio(src){
+  const a = _unlockedAudio[src];
+  if(a){ a.currentTime=0; a.volume=1; return a; }
+  return new Audio(src);
+}
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
   KEEPERS_LANG = lang;
@@ -4038,6 +4055,15 @@ function startPreShowMode(){
   const showTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
   const minsUntil = (showTime - now) / 60000;
   if(minsUntil <= 0){ alert('That show time has already passed. Please pick a future time.'); return; }
+
+  // Pre-unlock all announcement audio on this user gesture so iOS allows timer-triggered playback
+  _unlockedAudio = {};
+  const lang = KEEPERS_LANG || 'en';
+  [15,10,5,3].forEach(mark=>{
+    if(lang==='en'||lang==='both') _unlockAudioSrc(`./announcement-${mark}.mp3`);
+    if(lang==='fr'||lang==='both') _unlockAudioSrc(`./announcement-${mark}-fr.mp3`);
+  });
+  _unlockAudioSrc('./The Keepers.mp3');
 
   // Start instrumental on loop
   const audio = document.getElementById('keepers-instrumental');
@@ -4117,19 +4143,19 @@ function playAnnouncement(mark, duck){
   const restoreMusic = () => { if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 800); };
 
   if(lang === 'en'){
-    const ann = new Audio(enFile);
+    const ann = _getAudio(enFile);
     ann.volume = 1; ann.play().catch(()=>{});
     ann.onended = restoreMusic;
   } else if(lang === 'fr'){
-    const ann = new Audio(frFile);
+    const ann = _getAudio(frFile);
     ann.volume = 1; ann.play().catch(()=>{});
     ann.onended = restoreMusic;
   } else {
     // Bilingual: play English then French back to back
-    const en = new Audio(enFile);
+    const en = _getAudio(enFile);
     en.volume = 1; en.play().catch(()=>{});
     en.onended = () => {
-      const fr = new Audio(frFile);
+      const fr = _getAudio(frFile);
       fr.volume = 1; fr.play().catch(()=>{});
       fr.onended = restoreMusic;
     };
@@ -10259,6 +10285,47 @@ function autoFillNewShowEnd(){
   if(!startEl || !endEl || !startEl.value || endEl.value) return;
   endEl.value = fmtHM(timeToMin(startEl.value) + SHOW_DEFAULT_DURATION_MIN);
 }
+function updateNewShowPricing(){
+  const block = document.getElementById('new-show-pricing-block');
+  if(!block) return;
+  const selectedTypes = Array.from(document.querySelectorAll('.add-show-type:checked')).map(el=>el.value);
+  const outreachTypes = selectedTypes.filter(t=>OUTREACH_PRICES[t]);
+  const hasMulti = outreachTypes.some(t=>MULTI_PRICES[t]);
+  if(!outreachTypes.length){ block.style.display='none'; return; }
+  block.style.display='';
+  const count = parseInt(document.getElementById('new-show-pcount')||{value:1}?.value)||1;
+  // rebuild presentation buttons
+  const btnRow = document.getElementById('new-show-pcount-row');
+  if(btnRow && hasMulti){
+    btnRow.innerHTML = [1,2,3,4].map(n=>{
+      let p=0;
+      outreachTypes.forEach(t=>{ p += MULTI_PRICES[t] ? (MULTI_PRICES[t][n]||OUTREACH_PRICES[t]) : (OUTREACH_PRICES[t]||0); });
+      const active = count===n;
+      return `<button type="button" onclick="setNewShowPcount(${n})" style="padding:5px 12px;border-radius:8px;border:2px solid ${active?'#2a5fa8':'#b8d0f0'};background:${active?'#2a5fa8':'#fff'};color:${active?'#fff':'#2a5fa8'};font-weight:700;font-size:13px;cursor:pointer;" title="$${p}+HST">${n}</button>`;
+    }).join('');
+    document.getElementById('new-show-pcount-wrap').style.display='';
+  } else {
+    if(document.getElementById('new-show-pcount-wrap')) document.getElementById('new-show-pcount-wrap').style.display='none';
+  }
+  // recalc price
+  let stdPrice=0;
+  outreachTypes.forEach(t=>{ stdPrice += MULTI_PRICES[t] ? (MULTI_PRICES[t][count]||OUTREACH_PRICES[t]) : (OUTREACH_PRICES[t]||0); });
+  const discountEl = document.getElementById('new-show-discount-val');
+  const discount = discountEl && discountEl.value ? parseFloat(discountEl.value) : null;
+  const dispPrice = discount != null ? discount : stdPrice;
+  const isDisc = discount != null;
+  const priceEl = document.getElementById('new-show-price-label');
+  if(priceEl) priceEl.innerHTML = `<span style="font-size:15px;font-weight:700;color:${isDisc?'#c08000':'#1a3a6a'};">${isDisc?'Discounted: ':'Standard: '}$${dispPrice.toFixed(2)}+HST</span>`;
+  const discBox = document.getElementById('new-show-discount-box');
+  if(discBox) discBox.style.display = isDisc ? 'flex' : 'none';
+  const applyBtn = document.getElementById('new-show-discount-apply-btn');
+  if(applyBtn) applyBtn.style.display = isDisc ? 'none' : '';
+}
+function setNewShowPcount(n){
+  const inp = document.getElementById('new-show-pcount');
+  if(inp) inp.value = n;
+  updateNewShowPricing();
+}
 function updateFairFields(){
   const isFair = Array.from(document.querySelectorAll('.add-show-type:checked')).some(el=>FAIRS_SHOW_TYPES.includes(el.value));
   const block = document.getElementById('new-show-fair-extra');
@@ -10557,6 +10624,9 @@ function addShowManager(){
   const language = val('new-show-language');
   const notes = val('new-show-notes');
   const mileageCharge = parseFloat(val('new-show-mileage'))||null;
+  const presentationCount = parseInt(val('new-show-pcount'))||1;
+  const discountVal = val('new-show-discount-val');
+  const discountPrice = discountVal && parseFloat(discountVal) ? parseFloat(discountVal) : null;
   const paid = document.getElementById('new-show-paid').checked;
   const requiresVSC = document.getElementById('new-show-vsc').checked;
   const isFair = showTypes.some(t=>FAIRS_SHOW_TYPES.includes(t));
@@ -10564,7 +10634,7 @@ function addShowManager(){
   const overnight = isFair ? !!(document.getElementById('new-show-overnight')&&document.getElementById('new-show-overnight').checked) : false;
   const overnightNote = overnight ? (val('new-show-overnightnote')||'') : '';
   // Always save — conflicts are visible as red cards in the manager view
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, mileageCharge, paid, requiresVSC, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, mileageCharge, presentationCount, discountPrice, paid, requiresVSC, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -10629,7 +10699,31 @@ function renderShowForm(){
     <div class="field-block">
       <label>Show type(s)</label>
       <div class="task-tags">
-        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields();updateCharacterFields();updateOccasionFields()"> ${t}</label>`).join('')}
+        ${SHOW_TYPES_LIST.map(t=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" class="add-show-type" value="${t}" onchange="updateFairFields();updateCharacterFields();updateOccasionFields();updateNewShowPricing()"> ${t}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field-block" id="new-show-pricing-block" style="display:none;background:#f4f8ff;border:1px solid #b8d0f0;border-radius:8px;padding:10px;">
+      <input type="hidden" id="new-show-pcount" value="1">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div id="new-show-pcount-wrap">
+          <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Presentations this day</div>
+          <div id="new-show-pcount-row" style="display:flex;gap:6px;"></div>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Show Price</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div id="new-show-price-label"></div>
+            <button type="button" id="new-show-discount-apply-btn" onclick="document.getElementById('new-show-discount-box').style.display='flex';this.style.display='none';" style="padding:3px 10px;border-radius:6px;border:1px solid #b8d0f0;background:#fff;color:#2a5fa8;font-size:12px;cursor:pointer;">Apply Discount</button>
+          </div>
+          <div id="new-show-discount-box" style="display:none;align-items:center;gap:6px;margin-top:8px;">
+            <span style="font-size:13px;color:#555;">Custom price $</span>
+            <input type="number" id="new-show-discount-val" min="0" step="0.01" placeholder="0.00"
+              style="width:100px;padding:4px 8px;border:1px solid #b8d0f0;border-radius:6px;font-size:14px;"
+              oninput="updateNewShowPricing()">
+            <span style="font-size:12px;color:#888;">+HST</span>
+            <button type="button" onclick="document.getElementById('new-show-discount-val').value='';document.getElementById('new-show-discount-box').style.display='none';document.getElementById('new-show-discount-apply-btn').style.display='';updateNewShowPricing();" style="padding:3px 8px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#666;font-size:12px;cursor:pointer;">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="field-block" id="new-show-fair-extra" style="display:none; background:#fdf4ff; border:1px solid #d4c5f9; border-radius:8px; padding:12px;">
