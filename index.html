@@ -4027,19 +4027,26 @@ let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
 let _unlockedAudio = {}; // pre-unlocked Audio objects keyed by src — required for iOS
 
+// Pre-create and silently play an Audio object during a user gesture so iOS allows
+// later timer-triggered playback on the same object. No pause — let it play through
+// silently (volume=0). By the time any announcement fires (minutes later) it has ended.
 function _unlockAudioSrc(src){
   try {
     const a = new Audio(src);
     a.volume = 0;
-    const p = a.play();
-    if(p) p.then(()=>{ a.pause(); a.currentTime=0; a.volume=1; }).catch(()=>{});
+    a.play().catch(()=>{});
     _unlockedAudio[src] = a;
   } catch(e){}
 }
 
 function _getAudio(src){
   const a = _unlockedAudio[src];
-  if(a){ a.currentTime=0; a.volume=1; return a; }
+  if(a){
+    a.onended = null;   // clear any stale callback from previous play
+    a.currentTime = 0;
+    a.volume = 1;
+    return a;
+  }
   return new Audio(src);
 }
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
@@ -4064,6 +4071,15 @@ function startPreShowMode(){
     if(lang==='fr'||lang==='both') _unlockAudioSrc(`./announcement-${mark}-fr.mp3`);
   });
   _unlockAudioSrc('./The Keepers.mp3');
+
+  // Unlock vocals DOM element on this user gesture so iOS allows the 2:55 timer-triggered play
+  const vocalsUnlock = document.getElementById('keepers-vocals');
+  if(vocalsUnlock){
+    vocalsUnlock.volume = 0;
+    vocalsUnlock.play().catch(()=>{});
+    // Pause it once it starts — vocals shouldn't play yet
+    setTimeout(()=>{ if(vocalsUnlock.currentTime < 2){ vocalsUnlock.pause(); vocalsUnlock.currentTime=0; vocalsUnlock.volume=1; } }, 300);
+  }
 
   // Start instrumental on loop
   const audio = document.getElementById('keepers-instrumental');
