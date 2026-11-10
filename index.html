@@ -4028,10 +4028,7 @@ let _showAnnouncedMins = {};
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
   KEEPERS_LANG = lang;
-  ['en','fr','both'].forEach(l=>{
-    const btn = document.getElementById('klang-'+l);
-    if(btn){ btn.style.background = l===lang ? 'var(--green-dark)' : '#fff'; btn.style.color = l===lang ? '#fff' : '#555'; }
-  });
+  showTab('keepers-song');
 }
 function startPreShowMode(){
   const timeInput = document.getElementById('pre-show-time');
