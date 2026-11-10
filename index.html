@@ -7475,7 +7475,9 @@ function outreachShowRevenue(s){
 function calcOutreachProfit(s){
   const outreachTypes = (s.showTypes||[]).filter(t=>OUTREACH_PRICES[t]);
   if(!outreachTypes.length) return null;
-  const revenue = outreachShowRevenue(s);
+  const baseRevenue = outreachShowRevenue(s);
+  const mileageCharge = parseFloat(s.mileageCharge)||0;
+  const revenue = baseRevenue + mileageCharge;
   const plan = showShiftPlan(s);
   const shiftHours = Math.ceil(plan.totalMinutes / 60);
   let staffLines = [];
@@ -7486,13 +7488,13 @@ function calcOutreachProfit(s){
   });
   const km = travelKm(s.travelMinutes);
   const isPersonal = (s.vehicle||'').toLowerCase().includes('personal');
-  const kmRate = isPersonal ? 0.50 : 0.70;
+  const kmRate = 0.50;
   const mileageCost = km * 2 * kmRate;
   const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
   const missingRates = staffLines.filter(l=>l.cost===null);
   const totalKnownCost = knownStaffCost + mileageCost;
   const profit = revenue - totalKnownCost;
-  return {revenue, staffLines, shiftHours, totalStaffCost:knownStaffCost, km, kmRate, mileageCost, totalKnownCost, profit, missingRates, outreachTypes};
+  return {revenue, baseRevenue, mileageCharge, staffLines, shiftHours, totalStaffCost:knownStaffCost, km, kmRate, mileageCost, totalKnownCost, profit, missingRates, outreachTypes};
 }
 
 // Calculate total profit for a DAY (array of show instances from a date group).
@@ -7501,8 +7503,8 @@ function calcOutreachProfit(s){
 function calcDayProfit(instances){
   const outreachShows = instances.map(i=>i.s).filter(s=>(s.showTypes||[]).some(t=>OUTREACH_PRICES[t]));
   if(!outreachShows.length) return null;
-  // Revenue: sum all outreach shows, respecting presentationCount and discountPrice
-  const revenue = outreachShows.reduce((sum,s)=>sum+outreachShowRevenue(s), 0);
+  // Revenue: sum all outreach shows, respecting presentationCount, discountPrice, and mileage charge
+  const revenue = outreachShows.reduce((sum,s)=>sum+outreachShowRevenue(s)+(parseFloat(s.mileageCharge)||0), 0);
   // Staff: per unique staff member, span from earliest packLoad to latest unloadFinished
   const staffMap = {}; // name → {earliest packLoadTime, latest unloadFinished}
   outreachShows.forEach(s=>{
@@ -7531,7 +7533,7 @@ function calcDayProfit(instances){
   // Use vehicle from first show that has one set
   const vehicleShow = outreachShows.find(s=>s.vehicle) || outreachShows[0];
   const isPersonal = (vehicleShow.vehicle||'').toLowerCase().includes('personal');
-  const kmRate = isPersonal ? 0.50 : 0.70;
+  const kmRate = 0.50;
   const mileageCost = totalKm * kmRate;
   const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
   const totalKnownCost = knownStaffCost + mileageCost;
@@ -10554,6 +10556,7 @@ function addShowManager(){
   const address = val('new-show-address');
   const language = val('new-show-language');
   const notes = val('new-show-notes');
+  const mileageCharge = parseFloat(val('new-show-mileage'))||null;
   const paid = document.getElementById('new-show-paid').checked;
   const requiresVSC = document.getElementById('new-show-vsc').checked;
   const isFair = showTypes.some(t=>FAIRS_SHOW_TYPES.includes(t));
@@ -10561,7 +10564,7 @@ function addShowManager(){
   const overnight = isFair ? !!(document.getElementById('new-show-overnight')&&document.getElementById('new-show-overnight').checked) : false;
   const overnightNote = overnight ? (val('new-show-overnightnote')||'') : '';
   // Always save — conflicts are visible as red cards in the manager view
-  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, paid, requiresVSC, status:'scheduled'});
+  DATA.shows.push({id:nextId(DATA.shows), title, date, endDate, overnight, overnightNote, startTime, endTime, staffNames, vehicle, travelMinutes, arrivalBufferMinutes, clientName, clientPhone, clientEmail, region, childApplicable, childName, address, language, showTypes, characters, occasion, notes, mileageCharge, paid, requiresVSC, status:'scheduled'});
   saveData();
   SHOW_MGR_ADD_FORM = false;
   showTab('manager');
@@ -10659,6 +10662,14 @@ function renderShowForm(){
     <div class="field-block">
       <label>Notes</label>
       <textarea id="new-show-notes"></textarea>
+    </div>
+    <div class="field-block" style="background:#f4f8ff;border:1px solid #b8d0f0;border-radius:8px;padding:10px;">
+      <label style="font-size:12px;font-weight:700;color:#1a3a6a;text-transform:uppercase;letter-spacing:.05em;">Mileage Charge (billed to client)</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <span style="font-size:13px;color:#555;">$</span>
+        <input type="number" id="new-show-mileage" min="0" step="0.01" placeholder="0.00" style="width:120px;padding:4px 8px;border:1px solid #b8d0f0;border-radius:6px;font-size:14px;">
+        <span style="font-size:12px;color:#888;">+HST — added to show income</span>
+      </div>
     </div>
     <button class="btn-small" onclick="addShowManager()">Add Show</button>
   `;
@@ -10940,6 +10951,16 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
               </div>
             </div>
           </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #d0dff0;">
+            <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Mileage Charge (billed to client)</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:13px;color:#555;">$</span>
+              <input type="number" min="0" step="0.01" value="${s.mileageCharge!=null&&s.mileageCharge!==''?parseFloat(s.mileageCharge).toFixed(2):''}" placeholder="0.00"
+                style="width:100px;padding:4px 8px;border:1px solid #b8d0f0;border-radius:6px;font-size:14px;"
+                onblur="saveShowField(${s.id},'mileageCharge',this.value?parseFloat(this.value):null)">
+              <span style="font-size:12px;color:#888;">+HST — added to show income</span>
+            </div>
+          </div>
         </div>`;
       })()}
       ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
@@ -11037,9 +11058,13 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:10px;">Show Profit Breakdown</div>
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-            <span style="color:#555;">Revenue (${prof.outreachTypes.join(' + ')}${(s.presentationCount||1)>1?' × '+s.presentationCount+' presentations':''})${s.discountPrice!=null?' — discounted':''}</span>
-            <span style="font-weight:600;">${fmtC(prof.revenue)}</span>
+            <span style="color:#555;">Show price (${prof.outreachTypes.join(' + ')}${(s.presentationCount||1)>1?' × '+s.presentationCount+' presentations':''})${s.discountPrice!=null?' — discounted':''}</span>
+            <span style="font-weight:600;">${fmtC(prof.baseRevenue)}</span>
           </div>
+          ${prof.mileageCharge > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+            <span style="color:#1a6b2e;">Mileage charge (billed to client)</span>
+            <span style="font-weight:600;color:#1a6b2e;">+${fmtC(prof.mileageCharge)}</span>
+          </div>` : ''}
           ${prof.staffLines.map(l=>`
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
             <span style="color:#555;">${esc(l.name)} — ${l.hours}h @ ${l.rate!=null?fmtC(l.rate)+'/hr':'no rate set'}</span>
