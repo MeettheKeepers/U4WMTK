@@ -9195,11 +9195,11 @@ function renderVehicles(){
         <div class="empty" style="margin-top:16px;">No vehicles added yet.</div>
       </div>`;
   }
-  // Set default active sub
   if(!VEHICLES_SUB || !vehicles.find(v=>v.id===VEHICLES_SUB)) VEHICLES_SUB = vehicles[0].id;
   const active = vehicles.find(v=>v.id===VEHICLES_SUB) || vehicles[0];
+  const vid = active.id; // safe string id like 'v1234567890'
   const tabBtns = vehicles.map(v=>`
-    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB=${JSON.stringify(v.id)};showTab('vehicles')">${esc(v.name||'Unnamed')}</button>
+    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB='${v.id}';showTab('vehicles')">${esc(v.name||'Unnamed')}</button>
   `).join('');
   function docSlot(label, slot, docType){
     if(slot && slot.fileUrl){
@@ -9209,9 +9209,9 @@ function renderVehicles(){
           <div style="display:flex;align-items:center;gap:10px;">
             <a href="${slot.fileUrl}" target="_blank" style="color:var(--accent);font-size:14px;">View ${label}</a>
             ${canEdit ? `
-              <button class="btn-ghost" onclick="deleteVehicleDoc(${JSON.stringify(active.id)},'${docType}')">Remove</button>
+              <button class="btn-ghost" onclick="deleteVehicleDoc('${vid}','${docType}')">Remove</button>
               <label class="btn-ghost" style="cursor:pointer;font-size:13px;">Replace
-                <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+                <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
               </label>
             ` : ''}
           </div>
@@ -9222,9 +9222,9 @@ function renderVehicles(){
       <div style="margin-top:12px;">
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
         <label class="btn" style="cursor:pointer;font-size:14px;">Upload ${label}
-          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
         </label>
-        <span id="vdoc-status-${active.id}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
+        <span id="vdoc-status-${vid}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
       </div>`;
   }
   return `
@@ -9232,7 +9232,7 @@ function renderVehicles(){
       <h2>Vehicles</h2>
       <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;">
         ${tabBtns}
-        ${canEdit ? `<button class="detail-tab-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="showTab('manager');setTimeout(()=>{ MANAGER_TAB='vehicles'; showTab('manager'); },50)">Manage Vehicles</button>` : ''}
+        ${canEdit ? `<button class="detail-tab-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="MANAGER_TAB='vehicles';showTab('manager')">Manage Vehicles</button>` : ''}
       </div>
     </div>
     <div class="card">
@@ -9242,7 +9242,7 @@ function renderVehicles(){
       <div style="margin-top:20px;">
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
         ${canEdit ? `
-          <textarea style="width:100%;min-height:260px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues…" onchange="saveVehicleNotes(${JSON.stringify(active.id)},this.value)">${esc(active.notes||'')}</textarea>
+          <textarea style="width:100%;min-height:260px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues…" oninput="saveVehicleNotes('${vid}',this.value)">${esc(active.notes||'')}</textarea>
         ` : (active.notes ? `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:15px;margin:0;line-height:1.6;">${esc(active.notes)}</pre>` : '<div class="empty">No notes added yet.</div>')}
       </div>
     </div>`;
@@ -9251,8 +9251,9 @@ function renderVehiclesManager(){
   const vehicles = DATA.vehicleFiles || [];
   if(!VEHICLES_SUB || !vehicles.find(v=>v.id===VEHICLES_SUB)) VEHICLES_SUB = vehicles.length ? vehicles[0].id : null;
   const active = vehicles.find(v=>v.id===VEHICLES_SUB) || null;
+  const vid = active ? active.id : '';
   const tabBtns = vehicles.map(v=>`
-    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB=${JSON.stringify(v.id)};showTab('manager')">${esc(v.name||'Unnamed')}</button>
+    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB='${v.id}';showTab('manager')">${esc(v.name||'Unnamed')}</button>
   `).join('');
   function docSlotMgr(label, slot, docType){
     if(!active) return '';
@@ -9262,9 +9263,9 @@ function renderVehiclesManager(){
           <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <a href="${slot.fileUrl}" target="_blank" style="color:var(--accent);font-size:14px;">View ${label}</a>
-            <button class="btn-ghost" onclick="deleteVehicleDoc(${JSON.stringify(active.id)},'${docType}')">Remove</button>
+            <button class="btn-ghost" onclick="deleteVehicleDoc('${vid}','${docType}')">Remove</button>
             <label class="btn-ghost" style="cursor:pointer;font-size:13px;">Replace
-              <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+              <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
             </label>
           </div>
         </div>`;
@@ -9273,9 +9274,9 @@ function renderVehiclesManager(){
       <div style="margin-top:12px;">
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
         <label class="btn" style="cursor:pointer;font-size:14px;">Upload ${label}
-          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc(${JSON.stringify(active.id)},'${docType}',this)">
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
         </label>
-        <span id="vdoc-status-${active.id}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
+        <span id="vdoc-status-${vid}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
       </div>`;
   }
   return `
@@ -9290,14 +9291,14 @@ function renderVehiclesManager(){
     ${active ? `
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <input type="text" value="${esc(active.name||'')}" style="font-size:17px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;padding:2px 4px;flex:1;" placeholder="Vehicle name…" onchange="renameVehicleFile(${JSON.stringify(active.id)},this.value)">
-        <button class="btn-ghost" onclick="deleteVehicleFile(${JSON.stringify(active.id)})">Delete Vehicle</button>
+        <input type="text" value="${esc(active.name||'')}" style="font-size:17px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;padding:2px 4px;flex:1;" placeholder="Vehicle name…" onchange="renameVehicleFile('${vid}',this.value)">
+        <button class="btn-ghost" onclick="deleteVehicleFile('${vid}')">Delete Vehicle</button>
       </div>
       ${docSlotMgr('Ownership Document', active.ownership, 'ownership')}
       ${docSlotMgr('Insurance Slip', active.insurance, 'insurance')}
       <div style="margin-top:20px;">
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
-        <textarea style="width:100%;min-height:300px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues, inspection dates…" onchange="saveVehicleNotes(${JSON.stringify(active.id)},this.value)">${esc(active.notes||'')}</textarea>
+        <textarea style="width:100%;min-height:300px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues, inspection dates…" oninput="saveVehicleNotes('${vid}',this.value)">${esc(active.notes||'')}</textarea>
       </div>
     </div>` : '<div class="card"><div class="empty">No vehicles yet. Click + Add Vehicle to get started.</div></div>'}
   `;
