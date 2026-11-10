@@ -7488,7 +7488,7 @@ function calcOutreachProfit(s){
   });
   const km = travelKm(s.travelMinutes);
   const isPersonal = (s.vehicle||'').toLowerCase().includes('personal');
-  const kmRate = 0.50;
+  const kmRate = (s.vehicle||'').toLowerCase().includes('chevy express') ? 0.70 : 0.50;
   const mileageCost = km * 2 * kmRate;
   const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
   const missingRates = staffLines.filter(l=>l.cost===null);
@@ -7533,7 +7533,7 @@ function calcDayProfit(instances){
   // Use vehicle from first show that has one set
   const vehicleShow = outreachShows.find(s=>s.vehicle) || outreachShows[0];
   const isPersonal = (vehicleShow.vehicle||'').toLowerCase().includes('personal');
-  const kmRate = 0.50;
+  const kmRate = (vehicleShow.vehicle||'').toLowerCase().includes('chevy express') ? 0.70 : 0.50;
   const mileageCost = totalKm * kmRate;
   const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
   const totalKnownCost = knownStaffCost + mileageCost;
@@ -10587,7 +10587,7 @@ function renderShowForm(){
     <div class="add-row" style="align-items:flex-end;">
       <div class="field-block" style="flex:1; min-width:160px;">
         <label>Vehicle</label>
-        <select id="new-show-vehicle">${DATA.vehicles.map(v=>`<option value="${v}">${v}</option>`).join('')}</select>
+        <select id="new-show-vehicle"><option value="">— Choose a vehicle —</option>${DATA.vehicles.map(v=>`<option value="${v}">${v}</option>`).join('')}</select>
       </div>
       <div class="field-block" style="flex:1; min-width:160px;">
         <label>Travel time from centre (minutes)</label>
