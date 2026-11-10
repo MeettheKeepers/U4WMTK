@@ -4025,30 +4025,6 @@ function toggleKeeperLoop(){
 
 let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
-let _unlockedAudio = {}; // pre-unlocked Audio objects keyed by src — required for iOS
-
-// Pre-create and silently play an Audio object during a user gesture so iOS allows
-// later timer-triggered playback on the same object. No pause — let it play through
-// silently (volume=0). By the time any announcement fires (minutes later) it has ended.
-function _unlockAudioSrc(src){
-  try {
-    const a = new Audio(src);
-    a.volume = 0;
-    a.play().catch(()=>{});
-    _unlockedAudio[src] = a;
-  } catch(e){}
-}
-
-function _getAudio(src){
-  const a = _unlockedAudio[src];
-  if(a){
-    a.onended = null;   // clear any stale callback from previous play
-    a.currentTime = 0;
-    a.volume = 1;
-    return a;
-  }
-  return new Audio(src);
-}
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
   KEEPERS_LANG = lang;
@@ -4062,24 +4038,6 @@ function startPreShowMode(){
   const showTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
   const minsUntil = (showTime - now) / 60000;
   if(minsUntil <= 0){ alert('That show time has already passed. Please pick a future time.'); return; }
-
-  // Pre-unlock all announcement audio on this user gesture so iOS allows timer-triggered playback
-  _unlockedAudio = {};
-  const lang = KEEPERS_LANG || 'en';
-  [15,10,5,3].forEach(mark=>{
-    if(lang==='en'||lang==='both') _unlockAudioSrc(`./announcement-${mark}.mp3`);
-    if(lang==='fr'||lang==='both') _unlockAudioSrc(`./announcement-${mark}-fr.mp3`);
-  });
-  _unlockAudioSrc('./The Keepers.mp3');
-
-  // Unlock vocals DOM element on this user gesture so iOS allows the 2:55 timer-triggered play
-  const vocalsUnlock = document.getElementById('keepers-vocals');
-  if(vocalsUnlock){
-    vocalsUnlock.volume = 0;
-    vocalsUnlock.play().catch(()=>{});
-    // Pause it once it starts — vocals shouldn't play yet
-    setTimeout(()=>{ if(vocalsUnlock.currentTime < 2){ vocalsUnlock.pause(); vocalsUnlock.currentTime=0; vocalsUnlock.volume=1; } }, 300);
-  }
 
   // Start instrumental on loop
   const audio = document.getElementById('keepers-instrumental');
@@ -4159,19 +4117,19 @@ function playAnnouncement(mark, duck){
   const restoreMusic = () => { if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 800); };
 
   if(lang === 'en'){
-    const ann = _getAudio(enFile);
+    const ann = new Audio(enFile);
     ann.volume = 1; ann.play().catch(()=>{});
     ann.onended = restoreMusic;
   } else if(lang === 'fr'){
-    const ann = _getAudio(frFile);
+    const ann = new Audio(frFile);
     ann.volume = 1; ann.play().catch(()=>{});
     ann.onended = restoreMusic;
   } else {
     // Bilingual: play English then French back to back
-    const en = _getAudio(enFile);
+    const en = new Audio(enFile);
     en.volume = 1; en.play().catch(()=>{});
     en.onended = () => {
-      const fr = _getAudio(frFile);
+      const fr = new Audio(frFile);
       fr.volume = 1; fr.play().catch(()=>{});
       fr.onended = restoreMusic;
     };
