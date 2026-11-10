@@ -4025,6 +4025,14 @@ function toggleKeeperLoop(){
 
 let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
+let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
+function setKeeperLang(lang){
+  KEEPERS_LANG = lang;
+  ['en','fr','both'].forEach(l=>{
+    const btn = document.getElementById('klang-'+l);
+    if(btn){ btn.style.background = l===lang ? 'var(--green-dark)' : '#fff'; btn.style.color = l===lang ? '#fff' : '#555'; }
+  });
+}
 function startPreShowMode(){
   const timeInput = document.getElementById('pre-show-time');
   if(!timeInput || !timeInput.value){ alert('Please set a show start time first.'); return; }
@@ -4104,14 +4112,31 @@ function stopPreShowMode(){
 }
 function playAnnouncement(mark, duck){
   const instrumental = document.getElementById('keepers-instrumental');
-  // Always duck the music hard when an announcement plays
   if(instrumental) _fadeAudio(instrumental, instrumental.volume, 0.03, 300);
-  const ann = new Audio(`./announcement-${mark}.mp3`);
-  ann.volume = 1;
-  ann.play().catch(()=>{});
-  ann.onended = () => {
-    if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 800);
-  };
+  const lang = KEEPERS_LANG || 'en';
+  const enFile = `./announcement-${mark}.mp3`;
+  const frFile = `./announcement-${mark}-fr.mp3`;
+
+  const restoreMusic = () => { if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 800); };
+
+  if(lang === 'en'){
+    const ann = new Audio(enFile);
+    ann.volume = 1; ann.play().catch(()=>{});
+    ann.onended = restoreMusic;
+  } else if(lang === 'fr'){
+    const ann = new Audio(frFile);
+    ann.volume = 1; ann.play().catch(()=>{});
+    ann.onended = restoreMusic;
+  } else {
+    // Bilingual: play English then French back to back
+    const en = new Audio(enFile);
+    en.volume = 1; en.play().catch(()=>{});
+    en.onended = () => {
+      const fr = new Audio(frFile);
+      fr.volume = 1; fr.play().catch(()=>{});
+      fr.onended = restoreMusic;
+    };
+  }
 }
 function getBestVoice(){
   const voices = window.speechSynthesis.getVoices();
@@ -4158,20 +4183,18 @@ function _fadeAudio(audio, from, to, durationMs){
     if(step >= steps) clearInterval(timer);
   }, stepMs);
 }
-function renderKeepersSong(){
+function _keepersSongContent(){
   return `
-    <div class="card" style="max-width:560px;margin:0 auto;">
-      <h2 style="margin-bottom:4px;">The Keepers Song</h2>
       <ol style="margin:0 0 20px;padding-left:20px;font-size:14px;color:var(--text-light);line-height:2;">
         <li>Connect your phone to <strong>J33 Bluetooth</strong> or <strong>Aux Cord</strong>.</li>
         <li>Set your show time below and hit <strong>Start Pre-Show</strong>.</li>
-        <li>Announcements at <strong>15, 10, and 5 minutes</strong> will play automatically.</li>
+        <li>Announcements at <strong>15, 10, 5 and 3 minutes</strong> will play automatically.</li>
         <li>When you hear <strong>"And now please welcome The Keepers"</strong> — come out from behind the backdrop!</li>
       </ol>
 
       <div style="background:#f0f7f0;border:1px solid #b6d9b6;border-radius:12px;padding:16px;margin-bottom:24px;">
         <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:10px;">&#9201; Pre-Show Mode</div>
-        <div style="font-size:13px;color:#555;margin-bottom:10px;">Set your show start time — the instrumental starts looping automatically and the app announces at 15, 10, and 5 minutes out.</div>
+        <div style="font-size:13px;color:#555;margin-bottom:10px;">Set your show start time — the instrumental starts looping automatically and announcements fire at 15, 10, 5, and 3 minutes out.</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input id="pre-show-time" type="time" style="padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:15px;font-weight:600;" />
           <button id="pre-show-start-btn" onclick="startPreShowMode()" style="padding:8px 20px;border-radius:20px;border:none;background:var(--green-dark);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Start Pre-Show</button>
@@ -4193,7 +4216,7 @@ function renderKeepersSong(){
         </div>
       </div>
 
-      <div>
+      <div style="margin-bottom:24px;">
         <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Instrumental Version</div>
         <audio id="keepers-instrumental" controls style="width:100%;border-radius:8px;" preload="none">
           <source src="./The Keepers (Instrumental).mp3" type="audio/mpeg">
@@ -4207,18 +4230,87 @@ function renderKeepersSong(){
         <button id="keepers-loop-btn" onclick="toggleKeeperLoop()" style="margin-top:10px;padding:8px 20px;border-radius:20px;border:2px solid #ccc;background:#fff;color:#888;font-size:13px;font-weight:700;cursor:pointer;">&#8635; Loop: OFF</button>
       </div>
 
-      <hr style="margin:28px 0;border:none;border-top:1px solid var(--border);">
-
+      <hr style="margin:24px 0;border:none;border-top:1px solid var(--border);">
       <div style="font-size:15px;font-weight:700;color:var(--green-dark);margin-bottom:4px;">&#128266; Manual Announcements</div>
-      <div style="font-size:13px;color:#888;margin-bottom:16px;">Click play on any announcement — works alongside the instrumental. Volume defaults to max.</div>
-
+      <div style="font-size:13px;color:#888;margin-bottom:16px;">Play alongside the instrumental as a backup.</div>
       ${[15,10,5,3].map(mark=>`
-      <div style="margin-bottom:18px;background:#f9f9f6;border:1px solid var(--border);border-radius:10px;padding:12px 16px;">
-        <div style="font-size:13px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">${mark} Minute Announcement${mark===3?' <span style="font-size:11px;font-weight:400;color:#888;">(plays at 3:30)</span>':''}</div>
+      <div style="margin-bottom:14px;background:#f9f9f6;border:1px solid var(--border);border-radius:10px;padding:12px 16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--green-dark);margin-bottom:6px;">${mark} Min${mark===3?' <span style="font-size:11px;font-weight:400;color:#888;">(auto at 3:30)</span>':''}</div>
         <audio controls style="width:100%;border-radius:6px;" preload="none">
           <source src="./announcement-${mark}.mp3" type="audio/mpeg">
         </audio>
       </div>`).join('')}
+  `;
+}
+function _keepersSongContentFr(){
+  return `
+      <ol style="margin:0 0 20px;padding-left:20px;font-size:14px;color:var(--text-light);line-height:2;">
+        <li>Connectez votre téléphone au <strong>Bluetooth J33</strong> ou au <strong>câble Aux</strong>.</li>
+        <li>Entrez l'heure du spectacle et appuyez sur <strong>Démarrer le pré-spectacle</strong>.</li>
+        <li>Les annonces à <strong>15, 10, 5 et 3 minutes</strong> se déclenchent automatiquement.</li>
+        <li>Lorsque vous entendez <strong>« Place aux Keepers »</strong> — sortez de derrière le décor!</li>
+      </ol>
+
+      <div style="background:#f0f7f0;border:1px solid #b6d9b6;border-radius:12px;padding:16px;margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:10px;">&#9201; Mode pré-spectacle</div>
+        <div style="font-size:13px;color:#555;margin-bottom:10px;">Entrez l'heure du spectacle — l'instrumental démarre en boucle et les annonces se déclenchent automatiquement.</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input id="pre-show-time" type="time" style="padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:15px;font-weight:600;" />
+          <button id="pre-show-start-btn" onclick="startPreShowMode()" style="padding:8px 20px;border-radius:20px;border:none;background:var(--green-dark);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Démarrer</button>
+          <button id="pre-show-stop-btn" onclick="stopPreShowMode()" style="display:none;padding:8px 20px;border-radius:20px;border:none;background:#c0392b;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9632; Arrêter</button>
+        </div>
+        <div id="pre-show-countdown" style="margin-top:12px;font-size:22px;font-weight:800;color:var(--green-dark);"></div>
+      </div>
+
+      <div style="margin-bottom:28px;">
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Version complète (avec voix)</div>
+        <audio id="keepers-vocals" controls style="width:100%;border-radius:8px;" preload="none">
+          <source src="./The Keepers.mp3" type="audio/mpeg">
+        </audio>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <label style="font-size:12px;color:#888;white-space:nowrap;">Volume</label>
+          <input type="range" min="0" max="1" step="0.05" value="1" style="flex:1;accent-color:var(--green-dark);" oninput="document.getElementById('keepers-vocals').volume=this.value;document.getElementById('vocals-vol-label').textContent=Math.round(this.value*100)+'%'">
+          <span id="vocals-vol-label" style="font-size:12px;color:#888;width:32px;text-align:right;">100%</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">&#127925; Version instrumentale</div>
+        <audio id="keepers-instrumental" controls style="width:100%;border-radius:8px;" preload="none">
+          <source src="./The Keepers (Instrumental).mp3" type="audio/mpeg">
+        </audio>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <label style="font-size:12px;color:#888;white-space:nowrap;">Volume</label>
+          <input type="range" min="0" max="1" step="0.05" value="1" style="flex:1;accent-color:var(--green-dark);" oninput="document.getElementById('keepers-instrumental').volume=this.value;document.getElementById('instrumental-vol-label').textContent=Math.round(this.value*100)+'%'">
+          <span id="instrumental-vol-label" style="font-size:12px;color:#888;width:32px;text-align:right;">100%</span>
+        </div>
+        <button id="keepers-loop-btn" onclick="toggleKeeperLoop()" style="margin-top:10px;padding:8px 20px;border-radius:20px;border:2px solid #ccc;background:#fff;color:#888;font-size:13px;font-weight:700;cursor:pointer;">&#8635; Boucle: OFF</button>
+      </div>
+
+      <hr style="margin:24px 0;border:none;border-top:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;color:var(--green-dark);margin-bottom:4px;">&#128266; Annonces manuelles</div>
+      <div style="font-size:13px;color:#888;margin-bottom:16px;">À jouer en même temps que l'instrumental au besoin.</div>
+      ${[15,10,5,3].map(mark=>`
+      <div style="margin-bottom:14px;background:#f9f9f6;border:1px solid var(--border);border-radius:10px;padding:12px 16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--green-dark);margin-bottom:6px;">${mark} min${mark===3?' <span style="font-size:11px;font-weight:400;color:#888;">(auto à 3:30)</span>':''}</div>
+        <audio controls style="width:100%;border-radius:6px;" preload="none">
+          <source src="./announcement-${mark}-fr.mp3" type="audio/mpeg">
+        </audio>
+      </div>`).join('')}
+  `;
+}
+function renderKeepersSong(){
+  const lang = KEEPERS_LANG || 'en';
+  const tabBtn = (id, label) => `<button id="klang-${id}" onclick="setKeeperLang('${id}')" style="padding:8px 20px;border-radius:20px;border:2px solid var(--green-dark);font-size:14px;font-weight:700;cursor:pointer;background:${lang===id?'var(--green-dark)':'#fff'};color:${lang===id?'#fff':'#555'};">${label}</button>`;
+  return `
+    <div class="card" style="max-width:580px;margin:0 auto;">
+      <h2 style="margin-bottom:12px;">The Keepers Song</h2>
+      <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+        ${tabBtn('en','🇨🇦 English')}
+        ${tabBtn('fr','🇨🇦 Français')}
+        ${tabBtn('both','Bilingual')}
+      </div>
+      ${lang === 'fr' ? _keepersSongContentFr() : _keepersSongContent()}
     </div>
   `;
 }
