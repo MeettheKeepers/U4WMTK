@@ -4078,7 +4078,7 @@ function startPreShowMode(){
     });
 
     // At 2:55 remaining, switch to the vocals track to kick off the show
-    if(!_showAnnouncedMins['vocals'] && remaining <= (2 + 55/60) && remaining > (2 + 40/60)){
+    if(!_showAnnouncedMins['vocals'] && remaining <= (2 + 55/60) && remaining > (2 + 52/60)){
       _showAnnouncedMins['vocals'] = true;
       const instrumental = document.getElementById('keepers-instrumental');
       if(instrumental){ _fadeAudio(instrumental, instrumental.volume, 0, 1500); setTimeout(()=>{ instrumental.pause(); instrumental.loop = false; }, 1500); }
