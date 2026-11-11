@@ -1118,8 +1118,8 @@ function normalizeData(d){
     editAccess: [],
     subtabs: [
       { id: 1, name: 'Intro', notes: '', audioFiles: [
-        { id: 'a1', name: 'David – Sports Arena Announcer', path: './mtk-racing-intro-david.mp3' },
-        { id: 'a2', name: 'Thomas – Clear, Warm and Professional', path: './mtk-racing-intro-thomas.mp3' }
+        { id: 'a1', name: 'Intro to Race (English)', path: './mtk-racing-intro-david.mp3' },
+        { id: 'a2', name: 'Intro to Race (French)', path: './mtk-racing-intro-thomas.mp3' }
       ]}
     ]
   };
@@ -1128,6 +1128,11 @@ function normalizeData(d){
   d.mtkRacing.subtabs.forEach(st=>{
     if(!Array.isArray(st.audioFiles)) st.audioFiles = [];
     if(st.notes===undefined) st.notes = '';
+    // Rename legacy audio file names
+    st.audioFiles.forEach(af=>{
+      if(af.id==='a1' && af.name==='David – Sports Arena Announcer') af.name = 'Intro to Race (English)';
+      if(af.id==='a2' && af.name==='Thomas – Clear, Warm and Professional') af.name = 'Intro to Race (French)';
+    });
   });
   d.vehicleFiles.forEach(v=>{
     if(!v.id) v.id = Date.now() + Math.random();
@@ -4442,7 +4447,9 @@ function renderMtkRacing(){
       </div>`;
   }
 
-  const audioSection = active ? `
+  // Audio section only appears on the Intro subtab (id=1)
+  const isIntroTab = active && active.id === 1;
+  const audioSection = (active && isIntroTab) ? `
     <div style="margin-bottom:16px;">
       ${(active.audioFiles||[]).length ? (active.audioFiles.map(af=>audioCard(af)).join('')) : '<div class="empty" style="padding:12px 0;">No audio files yet.</div>'}
       ${inEdit ? `
