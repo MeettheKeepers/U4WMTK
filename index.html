@@ -1220,11 +1220,46 @@ async function pushCloudData(retries){
 }
 let LAST_INPUT_TIME = 0;
 document.addEventListener('input', () => { LAST_INPUT_TIME = Date.now(); }, true);
+function flushEditorsToData(){
+  // Before any cloud-triggered re-render, capture whatever the user has typed into
+  // contenteditable editors into DATA so it survives the DOM replacement.
+  // Welcome edit sections
+  if(DATA.welcome && typeof WELCOME_EDIT_SECTIONS !== 'undefined'){
+    WELCOME_EDIT_SECTIONS.forEach(s => {
+      const el = document.getElementById('welcome-edit-'+s.key);
+      if(el && el.isConnected && el.innerHTML) DATA.welcome[s.key] = el.innerHTML;
+    });
+    (DATA.welcome.customTabs || []).forEach(ct => {
+      const el = document.getElementById('welcome-edit-custom-'+ct.id);
+      if(el && el.isConnected && el.innerHTML) ct.content = el.innerHTML;
+    });
+  }
+  // Admin training editors
+  if(DATA.admin){
+    if(!DATA.admin.training) DATA.admin.training = { notes:'', roles:{} };
+    const genEl = document.getElementById('admin-training-editor-general');
+    if(genEl && genEl.isConnected && genEl.innerHTML) DATA.admin.training.notes = genEl.innerHTML;
+    const roleEl = document.getElementById('admin-training-editor-role');
+    if(roleEl && roleEl.isConnected && roleEl.innerHTML && typeof TRAINING_ROLE_TAB !== 'undefined' && TRAINING_ROLE_TAB !== 'general'){
+      if(!DATA.admin.training.roles) DATA.admin.training.roles = {};
+      DATA.admin.training.roles[TRAINING_ROLE_TAB] = roleEl.innerHTML;
+    }
+  }
+  // Vehicle notes
+  if(DATA.vehicleFiles && typeof VEHICLES_SUB !== 'undefined' && VEHICLES_SUB){
+    const noteEl = document.getElementById('vehicle-notes-'+VEHICLES_SUB);
+    if(noteEl && noteEl.isConnected){
+      const v = DATA.vehicleFiles.find(x=>x.id===VEHICLES_SUB);
+      if(v && noteEl.value !== undefined) v.notes = noteEl.value;
+    }
+  }
+}
 function rerenderCurrentView(){
   if(!CURRENT_LOGIN) return;
-  // Don't re-render while the user is actively typing — it would wipe their input
+  // Don't re-render while the user is actively typing — it would wipe their input.
+  // This covers INPUT/TEXTAREA/SELECT but also contenteditable divs (tagName=DIV).
   const focused = document.activeElement;
-  if(focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) return;
+  if(focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT' || focused.isContentEditable)) return;
   // Don't re-render for 60 seconds after the last keystroke (covers multi-field forms like Add Show)
   if(Date.now() - LAST_INPUT_TIME < 60000) return;
   // Don't re-render if an add-show form is open
@@ -1503,6 +1538,7 @@ async function pollCloudData(){
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
+      flushEditorsToData(); // capture any unsaved editor content before we overwrite DATA
       const _localSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
       DATA = normalizeData(incoming);
       DATA._savedAt = incoming._savedAt;
@@ -1563,6 +1599,7 @@ async function initCloudSync(){
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
+      flushEditorsToData(); // capture any unsaved editor content before we overwrite DATA
       const _initSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
       DATA = normalizeData(cloud);
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1643,6 +1680,7 @@ async function initCloudSync(){
         const localMsgs = DATA.chatMessages || [];
         const localDeletedIds = DATA.chatDeletedIds || [];
         const localHiddenDMs = DATA.chatHiddenDMs || [];
+        flushEditorsToData(); // capture any unsaved editor content before we overwrite DATA
         const _rtSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
         DATA = normalizeData(incoming);
         DATA._savedAt = incoming._savedAt || Date.now();
@@ -13455,7 +13493,7 @@ function renderManager(){
           <h2>${s.label}</h2>
           <div class="rich-wrap">
             ${richToolbar('welcome-edit-'+s.key)}
-            <div class="welcome-editor" id="welcome-edit-${s.key}" contenteditable="true">${(DATA.welcome && DATA.welcome[s.key]) || ''}</div>
+            <div class="welcome-editor" id="welcome-edit-${s.key}" contenteditable="true" oninput="if(DATA.welcome)DATA.welcome['${s.key}']=this.innerHTML;">${(DATA.welcome && DATA.welcome[s.key]) || ''}</div>
           </div>
           <button class="btn-small" style="margin-top:10px;" onclick="saveWelcomeSection('${s.key}')">Save ${s.label}</button>
           <span class="sub" id="welcome-saved-${s.key}" style="margin-left:10px; display:none;">Saved.</span>
@@ -15200,7 +15238,7 @@ function renderManager(){
           </div>
           <div class="rich-wrap">
             ${richToolbar(editorId)}
-            <div class="welcome-editor" id="${editorId}" contenteditable="true">${content}</div>
+            <div class="welcome-editor" id="${editorId}" contenteditable="true" oninput="flushEditorsToData()">${content}</div>
           </div>`;
         })()}
         <button class="btn-small" style="margin-top:10px;" onclick="saveManagerAdminTraining()">Save Training</button>
