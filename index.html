@@ -1168,20 +1168,25 @@ let POLL_TIMER = null;
 
 const LOCAL_SAVED_AT_KEY = 'ufw_local_saved_at_v1';
 function saveData(){
-  if(!CLOUD_READY && sb){
-    console.warn('[saveData] BLOCKED — cloud sync not complete yet. Call saveData() only after CLOUD_READY is true.');
-    return;
-  }
+  // Always write to localStorage immediately so edits are never lost.
+  // Cloud push is deferred until CLOUD_READY — but we must not block the local save
+  // or edits made during the first few seconds of loading will be wiped when
+  // initCloudSync completes and downloads the (then-newer) cloud data.
   DATA._savedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
   localStorage.setItem(LOCAL_SAVED_AT_KEY, DATA._savedAt);
   preloadInterShowTravel(); // recalculate if any new same-day show pairs appeared
   if(!sb) return;
-  // Suppress realtime echoes immediately — not just inside pushCloudData — so that
-  // an incoming event in the debounce window can't overwrite data we just saved.
+  if(!CLOUD_READY){
+    // Local is saved. Cloud push will fire automatically once CLOUD_READY is set
+    // (initCloudSync will see localTime > cloudTime and push local up).
+    return;
+  }
+  // Suppress realtime echoes immediately so an incoming event in the debounce
+  // window can't overwrite data we just saved.
   SUPPRESS_NEXT_REALTIME = true;
   clearTimeout(SAVE_DEBOUNCE_TIMER);
-  SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 150); // 150ms — fast enough to catch tab-close, slow enough to batch keystrokes
+  SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 150);
 }
 async function pushCloudData(retries){
   if(retries === undefined) retries = 2;
@@ -1222,6 +1227,57 @@ function rerenderCurrentView(){
 function _isValidCloudData(d){
   // Guard against null/truncated realtime payloads (Supabase drops payloads > 1MB)
   return d && typeof d === 'object' && Array.isArray(d.team) && Array.isArray(d.logins) && d.team.length > 0;
+}
+// Merge content fields that have no per-field timestamps (vehicleFiles, mtkRacing,
+// welcome sections, admin.training). Rule: if local has more data than cloud for
+// a field, keep local. This protects content saved during the CLOUD_READY window
+// from being wiped by an incoming cloud snapshot.
+function mergeContentFields(localData){
+  // vehicleFiles — keep whichever array has more entries
+  if(Array.isArray(localData.vehicleFiles) && localData.vehicleFiles.length > (DATA.vehicleFiles||[]).length){
+    DATA.vehicleFiles = localData.vehicleFiles;
+  }
+  // mtkRacing — keep local if it has subtabs cloud doesn't
+  if(localData.mtkRacing && Array.isArray(localData.mtkRacing.subtabs)){
+    if(!DATA.mtkRacing) DATA.mtkRacing = localData.mtkRacing;
+    else if(localData.mtkRacing.subtabs.length > (DATA.mtkRacing.subtabs||[]).length){
+      DATA.mtkRacing = localData.mtkRacing;
+    } else {
+      // Merge subtab notes/audio that may have been edited locally
+      (localData.mtkRacing.subtabs||[]).forEach(localSt=>{
+        const st = (DATA.mtkRacing.subtabs||[]).find(s=>s.id===localSt.id);
+        if(st && localSt.notes && !st.notes) st.notes = localSt.notes;
+      });
+    }
+    if(Array.isArray(localData.mtkRacing.editAccess) && localData.mtkRacing.editAccess.length > (DATA.mtkRacing.editAccess||[]).length){
+      DATA.mtkRacing.editAccess = localData.mtkRacing.editAccess;
+    }
+  }
+  // welcome sections — keep local value for any section that cloud doesn't have
+  if(localData.welcome && DATA.welcome){
+    Object.keys(localData.welcome).forEach(k=>{
+      if(k==='customTabs') return; // handled separately
+      if(localData.welcome[k] && !DATA.welcome[k]) DATA.welcome[k] = localData.welcome[k];
+    });
+    // welcome.customTabs — keep any local custom tab missing from cloud
+    if(Array.isArray(localData.welcome.customTabs) && localData.welcome.customTabs.length > (DATA.welcome.customTabs||[]).length){
+      DATA.welcome.customTabs = localData.welcome.customTabs;
+    }
+  }
+  // admin.training — keep local notes/roles if cloud has none
+  if(localData.admin && localData.admin.training && DATA.admin){
+    if(!DATA.admin.training) DATA.admin.training = localData.admin.training;
+    else {
+      if(localData.admin.training.notes && !DATA.admin.training.notes) DATA.admin.training.notes = localData.admin.training.notes;
+      if(localData.admin.training.roles && DATA.admin.training.roles){
+        Object.keys(localData.admin.training.roles).forEach(role=>{
+          if(localData.admin.training.roles[role] && !DATA.admin.training.roles[role]){
+            DATA.admin.training.roles[role] = localData.admin.training.roles[role];
+          }
+        });
+      }
+    }
+  }
 }
 // Merge today's clock-in entries from local into an incoming cloud timeClock array.
 // Prevents multi-device "last-write-wins" from silently erasing a clock-in when
@@ -1431,6 +1487,7 @@ async function pollCloudData(){
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
+      const _localSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
       DATA = normalizeData(incoming);
       DATA._savedAt = incoming._savedAt;
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1450,6 +1507,7 @@ async function pollCloudData(){
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
       DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
+      mergeContentFields(_localSnap);
       if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push the healed version back
         DATA._savedAt = Date.now();
@@ -1489,6 +1547,7 @@ async function initCloudSync(){
       const localMsgs = DATA.chatMessages || [];
       const localDeletedIds = DATA.chatDeletedIds || [];
       const localHiddenDMs = DATA.chatHiddenDMs || [];
+      const _initSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
       DATA = normalizeData(cloud);
       const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
       DATA.tasks = mergedTasks.tasks;
@@ -1507,6 +1566,8 @@ async function initCloudSync(){
       DATA.chatMessages = mergedChat.msgs;
       DATA.chatDeletedIds = localDeletedIds;
       DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
+      // Restore any content-field edits that were saved locally but aren't in cloud yet
+      mergeContentFields(_initSnap);
       if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
         // Local had data the cloud didn't — push back.
         // Subscription isn't set up yet at this point, so no SUPPRESS needed.
@@ -1566,6 +1627,7 @@ async function initCloudSync(){
         const localMsgs = DATA.chatMessages || [];
         const localDeletedIds = DATA.chatDeletedIds || [];
         const localHiddenDMs = DATA.chatHiddenDMs || [];
+        const _rtSnap = { vehicleFiles: DATA.vehicleFiles, mtkRacing: DATA.mtkRacing, welcome: DATA.welcome, admin: DATA.admin };
         DATA = normalizeData(incoming);
         DATA._savedAt = incoming._savedAt || Date.now();
         const mergedTasks = mergeTaskCompletions(DATA.tasks, localTasks);
@@ -1585,6 +1647,7 @@ async function initCloudSync(){
         DATA.chatMessages = mergedChat.msgs;
         DATA.chatDeletedIds = localDeletedIds;
         DATA.chatHiddenDMs = (DATA.chatHiddenDMs||[]).concat((localHiddenDMs||[]).filter(h=>!(DATA.chatHiddenDMs||[]).includes(h)));
+        mergeContentFields(_rtSnap);
         if(mergedTasks.changed || mergedShows.changed || mergedTC.changed || mergedAnimals.changed || mergedHabitats.changed || mergedVideos.changed || mergedChat.changed){
           DATA._savedAt = Date.now();
           SUPPRESS_NEXT_REALTIME = true;
