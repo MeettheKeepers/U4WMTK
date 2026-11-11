@@ -1114,6 +1114,21 @@ function normalizeData(d){
   if(!Array.isArray(d.wildlifeShow.access)) d.wildlifeShow.access = [];
   if(!Array.isArray(d.wildlifeShow.videos)) d.wildlifeShow.videos = [];
   if(!Array.isArray(d.vehicleFiles)) d.vehicleFiles = [];
+  if(!d.mtkRacing) d.mtkRacing = {
+    editAccess: [],
+    subtabs: [
+      { id: 1, name: 'Intro', notes: '', audioFiles: [
+        { id: 'a1', name: 'David – Sports Arena Announcer', path: './mtk-racing-intro-david.mp3' },
+        { id: 'a2', name: 'Thomas – Clear, Warm and Professional', path: './mtk-racing-intro-thomas.mp3' }
+      ]}
+    ]
+  };
+  if(!Array.isArray(d.mtkRacing.editAccess)) d.mtkRacing.editAccess = [];
+  if(!Array.isArray(d.mtkRacing.subtabs)) d.mtkRacing.subtabs = [];
+  d.mtkRacing.subtabs.forEach(st=>{
+    if(!Array.isArray(st.audioFiles)) st.audioFiles = [];
+    if(st.notes===undefined) st.notes = '';
+  });
   d.vehicleFiles.forEach(v=>{
     if(!v.id) v.id = Date.now() + Math.random();
     if(!v.name) v.name = '';
@@ -1745,6 +1760,7 @@ const TABS = [
   {id:'u4w', label:'Unite for Wildlife'},
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'keepers-song', label:'Keepers Song'},
+  {id:'mtk-racing', label:'MTK Racing'},
   {id:'manager', label:'Manager'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
@@ -1867,6 +1883,7 @@ function visibleTabs(){
     if(t.id === 'u4w') return isManagerLogin() || hasNonProfitAccess() || hasFoundationAccess();
     if(t.id === 'wildlife-show') return isManagerLogin() || hasWildlifeShowAccess();
     if(t.id === 'keepers-song') return true; // visible to all staff
+    if(t.id === 'mtk-racing') return true; // visible to all staff (view-only unless granted)
     if(t.id === 'vehicles') return isManagerLogin(); // managers + supervisors only
     // Supervisor: block the restricted tabs
     if(getLoginLevel()==='supervisor') return canAccessTab(t.id);
@@ -1951,6 +1968,7 @@ function showTab(id){
     u4w: renderU4W,
     'wildlife-show': renderWildlifeShow,
     'keepers-song': renderKeepersSong,
+    'mtk-racing': renderMtkRacing,
     familyfunfest: renderFamilyFunFest,
     manager: renderManager
   }[id];
@@ -4391,6 +4409,202 @@ function renderKeepersSong(){
     </div>
   `;
 }
+/* =========================================================
+   MTK RACING TAB
+   ========================================================= */
+function canEditMtkRacing(){
+  if(isManagerLogin()) return true;
+  const name = CURRENT_LOGIN && CURRENT_LOGIN.name;
+  return !!(name && (DATA.mtkRacing && DATA.mtkRacing.editAccess||[]).includes(name));
+}
+function renderMtkRacing(){
+  const mr = DATA.mtkRacing || { editAccess:[], subtabs:[] };
+  const subtabs = mr.subtabs || [];
+  const canEdit = canEditMtkRacing();
+  const inEdit = canEdit && MTK_RACING_EDIT_MODE;
+
+  if(!MTK_RACING_SUB || !subtabs.find(s=>s.id===MTK_RACING_SUB)) MTK_RACING_SUB = subtabs.length ? subtabs[0].id : null;
+  const active = subtabs.find(s=>s.id===MTK_RACING_SUB) || subtabs[0] || null;
+
+  const tabBtns = subtabs.map(st=>`
+    <button class="detail-tab-btn ${st.id===MTK_RACING_SUB?'active':''}" onclick="MTK_RACING_SUB=${st.id};showTab('mtk-racing')">${esc(st.name||'Unnamed')}</button>
+  `).join('');
+
+  function audioCard(af){
+    const pid = 'mtkr-audio-'+af.id;
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:14px;margin-bottom:6px;">${esc(af.name)}</div>
+          <audio id="${pid}" src="${af.path}" style="width:100%;max-width:400px;" controls></audio>
+        </div>
+        ${inEdit ? `<button class="btn-ghost" style="color:var(--red);flex-shrink:0;" onclick="deleteMtkRacingAudio(${active.id},'${af.id}')">Remove</button>` : ''}
+      </div>`;
+  }
+
+  const audioSection = active ? `
+    <div style="margin-bottom:16px;">
+      ${(active.audioFiles||[]).length ? (active.audioFiles.map(af=>audioCard(af)).join('')) : '<div class="empty" style="padding:12px 0;">No audio files yet.</div>'}
+      ${inEdit ? `
+        <div style="margin-top:12px;">
+          <label class="btn" style="cursor:pointer;font-size:14px;display:inline-block;">+ Add Audio File
+            <input type="file" accept="audio/*" style="display:none;" onchange="uploadMtkRacingAudio(${active.id},this)">
+          </label>
+          <span id="mtkr-audio-status" style="font-size:13px;color:#666;margin-left:8px;"></span>
+        </div>
+      ` : ''}
+    </div>` : '';
+
+  const notesSection = active ? `
+    <div style="margin-top:12px;">
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Notes</div>
+      ${inEdit
+        ? `<textarea style="width:100%;min-height:200px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Add notes, instructions, cues…" oninput="saveMtkRacingNotes(${active.id},this.value)">${esc(active.notes||'')}</textarea>`
+        : (active.notes ? `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:15px;margin:0;line-height:1.6;">${esc(active.notes)}</pre>` : '<div class="empty">No notes added.</div>')
+      }
+    </div>` : '';
+
+  const editBar = canEdit ? `
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+      ${inEdit
+        ? `<button class="btn" onclick="MTK_RACING_EDIT_MODE=false;showTab('mtk-racing')">Done Editing</button>`
+        : `<button class="btn-ghost" onclick="MTK_RACING_EDIT_MODE=true;showTab('mtk-racing')">Edit This Tab</button>`
+      }
+      ${inEdit && isManagerLogin() ? `
+        <input type="text" id="mtkr-new-subtab-name" placeholder="New subtab name…" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:14px;flex:1;max-width:200px;">
+        <button class="btn-small" onclick="addMtkRacingSubtab()">+ Add Subtab</button>
+      ` : ''}
+      ${inEdit && isManagerLogin() && active ? `
+        <button class="btn-ghost" style="color:var(--red);margin-left:auto;" onclick="deleteMtkRacingSubtab(${active.id})">Delete Subtab</button>
+      ` : ''}
+    </div>` : '';
+
+  const subtabNameEdit = inEdit && isManagerLogin() && active ? `
+    <div style="margin-bottom:12px;">
+      <input type="text" value="${esc(active.name||'')}" style="font-size:18px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;padding:2px 4px;width:100%;max-width:360px;" onchange="renameMtkRacingSubtab(${active.id},this.value)">
+    </div>` : '';
+
+  return `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+        <h2 style="margin:0;">MTK Racing</h2>
+        ${inEdit ? '<span style="font-size:12px;font-weight:700;color:var(--accent);background:#e8f0fe;padding:3px 10px;border-radius:12px;">Editing</span>' : ''}
+      </div>
+      <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;margin-top:10px;">
+        ${tabBtns}
+      </div>
+    </div>
+    ${active ? `
+    <div class="card">
+      ${subtabNameEdit}
+      ${audioSection}
+      ${notesSection}
+      ${editBar}
+    </div>` : `<div class="card"><div class="empty">No subtabs yet. ${canEdit ? 'Enter edit mode to add one.' : ''}</div></div>`}
+  `;
+}
+function addMtkRacingSubtab(){
+  const inp = document.getElementById('mtkr-new-subtab-name');
+  const name = inp ? inp.value.trim() : '';
+  if(!name){ alert('Enter a subtab name.'); return; }
+  const mr = DATA.mtkRacing;
+  const id = mr.subtabs.length ? Math.max(...mr.subtabs.map(s=>s.id))+1 : 1;
+  mr.subtabs.push({ id, name, notes:'', audioFiles:[] });
+  MTK_RACING_SUB = id;
+  saveData();
+  showTab('mtk-racing');
+}
+function deleteMtkRacingSubtab(id){
+  if(!confirm('Delete this subtab?')) return;
+  DATA.mtkRacing.subtabs = DATA.mtkRacing.subtabs.filter(s=>s.id!==id);
+  MTK_RACING_SUB = DATA.mtkRacing.subtabs.length ? DATA.mtkRacing.subtabs[0].id : null;
+  saveData();
+  showTab('mtk-racing');
+}
+function renameMtkRacingSubtab(id, name){
+  const st = (DATA.mtkRacing.subtabs||[]).find(s=>s.id===id);
+  if(st) st.name = name;
+  saveData();
+}
+function saveMtkRacingNotes(id, notes){
+  const st = (DATA.mtkRacing.subtabs||[]).find(s=>s.id===id);
+  if(st) st.notes = notes;
+  saveData();
+}
+async function uploadMtkRacingAudio(subtabId, inputEl){
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('mtkr-audio-status');
+  if(statusEl) statusEl.textContent = 'Uploading…';
+  try{
+    const st = (DATA.mtkRacing.subtabs||[]).find(s=>s.id===subtabId);
+    if(!st) throw new Error('Subtab not found');
+    const ext = file.name.split('.').pop();
+    const fileId = 'a' + Date.now();
+    const path = `subtab-${subtabId}/${fileId}.${ext}`;
+    const { data: upData, error: upErr } = await sb.storage.from('mtk-racing').upload(path, file, { cacheControl:'3600', upsert:true });
+    if(upErr) throw upErr;
+    const { data: urlData } = sb.storage.from('mtk-racing').getPublicUrl(upData.path);
+    const displayName = file.name.replace(/\.[^.]+$/, '').replace(/_/g,' ');
+    st.audioFiles.push({ id: fileId, name: displayName, path: urlData.publicUrl, storagePath: upData.path });
+    saveData();
+    showTab('mtk-racing');
+  } catch(e){
+    if(statusEl) statusEl.textContent = 'Upload failed: ' + (e.message||e);
+  }
+}
+async function deleteMtkRacingAudio(subtabId, audioId){
+  if(!confirm('Remove this audio file?')) return;
+  const st = (DATA.mtkRacing.subtabs||[]).find(s=>s.id===subtabId);
+  if(!st) return;
+  const af = (st.audioFiles||[]).find(a=>a.id===audioId);
+  if(af && af.storagePath && sb){
+    await sb.storage.from('mtk-racing').remove([af.storagePath]);
+  }
+  st.audioFiles = st.audioFiles.filter(a=>a.id!==audioId);
+  saveData();
+  showTab('mtk-racing');
+}
+function renderMtkRacingManager(){
+  const mr = DATA.mtkRacing || { editAccess:[], subtabs:[] };
+  const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
+  return `
+    <div class="card">
+      <h2>MTK Racing</h2>
+      <div class="sub">Control who can edit the MTK Racing tab. Managers always have full access. Staff in this list can enter Edit mode from the tab itself.</div>
+      <div style="margin-top:14px;">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:8px;">Edit Access</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          ${nonMgr.map(m=>`
+            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;">
+              <input type="checkbox" ${(mr.editAccess||[]).includes(m.name)?'checked':''} onchange="toggleMtkRacingEditAccess('${esc(m.name)}',this.checked)">
+              ${esc(m.name)}
+            </label>`).join('')}
+        </div>
+        ${!nonMgr.length ? '<div class="empty">No staff members added yet.</div>' : ''}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Subtab Management</h2>
+      <div class="sub">Add, rename, or delete subtabs directly from the MTK Racing tab while in Edit mode. Use the tab itself to manage audio files and notes per subtab.</div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${(mr.subtabs||[]).map(st=>`<span style="padding:5px 14px;background:var(--surface-alt);border:1px solid var(--border);border-radius:16px;font-size:14px;">${esc(st.name)}</span>`).join('')}
+        ${!(mr.subtabs||[]).length ? '<div class="empty">No subtabs yet.</div>' : ''}
+      </div>
+      <div style="margin-top:16px;">
+        <a href="#" onclick="MANAGER_TAB='mtk-racing-tab';MTK_RACING_EDIT_MODE=true;showTab('mtk-racing');return false;" style="color:var(--accent);font-size:14px;">Go to MTK Racing tab (Edit Mode)</a>
+      </div>
+    </div>
+  `;
+}
+function toggleMtkRacingEditAccess(name, checked){
+  if(!DATA.mtkRacing) DATA.mtkRacing = { editAccess:[], subtabs:[] };
+  if(!Array.isArray(DATA.mtkRacing.editAccess)) DATA.mtkRacing.editAccess = [];
+  if(checked){ if(!DATA.mtkRacing.editAccess.includes(name)) DATA.mtkRacing.editAccess.push(name); }
+  else { DATA.mtkRacing.editAccess = DATA.mtkRacing.editAccess.filter(n=>n!==name); }
+  saveData();
+}
+
 function renderWildlifeShow(){
   const isMgr = isManagerLogin();
   const nonMgr = (DATA.team||[]).filter(m=>!m.archived);
@@ -9133,6 +9347,8 @@ function renderSchedule(){
 /* ---------- INVENTORY ---------- */
 let INVENTORY_TAB = 1;
 let VEHICLES_SUB = null; // id of active vehicle subtab
+let MTK_RACING_SUB = null; // id of active MTK Racing subtab
+let MTK_RACING_EDIT_MODE = false; // true when an authorized user is editing
 function setInventoryTab(id){ INVENTORY_TAB = id; showTab(CURRENT_TAB); }
 function addInventoryTab(){
   const name = prompt('New inventory tab name:');
@@ -12108,6 +12324,7 @@ const MANAGER_TABS = [
   {id:'staff', label:'Team'},
   {id:'admin', label:'Admin'},
   {id:'u4w', label:'Unite for Wildlife'},
+  {id:'mtk-racing', label:'MTK Racing'},
   {id:'analytics', label:'Analytics'},
   {id:'data', label:'Data Tools'}
 ];
@@ -13055,6 +13272,8 @@ function renderManager(){
     body = renderInventoryManager() + renderSupervisorAccessPanel('inventory');
   } else if(MANAGER_TAB === 'vehicles'){
     body = renderVehiclesManager();
+  } else if(MANAGER_TAB === 'mtk-racing'){
+    body = renderMtkRacingManager();
   } else if(MANAGER_TAB === 'incidents'){
     const activeI = DATA.incidents.filter(i=>!i.archived);
     const archivedI = DATA.incidents.filter(i=>i.archived);
