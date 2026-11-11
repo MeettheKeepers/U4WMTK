@@ -1031,6 +1031,9 @@ function normalizeData(d){
   if(d.welcome && !d.welcome.customTabs) d.welcome.customTabs=[];
   if(d.welcome && d.welcome.keeperssong===undefined) d.welcome.keeperssong='';
   if(d.welcome && d.welcome.soundsystems===undefined) d.welcome.soundsystems='';
+  if(d.welcome && d.welcome.incidents===undefined) d.welcome.incidents='Log any injury or minor incident here. For major incidents, contact a supervisor immediately.';
+  if(d.welcome && d.welcome.team===undefined) d.welcome.team="Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.";
+  if(d.welcome && d.welcome.wildlife===undefined) d.welcome.wildlife='New episodes of our show appear here.';
   (d.shows||[]).forEach(s=>{
     if(s.packUpMinutes===undefined) s.packUpMinutes=SHOW_PACK_UP_MIN;
     if(s.endDate===undefined) s.endDate='';
@@ -1167,7 +1170,7 @@ let SAVE_DEBOUNCE_TIMER = null;
 let POLL_TIMER = null;
 
 const LOCAL_SAVED_AT_KEY = 'ufw_local_saved_at_v1';
-function saveData(){
+function saveData(forcePush){
   // Always write to localStorage immediately so edits are never lost.
   // Cloud push is deferred until CLOUD_READY — but we must not block the local save
   // or edits made during the first few seconds of loading will be wiped when
@@ -1186,7 +1189,12 @@ function saveData(){
   // window can't overwrite data we just saved.
   SUPPRESS_NEXT_REALTIME = true;
   clearTimeout(SAVE_DEBOUNCE_TIMER);
-  SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 150);
+  if(forcePush){
+    // Explicit user save (e.g. welcome section, training) — push immediately, no debounce
+    pushCloudData();
+  } else {
+    SAVE_DEBOUNCE_TIMER = setTimeout(pushCloudData, 150);
+  }
 }
 async function pushCloudData(retries){
   if(retries === undefined) retries = 2;
@@ -1253,22 +1261,30 @@ function mergeContentFields(localData){
       DATA.mtkRacing.editAccess = localData.mtkRacing.editAccess;
     }
   }
-  // welcome sections — keep local value for any section that cloud doesn't have
+  // welcome sections — always keep local value if it's non-empty and either cloud
+  // is empty OR local has more content (protects against cloud sync overwriting
+  // content saved by the manager, since only managers edit these fields)
   if(localData.welcome && DATA.welcome){
     Object.keys(localData.welcome).forEach(k=>{
       if(k==='customTabs') return; // handled separately
-      if(localData.welcome[k] && !DATA.welcome[k]) DATA.welcome[k] = localData.welcome[k];
+      const localVal = localData.welcome[k];
+      const cloudVal = DATA.welcome[k];
+      if(localVal && (!cloudVal || localVal.length > cloudVal.length)){
+        DATA.welcome[k] = localVal;
+      }
     });
     // welcome.customTabs — keep any local custom tab missing from cloud
     if(Array.isArray(localData.welcome.customTabs) && localData.welcome.customTabs.length > (DATA.welcome.customTabs||[]).length){
       DATA.welcome.customTabs = localData.welcome.customTabs;
     }
   }
-  // admin.training — keep local notes/roles if cloud has none
+  // admin.training — keep local notes/roles if local has more content
   if(localData.admin && localData.admin.training && DATA.admin){
     if(!DATA.admin.training) DATA.admin.training = localData.admin.training;
     else {
-      if(localData.admin.training.notes && !DATA.admin.training.notes) DATA.admin.training.notes = localData.admin.training.notes;
+      const localNotes = localData.admin.training.notes;
+      const cloudNotes = DATA.admin.training.notes;
+      if(localNotes && (!cloudNotes || localNotes.length > cloudNotes.length)) DATA.admin.training.notes = localNotes;
       if(localData.admin.training.roles && DATA.admin.training.roles){
         Object.keys(localData.admin.training.roles).forEach(role=>{
           if(localData.admin.training.roles[role] && !DATA.admin.training.roles[role]){
@@ -2394,7 +2410,7 @@ function saveManagerAdminTraining(){
     const el = document.getElementById('admin-training-editor-role');
     if(el) DATA.admin.training.roles[TRAINING_ROLE_TAB] = el.innerHTML;
   }
-  saveData();
+  saveData(true); // force immediate cloud push for explicit training saves
   const flag = document.getElementById('admin-training-saved');
   if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
 }
@@ -3102,10 +3118,13 @@ const WELCOME_TABS = [
   {id:'mtkprovides', label:'What MTK Provides'},
   {id:'policies', label:'Policies & Procedures'},
   {id:'safety', label:'Health & Safety'},
+  {id:'incidents', label:'Incidents'},
   {id:'vehicles', label:'Vehicles'},
+  {id:'team', label:'Team'},
   {id:'keeperssong', label:'Keepers Song'},
   {id:'soundsystems', label:'Sound Systems'},
-  {id:'shows', label:'Shows & Presentations'}
+  {id:'shows', label:'Shows & Presentations'},
+  {id:'wildlife', label:'Wildlife Adventures'}
 ];
 let WELCOME_TAB = 'about';
 function getAllWelcomeTabs(){
@@ -4129,6 +4148,7 @@ function toggleKeeperLoop(){
 
 let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
+let _preloadedAnns = {}; // pre-unlocked Audio objects for iOS Safari
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
   KEEPERS_LANG = lang;
@@ -4151,6 +4171,26 @@ function startPreShowMode(){
 
   _showAnnouncedMins = {};
   if(_showCountdownTimer) clearInterval(_showCountdownTimer);
+
+  // Pre-load & unlock all announcement audio files in this user-gesture context.
+  // iOS Safari blocks programmatic audio play() unless it was first triggered by a
+  // user gesture — by playing+pausing here we "unlock" each element so the
+  // setInterval timer can play them without restriction later.
+  _preloadedAnns = {};
+  [15, 10, 5, 3].forEach(mark => {
+    ['', '-fr'].forEach(suffix => {
+      const src = `./announcement-${mark}${suffix}.mp3`;
+      const a = new Audio(src);
+      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+      _preloadedAnns[src] = a;
+    });
+  });
+  // Unlock vocals track so its deferred play() works on iOS
+  const vocals = document.getElementById('keepers-vocals');
+  if(vocals && vocals.paused){
+    vocals.muted = true;
+    vocals.play().then(() => { vocals.pause(); vocals.currentTime = 0; vocals.muted = false; }).catch(() => {});
+  }
 
   const updateDisplay = () => {
     const remaining = (showTime - new Date()) / 60000;
@@ -4220,23 +4260,23 @@ function playAnnouncement(mark, duck){
 
   const restoreMusic = () => { if(instrumental) _fadeAudio(instrumental, instrumental.volume, 1, 800); };
 
+  // Use pre-unlocked Audio objects if available (required for iOS Safari),
+  // otherwise fall back to new Audio() for desktop.
+  const playFile = (src, onEnded) => {
+    const cached = _preloadedAnns && _preloadedAnns[src];
+    const a = cached || new Audio(src);
+    a.currentTime = 0; a.volume = 1;
+    if(onEnded) a.onended = onEnded;
+    a.play().catch(() => {});
+  };
+
   if(lang === 'en'){
-    const ann = new Audio(enFile);
-    ann.volume = 1; ann.play().catch(()=>{});
-    ann.onended = restoreMusic;
+    playFile(enFile, restoreMusic);
   } else if(lang === 'fr'){
-    const ann = new Audio(frFile);
-    ann.volume = 1; ann.play().catch(()=>{});
-    ann.onended = restoreMusic;
+    playFile(frFile, restoreMusic);
   } else {
     // Bilingual: play English then French back to back
-    const en = new Audio(enFile);
-    en.volume = 1; en.play().catch(()=>{});
-    en.onended = () => {
-      const fr = new Audio(frFile);
-      fr.volume = 1; fr.play().catch(()=>{});
-      fr.onended = restoreMusic;
-    };
+    playFile(enFile, () => { playFile(frFile, restoreMusic); });
   }
 }
 function getBestVoice(){
@@ -12405,10 +12445,13 @@ const WELCOME_EDIT_SECTIONS = [
   {key:'mtkprovides', label:'What MTK Provides'},
   {key:'policies', label:'Policies & Procedures'},
   {key:'safety', label:'Health & Safety'},
+  {key:'incidents', label:'Incidents'},
   {key:'vehicles', label:'Vehicles'},
+  {key:'team', label:'Team'},
   {key:'keeperssong', label:'Keepers Song'},
   {key:'soundsystems', label:'Sound Systems'},
-  {key:'shows', label:'Shows & Presentations'}
+  {key:'shows', label:'Shows & Presentations'},
+  {key:'wildlife', label:'Wildlife Adventures'}
 ];
 function renderManagerQuizBody(){
   if(QUIZ_STAFF_VIEW) return renderManagerQuizStaffDetail();
@@ -15749,7 +15792,7 @@ function saveWelcomeSection(key){
   if(!el) return;
   if(!DATA.welcome) DATA.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"" };
   DATA.welcome[key] = el.innerHTML;
-  saveData();
+  saveData(true); // force immediate cloud push — no debounce for explicit saves
   const flag = document.getElementById('welcome-saved-'+key);
   if(flag){
     flag.style.display = 'inline';
