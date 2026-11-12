@@ -4311,25 +4311,6 @@ function startPreShowMode(){
     _updatePreshowMusicBtn();
   }
 
-  // Pre-load & unlock all announcement audio files in this user-gesture context.
-  // iOS Safari blocks programmatic audio play() unless it was first triggered by a
-  // user gesture — by playing+pausing here we "unlock" each element so the
-  // setInterval timer can play them without restriction later.
-  _preloadedAnns = {};
-  [15, 10, 5, 3].forEach(mark => {
-    ['', '-fr'].forEach(suffix => {
-      const src = `./announcement-${mark}${suffix}.mp3`;
-      const a = new Audio(src);
-      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
-      _preloadedAnns[src] = a;
-    });
-  });
-  // Unlock vocals track so its deferred play() works on iOS
-  const vocals = document.getElementById('keepers-vocals');
-  if(vocals && vocals.paused){
-    vocals.muted = true;
-    vocals.play().then(() => { vocals.pause(); vocals.currentTime = 0; vocals.muted = false; }).catch(() => {});
-  }
 
   const updateDisplay = () => {
     const remaining = (showTime - new Date()) / 60000;
