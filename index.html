@@ -4217,6 +4217,35 @@ function toggleKeeperLoop(){
 let _showCountdownTimer = null;
 let _showAnnouncedMins = {};
 let _preloadedAnns = {}; // pre-unlocked Audio objects for iOS Safari
+let _preshowMusic = null; // Audio object for the 20-min pre-show track
+let _preshowMusicTimer = null; // timer to auto-start music at the 20-min mark
+const PRESHOW_TRACK_DURATION = 20 * 60; // 20 minutes in seconds
+
+function _startPreshowMusic(minsRemaining){
+  if(!_preshowMusic) _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
+  const offset = Math.max(0, PRESHOW_TRACK_DURATION - minsRemaining * 60);
+  _preshowMusic.currentTime = offset;
+  _preshowMusic.volume = 1;
+  _preshowMusic.play().catch(()=>{});
+  _updatePreshowMusicBtn();
+}
+
+function togglePreshowMusic(){
+  if(!_preshowMusic) return;
+  if(_preshowMusic.paused){
+    _preshowMusic.play().catch(()=>{});
+  } else {
+    _preshowMusic.pause();
+  }
+  _updatePreshowMusicBtn();
+}
+
+function _updatePreshowMusicBtn(){
+  const btn = document.getElementById('preshow-music-toggle');
+  if(!btn || !_preshowMusic) return;
+  btn.textContent = _preshowMusic.paused ? '▶ Resume Music' : '⏸ Pause Music';
+  btn.style.background = _preshowMusic.paused ? '#e67e22' : '#27ae60';
+}
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
   KEEPERS_LANG = lang;
@@ -4239,6 +4268,23 @@ function startPreShowMode(){
 
   _showAnnouncedMins = {};
   if(_showCountdownTimer) clearInterval(_showCountdownTimer);
+
+  // Pre-show music: seek to the right offset so it ends at show time.
+  // If more than 20 min remain, schedule it to start at exactly the 20-min mark.
+  if(_preshowMusicTimer){ clearTimeout(_preshowMusicTimer); _preshowMusicTimer = null; }
+  if(_preshowMusic){ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }
+  _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
+  // Unlock audio on iOS by touching it during this user-gesture context
+  _preshowMusic.play().then(()=>{ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }).catch(()=>{});
+  if(minsUntil <= 20){
+    // Start immediately at the right offset
+    setTimeout(()=>{ _startPreshowMusic(minsUntil); }, 50);
+  } else {
+    // Wait until exactly 20 min remain
+    const msUntil20 = (minsUntil - 20) * 60000;
+    _preshowMusicTimer = setTimeout(()=>{ _startPreshowMusic(20); }, msUntil20);
+  }
+  _updatePreshowMusicBtn();
 
   // Pre-load & unlock all announcement audio files in this user-gesture context.
   // iOS Safari blocks programmatic audio play() unless it was first triggered by a
@@ -4303,11 +4349,17 @@ function startPreShowMode(){
 
   const startBtn = document.getElementById('pre-show-start-btn');
   const stopBtn = document.getElementById('pre-show-stop-btn');
+  const musicBtn = document.getElementById('preshow-music-toggle');
   if(startBtn) startBtn.style.display = 'none';
   if(stopBtn) stopBtn.style.display = 'inline-block';
+  if(musicBtn) musicBtn.style.display = 'inline-block';
 }
 function stopPreShowMode(){
   if(_showCountdownTimer){ clearInterval(_showCountdownTimer); _showCountdownTimer = null; }
+  if(_preshowMusicTimer){ clearTimeout(_preshowMusicTimer); _preshowMusicTimer = null; }
+  if(_preshowMusic){ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }
+  const musicBtn = document.getElementById('preshow-music-toggle');
+  if(musicBtn) musicBtn.style.display = 'none';
   const audio = document.getElementById('keepers-instrumental');
   if(audio){ audio.pause(); audio.currentTime = 0; audio.loop = false; }
   const loopBtn = document.getElementById('keepers-loop-btn');
@@ -4403,13 +4455,14 @@ function _keepersSongContent(){
 
       <div style="background:#f0f7f0;border:1px solid #b6d9b6;border-radius:12px;padding:16px;margin-bottom:24px;">
         <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:10px;">&#9201; Pre-Show Mode</div>
-        <div style="font-size:13px;color:#555;margin-bottom:10px;">Set your show start time — the instrumental starts looping automatically and announcements fire at 15, 10, 5, and 3 minutes out.</div>
+        <div style="font-size:13px;color:#555;margin-bottom:10px;">Set your show start time — the pre-show track starts automatically (or at the 20-min mark if you're early) and announcements are built into the track.</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input id="pre-show-time" type="time" style="padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:15px;font-weight:600;" />
           <button id="pre-show-start-btn" onclick="startPreShowMode()" style="padding:8px 20px;border-radius:20px;border:none;background:var(--green-dark);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Start Pre-Show</button>
           <button id="pre-show-stop-btn" onclick="stopPreShowMode()" style="display:none;padding:8px 20px;border-radius:20px;border:none;background:#c0392b;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9632; Stop</button>
         </div>
         <div id="pre-show-countdown" style="margin-top:12px;font-size:22px;font-weight:800;color:var(--green-dark);"></div>
+        <button id="preshow-music-toggle" onclick="togglePreshowMusic()" style="display:none;margin-top:12px;padding:8px 20px;border-radius:20px;border:none;background:#27ae60;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9208; Pause Music</button>
       </div>
 
       <div style="margin-bottom:28px;">
