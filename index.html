@@ -4348,14 +4348,7 @@ function startPreShowMode(){
     const nextLabel = nextAnn ? ` — 📢 next announcement at ${nextAnn === 3.5 ? '3.5' : nextAnn} min` : '';
     el.innerHTML = `${mins}m ${secs < 10 ? '0'+secs : secs}s until show<span style="font-size:14px;font-weight:400;color:#666;">${nextLabel}</span>`;
 
-    // Announcements at 15, 10, 5 minutes
-    [15, 10, 5, 3.5].forEach(mark => {
-      if(!_showAnnouncedMins[mark] && remaining <= mark && remaining > mark - 0.25){
-        _showAnnouncedMins[mark] = true;
-        // 3.5 min slot plays the 3-minute announcement file
-        playAnnouncement(mark === 3.5 ? 3 : mark, true);
-      }
-    });
+    // Announcements are built into the pre-show track — no auto-firing here
 
     // Vocals auto-trigger disabled — pre-show track handles all audio including the show intro
   };
