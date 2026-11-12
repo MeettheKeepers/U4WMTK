@@ -4285,31 +4285,31 @@ function startPreShowMode(){
   const minsUntil = (showTime - now) / 60000;
   if(minsUntil <= 0){ alert('That show time has already passed. Please pick a future time.'); return; }
 
-  // Start instrumental on loop
+  // Pre-show track handles all music — stop the instrumental if it was playing manually
   const audio = document.getElementById('keepers-instrumental');
-  if(audio){ audio.loop = true; audio.play().catch(()=>{}); }
+  if(audio && !audio.paused){ audio.pause(); audio.currentTime = 0; }
   const loopBtn = document.getElementById('keepers-loop-btn');
-  if(loopBtn){ loopBtn.textContent = '⟳ Loop: ON'; loopBtn.style.border='2px solid var(--green-dark)'; loopBtn.style.background='var(--green-dark)'; loopBtn.style.color='#fff'; }
+  if(loopBtn){ loopBtn.textContent = '↺ Loop: OFF'; loopBtn.style.border='2px solid #ccc'; loopBtn.style.background='#fff'; loopBtn.style.color='#888'; }
 
   _showAnnouncedMins = {};
   if(_showCountdownTimer) clearInterval(_showCountdownTimer);
 
   // Pre-show music: seek to the right offset so it ends at show time.
   // If more than 20 min remain, schedule it to start at exactly the 20-min mark.
-  if(_preshowMusicTimer){ clearTimeout(_preshowMusicTimer); _preshowMusicTimer = null; }
-  if(_preshowMusic){ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }
-  _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
-  // Unlock audio on iOS by touching it during this user-gesture context
-  _preshowMusic.play().then(()=>{ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }).catch(()=>{});
-  if(minsUntil <= 20){
-    // Start immediately at the right offset
-    setTimeout(()=>{ _startPreshowMusic(minsUntil); }, 50);
-  } else {
-    // Wait until exactly 20 min remain
-    const msUntil20 = (minsUntil - 20) * 60000;
-    _preshowMusicTimer = setTimeout(()=>{ _startPreshowMusic(20); }, msUntil20);
+  // Only play the pre-show track in English mode — French/bilingual tracks coming soon
+  if(KEEPERS_LANG === 'en'){
+    if(_preshowMusicTimer){ clearTimeout(_preshowMusicTimer); _preshowMusicTimer = null; }
+    if(_preshowMusic){ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }
+    _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
+    _preshowMusic.play().then(()=>{ _preshowMusic.pause(); _preshowMusic.currentTime = 0; }).catch(()=>{});
+    if(minsUntil <= 20){
+      setTimeout(()=>{ _startPreshowMusic(minsUntil); }, 50);
+    } else {
+      const msUntil20 = (minsUntil - 20) * 60000;
+      _preshowMusicTimer = setTimeout(()=>{ _startPreshowMusic(20); }, msUntil20);
+    }
+    _updatePreshowMusicBtn();
   }
-  _updatePreshowMusicBtn();
 
   // Pre-load & unlock all announcement audio files in this user-gesture context.
   // iOS Safari blocks programmatic audio play() unless it was first triggered by a
@@ -4357,16 +4357,7 @@ function startPreShowMode(){
       }
     });
 
-    // At 2:55 remaining, switch to the vocals track to kick off the show
-    if(!_showAnnouncedMins['vocals'] && remaining <= (2 + 55/60) && remaining > (2 + 52/60)){
-      _showAnnouncedMins['vocals'] = true;
-      const instrumental = document.getElementById('keepers-instrumental');
-      if(instrumental){ _fadeAudio(instrumental, instrumental.volume, 0, 1500); setTimeout(()=>{ instrumental.pause(); instrumental.loop = false; }, 1500); }
-      setTimeout(()=>{
-        const vocals = document.getElementById('keepers-vocals');
-        if(vocals){ vocals.volume = 0; vocals.play().catch(()=>{}); _fadeAudio(vocals, 0, 1, 1500); }
-      }, 1200);
-    }
+    // Vocals auto-trigger disabled — pre-show track handles all audio including the show intro
   };
 
   updateDisplay();
