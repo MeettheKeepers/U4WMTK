@@ -911,6 +911,7 @@ function normalizeData(d){
   if(!d.welcome) d.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"", yourrole:"", mtkprovides:"Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases." };
   if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
   if(!Array.isArray(d.welcome.trainingPlanRoles)) d.welcome.trainingPlanRoles = ['owner','manager'];
+  if(!d.welcome._ts) d.welcome._ts = {};
   if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases.";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
@@ -977,9 +978,10 @@ function normalizeData(d){
   if(!d.admin.customTabs) d.admin.customTabs = [];
   if(!d.admin.hiring) d.admin.hiring = { interviews: [], notes: '' };
   if(!d.admin.hiring.notes) d.admin.hiring.notes = '';
-  if(!d.admin.training) d.admin.training = { notes: '' };
+  if(!d.admin.training) d.admin.training = { notes: '', _savedAt: 0 };
   if(!d.admin.training.notes) d.admin.training.notes = '';
   if(!d.admin.training.roles) d.admin.training.roles = {};
+  if(!d.admin.training._savedAt) d.admin.training._savedAt = 0;
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
@@ -1308,9 +1310,13 @@ function mergeContentFields(localData){
       const backup = wscGet('welcome_'+k);
       const localVal = localData.welcome[k];
       const cloudVal = DATA.welcome[k];
-      // If there's an explicit save backup newer than the cloud data, always use it
-      if(backup && backup.t > (DATA._savedAt||0)){
+      // Compare backup timestamp against per-key cloud timestamp, not overall _savedAt.
+      // This means an employee's timeclock push can't beat a manager's welcome-section save.
+      const cloudFieldTs = (DATA.welcome._ts && DATA.welcome._ts[k]) || 0;
+      if(backup && backup.t > cloudFieldTs){
         DATA.welcome[k] = backup.c;
+        if(!DATA.welcome._ts) DATA.welcome._ts = {};
+        DATA.welcome._ts[k] = backup.t; // propagate so next merge comparison is accurate
       } else if(localVal && (!cloudVal || localVal.length > cloudVal.length)){
         DATA.welcome[k] = localVal;
       }
@@ -1325,8 +1331,11 @@ function mergeContentFields(localData){
     if(!DATA.admin.training) DATA.admin.training = localData.admin.training;
     else {
       const generalBackup = wscGet('training_general');
-      if(generalBackup && generalBackup.t > (DATA._savedAt||0)){
+      // Compare against training's own _savedAt, not overall DATA._savedAt.
+      // An employee's timeclock push has a newer DATA._savedAt but shouldn't beat a manager's training save.
+      if(generalBackup && generalBackup.t > (DATA.admin.training._savedAt||0)){
         DATA.admin.training.notes = generalBackup.c;
+        DATA.admin.training._savedAt = generalBackup.t;
       } else {
         const localNotes = localData.admin.training.notes;
         const cloudNotes = DATA.admin.training.notes;
@@ -1335,7 +1344,7 @@ function mergeContentFields(localData){
       if(localData.admin.training.roles && DATA.admin.training.roles){
         Object.keys(localData.admin.training.roles).forEach(role=>{
           const roleBackup = wscGet('training_role_'+role);
-          if(roleBackup && roleBackup.t > (DATA._savedAt||0)){
+          if(roleBackup && roleBackup.t > (DATA.admin.training._savedAt||0)){
             DATA.admin.training.roles[role] = roleBackup.c;
           } else if(localData.admin.training.roles[role] && !DATA.admin.training.roles[role]){
             DATA.admin.training.roles[role] = localData.admin.training.roles[role];
@@ -2456,6 +2465,8 @@ function setAdminTrainingRoleTab(t){ TRAINING_ROLE_TAB=t; showTab('admin'); }
 function saveManagerAdminTraining(){
   if(!DATA.admin.training) DATA.admin.training = { notes:'', roles:{} };
   if(!DATA.admin.training.roles) DATA.admin.training.roles = {};
+  const trainingTs = Date.now();
+  DATA.admin.training._savedAt = trainingTs; // per-field timestamp so cloud-sync knows this device last saved training
   if(TRAINING_ROLE_TAB === 'general'){
     const el = document.getElementById('admin-training-editor-general');
     if(el){ DATA.admin.training.notes = el.innerHTML; wscSave('training_general', el.innerHTML); }
@@ -15845,6 +15856,8 @@ function saveWelcomeSection(key){
   if(!el) return;
   if(!DATA.welcome) DATA.welcome = { about:"", mission:"", policies:"", safety:"", vehicles:"", shows:"" };
   DATA.welcome[key] = el.innerHTML;
+  if(!DATA.welcome._ts) DATA.welcome._ts = {};
+  DATA.welcome._ts[key] = Date.now(); // per-key timestamp so cloud-sync knows when each field was last saved
   wscSave('welcome_'+key, el.innerHTML); // persistent backup — protects against cloud-sync overwrites
   saveData(true); // force immediate cloud push — no debounce for explicit saves
   const flag = document.getElementById('welcome-saved-'+key);
