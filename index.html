@@ -2476,7 +2476,11 @@ function saveManagerAdminTraining(){
   }
   saveData(true); // force immediate cloud push for explicit training saves
   const flag = document.getElementById('admin-training-saved');
-  if(flag){ flag.style.display='inline'; setTimeout(()=>{ flag.style.display='none'; },2000); }
+  if(flag){
+    const len = DATA.admin.training.notes ? DATA.admin.training.notes.replace(/<[^>]*>/g,'').trim().length : 0;
+    flag.textContent = len > 0 ? `Saved (${len} chars) ✓` : 'Saved (empty) ✓';
+    flag.style.display='inline';
+  }
 }
 function _trainingVisibleRoles(){
   // Which specialty tabs can the current viewer see?
@@ -15257,7 +15261,11 @@ function renderManager(){
             ...STAFF_SPECIALTIES.map(r=>({ id:r, label:r }))
           ];
           const active = allTabs.find(t=>t.id===TRAINING_ROLE_TAB) ? TRAINING_ROLE_TAB : 'general';
-          const content = active === 'general' ? (tr.notes || DEFAULT_TRAINING_HTML) : (roles[active] || '');
+          // Always prefer the local explicit-save backup over DATA (which cloud-sync may have overwritten)
+          const _tBak = active === 'general' ? wscGet('training_general') : wscGet('training_role_'+active);
+          const content = active === 'general'
+            ? (_tBak ? _tBak.c : (tr.notes || DEFAULT_TRAINING_HTML))
+            : (_tBak ? _tBak.c : (roles[active] || ''));
           const editorId = active === 'general' ? 'admin-training-editor-general' : 'admin-training-editor-role';
           return `<div style="display:flex;gap:0;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:14px;">
             ${allTabs.map(t=>`<button onclick="setTrainingRoleTab('${t.id.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="padding:6px 12px;background:none;border:none;cursor:pointer;font-size:12px;font-weight:600;border-bottom:${active===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${active===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${esc(t.label)}</button>`).join('')}
