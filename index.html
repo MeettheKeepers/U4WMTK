@@ -4343,9 +4343,7 @@ function startPreShowMode(){
     }
     const mins = Math.floor(remaining);
     const secs = Math.floor((remaining - mins) * 60);
-    const nextAnn = [15,10,5,3.5].find(m => !_showAnnouncedMins[m] && remaining > m);
-    const nextLabel = nextAnn ? ` — 📢 next announcement at ${nextAnn === 3.5 ? '3.5' : nextAnn} min` : '';
-    el.innerHTML = `${mins}m ${secs < 10 ? '0'+secs : secs}s until show<span style="font-size:14px;font-weight:400;color:#666;">${nextLabel}</span>`;
+    el.innerHTML = `${mins}m ${secs < 10 ? '0'+secs : secs}s until show`;
 
     // Announcements are built into the pre-show track — no auto-firing here
 
