@@ -4220,6 +4220,7 @@ let _preloadedAnns = {}; // pre-unlocked Audio objects for iOS Safari
 let _preshowMusic = null; // Audio object for the 20-min pre-show track
 let _preshowMusicTimer = null; // timer to auto-start music at the 20-min mark
 const PRESHOW_TRACK_DURATION = 20 * 60; // 20 minutes in seconds
+let _outroMusic = null; // Audio object for the outro track
 
 function _startPreshowMusic(minsRemaining){
   if(!_preshowMusic) _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
@@ -4245,6 +4246,30 @@ function _updatePreshowMusicBtn(){
   if(!btn || !_preshowMusic) return;
   btn.textContent = _preshowMusic.paused ? '▶ Resume Music' : '⏸ Pause Music';
   btn.style.background = _preshowMusic.paused ? '#e67e22' : '#27ae60';
+}
+
+function startOutro(){
+  if(_outroMusic){ _outroMusic.pause(); _outroMusic.currentTime = 0; }
+  _outroMusic = new Audio('./Keepers Outro.mp3');
+  _outroMusic.volume = 1;
+  _outroMusic.play().catch(()=>{});
+  const btn = document.getElementById('outro-toggle-btn');
+  if(btn){ btn.textContent = '⏸ Pause Outro'; btn.style.background = '#27ae60'; btn.onclick = toggleOutro; }
+}
+function toggleOutro(){
+  if(!_outroMusic) return;
+  if(_outroMusic.paused){
+    _outroMusic.play().catch(()=>{});
+  } else {
+    _outroMusic.pause();
+  }
+  const btn = document.getElementById('outro-toggle-btn');
+  if(btn){ btn.textContent = _outroMusic.paused ? '▶ Resume Outro' : '⏸ Pause Outro'; btn.style.background = _outroMusic.paused ? '#e67e22' : '#27ae60'; }
+}
+function stopOutro(){
+  if(_outroMusic){ _outroMusic.pause(); _outroMusic.currentTime = 0; _outroMusic = null; }
+  const btn = document.getElementById('outro-toggle-btn');
+  if(btn){ btn.textContent = '▶ Start Outro'; btn.style.background = '#8e44ad'; btn.onclick = startOutro; }
 }
 let KEEPERS_LANG = 'en'; // 'en', 'fr', 'both'
 function setKeeperLang(lang){
@@ -4463,6 +4488,15 @@ function _keepersSongContent(){
         </div>
         <div id="pre-show-countdown" style="margin-top:12px;font-size:22px;font-weight:800;color:var(--green-dark);"></div>
         <button id="preshow-music-toggle" onclick="togglePreshowMusic()" style="display:none;margin-top:12px;padding:8px 20px;border-radius:20px;border:none;background:#27ae60;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9208; Pause Music</button>
+      </div>
+
+      <div style="background:#f5f0fa;border:1px solid #d4b8e8;border-radius:12px;padding:16px;margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:#8e44ad;margin-bottom:8px;">&#127926; Outro</div>
+        <div style="font-size:13px;color:#555;margin-bottom:12px;">Play after the show wraps up. 10 minutes — thank you song then instrumental.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button id="outro-toggle-btn" onclick="startOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#8e44ad;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Start Outro</button>
+          <button onclick="stopOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#888;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9632; Stop</button>
+        </div>
       </div>
 
       <div style="margin-bottom:28px;">
