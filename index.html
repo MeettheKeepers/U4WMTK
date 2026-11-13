@@ -9292,7 +9292,8 @@ function _personalEventsOnDate(ds, allEvts){
 
 function _personalCellPill(ev, colorMap){
   const isDeadline = ev.eventType==='deadline';
-  const col = isDeadline ? {bg:'#fff3cd',text:'#7a5000'} : (colorMap[ev.ownerName] || {bg:'#555',text:'#fff'});
+  const colorKey = (!isDeadline && ev.assignedTo) ? ev.assignedTo : ev.ownerName;
+  const col = isDeadline ? {bg:'#fff3cd',text:'#7a5000'} : (colorMap[colorKey] || {bg:'#555',text:'#fff'});
   const timeStr = ev.startTime ? ev.startTime.slice(0,5)+' ' : '';
   const prefix = isDeadline ? '⚑ ' : '';
   return `<div style="background:${col.bg};color:${col.text};border-radius:4px;padding:2px 6px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;${isDeadline?'border:1px solid #f0c040;':''}" title="${esc(ev.ownerName)}: ${esc(ev.title)}">${prefix}${timeStr}${esc(ev.title)}</div>`;
@@ -9392,7 +9393,7 @@ function renderPersonalDayView(allEvts, colorMap, today){
   const title = `${DAYS[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   const prev = addDays(ds,-1), next = addDays(ds,1);
 
-  const noTimeHtml = noTime.length?`<div style="margin-bottom:8px;">${noTime.map(ev=>{const col=colorMap[ev.ownerName]||{bg:'#555',text:'#fff'};const lbl=ev.isShow?'Show':(ev.eventType==='deadline'?'⚑ Deadline':esc(ev.ownerName));return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;">${lbl} — ${esc(ev.title)} (all day)</div>`;}).join('')}</div>`:'';
+  const noTimeHtml = noTime.length?`<div style="margin-bottom:8px;">${noTime.map(ev=>{const colorKey=(ev.assignedTo&&ev.eventType!=='deadline')?ev.assignedTo:ev.ownerName;const col=colorMap[colorKey]||{bg:'#555',text:'#fff'};const lbl=ev.isShow?'Show':(ev.eventType==='deadline'?'⚑ Deadline':esc(ev.ownerName));return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;">${lbl} — ${esc(ev.title)} (all day)</div>`;}).join('')}</div>`:'';
 
   const hourRows = HOURS.map(h=>{
     const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
@@ -9402,7 +9403,8 @@ function renderPersonalDayView(allEvts, colorMap, today){
       return sm >= h*60 && sm < (h+1)*60;
     });
     const pills = evts.map(ev=>{
-      const col = colorMap[ev.ownerName]||{bg:'#555',text:'#fff'};
+      const colorKey = (ev.assignedTo && ev.eventType!=='deadline') ? ev.assignedTo : ev.ownerName;
+      const col = colorMap[colorKey]||{bg:'#555',text:'#fff'};
       const ownerLabel = ev.isShow ? 'Show' : (ev.eventType==='deadline' ? '⚑' : esc(ev.ownerName));
       return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:4px 12px;font-size:13px;display:inline-flex;align-items:center;gap:8px;margin-right:6px;"><strong>${ownerLabel}</strong><span>${esc(ev.title)}</span>${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}</div>`;
     }).join('');
@@ -9426,7 +9428,8 @@ function renderPersonal(){
   if(!PERSONAL_NAV_DATE) PERSONAL_NAV_DATE = today;
 
   const allPersonalEvts = DATA.personal.events||[];
-  const myEvents = allPersonalEvts.filter(ev=>ev.ownerName===myName);
+  // Events I created and kept for myself (not assigned out)
+  const myEvents = allPersonalEvts.filter(ev=>ev.ownerName===myName && !ev.assignedTo);
   const sharedEntry = (DATA.personal.sharedToday||[]).find(s=>s.ownerName===myName && s.date===today);
 
   // Build virtual show events for calendar views
@@ -9524,8 +9527,17 @@ function renderPersonal(){
     : `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No events yet.</div>`;
   const otherListHtml = otherOwnerNames.map(name=>{
     const col = colorMap[name]||{bg:'#c2185b',text:'#fff'};
-    const evts = allPersonalEvts.filter(ev=>ev.ownerName===name);
-    return evts.length ? evts.map(ev=>personalEventRow(ev,col,false)).join('') : `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No events yet.</div>`;
+    // Their own events + events assigned to them by anyone
+    const evts = allPersonalEvts.filter(ev=>(ev.ownerName===name && !ev.assignedTo) || ev.assignedTo===name);
+    return evts.length ? evts.map(ev=>{
+      const assignedFromMe = ev.assignedTo===name && ev.ownerName===myName;
+      const row = personalEventRow(ev, col, false);
+      if(assignedFromMe){
+        // Show "assigned by you" tag by wrapping, using the row but with extra badge
+        return row.replace('<div style="border-bottom:1px solid var(--border);padding:8px 0;">', `<div style="border-bottom:1px solid var(--border);padding:8px 0;"><span style="font-size:10px;padding:1px 7px;border-radius:8px;background:#fdebd0;color:#a04000;margin-bottom:4px;display:inline-block;">Assigned by you</span><br>`);
+      }
+      return row;
+    }).join('') : `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No events yet.</div>`;
   }).join('');
 
   const isDay=PERSONAL_VIEW==='day', isWeek=PERSONAL_VIEW==='week', isMonth=PERSONAL_VIEW==='month';
