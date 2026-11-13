@@ -912,6 +912,9 @@ function normalizeData(d){
   if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
   if(!Array.isArray(d.welcome.trainingPlanRoles)) d.welcome.trainingPlanRoles = ['owner','manager'];
   if(!d.welcome._ts) d.welcome._ts = {};
+  if(!d.personal) d.personal = { events: [], sharedToday: [] };
+  if(!Array.isArray(d.personal.events)) d.personal.events = [];
+  if(!Array.isArray(d.personal.sharedToday)) d.personal.sharedToday = [];
   if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases.";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
@@ -1907,7 +1910,8 @@ const TABS = [
   {id:'wildlife-show', label:'Wildlife Adventures Show'},
   {id:'keepers-song', label:'Keepers Song'},
   {id:'mtk-racing', label:'MTK Racing'},
-  {id:'manager', label:'Manager'}
+  {id:'manager', label:'Manager'},
+  {id:'personal', label:'Personal'}
 ];
 const JOB_ROLES = ['Keeper','Supervisor','Manager','Owner'];
 const STAFF_SPECIALTIES = ['Manager','Supervisor','MTK Racing','Character Walkaround','Wildlife Educator','Animal Care','Support','Maintenance','MTK Entertainer','Office Administrator','Funding Coordinator'];
@@ -2031,6 +2035,7 @@ function visibleTabs(){
     if(t.id === 'keepers-song') return true; // visible to all staff
     if(t.id === 'mtk-racing') return true; // visible to all staff (view-only unless granted)
     if(t.id === 'vehicles') return isManagerLogin(); // managers + supervisors only
+    if(t.id === 'personal') return isOwnerLogin(); // owners only
     // Supervisor: block the restricted tabs
     if(getLoginLevel()==='supervisor') return canAccessTab(t.id);
     return true;
@@ -2116,7 +2121,8 @@ function showTab(id){
     'keepers-song': renderKeepersSong,
     'mtk-racing': renderMtkRacing,
     familyfunfest: renderFamilyFunFest,
-    manager: renderManager
+    manager: renderManager,
+    personal: renderPersonal
   }[id];
   // Save scroll positions of named scrollable containers before wiping innerHTML
   const scrollSave = {};
@@ -2124,7 +2130,7 @@ function showTab(id){
     const el = document.getElementById(elId);
     if(el) scrollSave[elId] = { left: el.scrollLeft, top: el.scrollTop };
   });
-  document.getElementById('main-content').innerHTML = (renderFn ? renderFn() : '') + renderTimeOffModal();
+  document.getElementById('main-content').innerHTML = (renderFn ? renderFn() : '') + renderTimeOffModal() + (PERSONAL_SHARE_OPEN?renderShareTodayModal():'');
   // Restore scroll positions after re-render — deferred so the browser has laid out the new content first
   if(Object.keys(scrollSave).length){
     requestAnimationFrame(()=>{
@@ -6548,6 +6554,7 @@ function renderDashboard(){
         ${myName ? `<button class="btn" style="font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
       </div>
     </div>
+    ${isOwnerLogin() ? renderPersonalDashCard() : ''}
     ${weatherProtocolCard()}
     ${accountantReminderCard()}
     ${paydayReminderCard()}
@@ -8848,9 +8855,10 @@ function renderCalMonthView(){
     const staffRow=staff.length?`<div style="font-size:10px;color:#1a4a7a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${staff.join(', ')}">${staff.join(', ')}</div>`:'';
     const dayOff=timeOffOnDate(ds).filter(r=>r.status!=='denied');
     const offDots=dayOff.length?`<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">${dayOff.map(r=>`<div title="${r.staffName}${r.reason?' — '+r.reason:''}" style="font-size:10px;padding:1px 5px;border-radius:10px;background:${r.status==='approved'?'#fce8e8':'#fff3cd'};color:${r.status==='approved'?'#c0453a':'#7a5000'};white-space:nowrap;overflow:hidden;max-width:60px;text-overflow:ellipsis;">${r.staffName.split(' ')[0]}</div>`).join('')}</div>`:'';
+    const personalBlocks=renderPersonalCalBlocks(ds);
     cells+=`<div onclick="calGoDay('${ds}')" style="cursor:pointer;min-height:90px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;">
       <div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:${isToday?700:400};background:${isToday?'#e67e22':'transparent'};color:${isToday?'#fff':'inherit'};margin-bottom:3px;${isToday?'box-shadow:0 0 0 2px #fff,0 0 0 4px #e67e22;':''};">${d}</div>
-      ${evts}${more}${staffRow}${offDots}
+      ${evts}${more}${staffRow}${offDots}${personalBlocks}
     </div>`;
   }
   const filled=(firstDow+daysInMonth)%7;
@@ -8967,7 +8975,8 @@ function renderCalDayView(){
       <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${evts}</div>
     </div>`;
   }).join('');
-  return timeOffHtml+staffHtml+noTimeHtml+`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>`;
+  const personalDayHtml = renderPersonalDayBlocks(ds);
+  return personalDayHtml+timeOffHtml+staffHtml+noTimeHtml+`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>`;
 }
 
 function renderShowCalendar(){
@@ -8998,10 +9007,319 @@ function renderShowCalendar(){
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#d4edda;border:1px solid #1a6b35;display:inline-block;"></span>Time off approved</span>
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#fff3cd;border:1px solid #c08000;display:inline-block;"></span>Time off pending</span>
       <span style="font-size:11px;color:#1a4a7a;">Blue text = staff names · Click event for details · Click date to switch to Day view</span>
+      ${getActiveSharedEntries().length ? `<span style="display:flex;align-items:center;gap:4px;"><span style="width:11px;height:11px;border-radius:2px;background:#1a6fce;display:inline-block;"></span>Owner schedule (blue/pink)</span>` : ''}
     </div>
     <div id="cal-detail-panel">${renderCalDetail()}</div>
     ${isMonth ? renderCalMonthView() : renderCalDayView()}
   </div>`;
+}
+
+/* =========================================================
+   PERSONAL SCHEDULE SYSTEM
+   ========================================================= */
+
+// Returns array of {r:255,g,b} style color objects for each owner by ID order
+function getOwnerColorMap(){
+  const ownerLogins = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner').sort((a,b)=>a.id-b.id);
+  const colorPairs = [
+    {bg:'#1a6fce',text:'#fff'},   // blue — first owner
+    {bg:'#c2185b',text:'#fff'},   // pink — second owner
+  ];
+  const map = {};
+  ownerLogins.forEach((l,i)=>{ map[l.name] = colorPairs[i] || {bg:'#555',text:'#fff'}; });
+  return map;
+}
+
+// Returns sorted day-of-week label for a date string (e.g. 'Mon')
+function dateToDow(ds){
+  return new Date(ds+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'});
+}
+
+// All personal events that apply on a given date string
+function personalEventsOnDate(ds){
+  const dow = dateToDow(ds);
+  return (DATA.personal.events||[]).filter(ev=>{
+    if(ev.recurring) return Array.isArray(ev.days) && ev.days.includes(dow);
+    return ev.date === ds;
+  });
+}
+
+// Get today's shared entries that are still valid (date matches today)
+function getActiveSharedEntries(){
+  const today = todayStr();
+  return (DATA.personal.sharedToday||[]).filter(s=>s.date===today);
+}
+
+// Render personal event pills for a calendar month cell
+function renderPersonalCalBlocks(ds){
+  const shared = getActiveSharedEntries();
+  if(!shared.length) return '';
+  const colorMap = getOwnerColorMap();
+  // Collect events per owner
+  const eventsByOwner = {};
+  shared.forEach(s=>{
+    // includeJanie: if false and s.ownerName !== current, skip — but for calendar display anyone sees shared
+    eventsByOwner[s.ownerName] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
+    // Also check if this entry includes the other owner
+    if(s.includeJanie){
+      // Find the other owner names from the logins
+      const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
+      otherOwners.forEach(o=>{
+        if(!eventsByOwner[o.name]){
+          eventsByOwner[o.name] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name);
+        }
+      });
+    }
+  });
+  let html = '';
+  Object.entries(eventsByOwner).forEach(([ownerName, evts])=>{
+    const col = colorMap[ownerName] || {bg:'#555',text:'#fff'};
+    evts.forEach(ev=>{
+      const lbl = (ev.startTime?ev.startTime.replace(':00','')+' ':'')+esc(ev.title);
+      html += `<div title="${esc(ownerName)}: ${esc(ev.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`;
+    });
+  });
+  return html;
+}
+
+// Render personal day blocks for the calendar day view
+function renderPersonalDayBlocks(ds){
+  const shared = getActiveSharedEntries();
+  if(!shared.length) return '';
+  const colorMap = getOwnerColorMap();
+  const eventsByOwner = {};
+  shared.forEach(s=>{
+    eventsByOwner[s.ownerName] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
+    if(s.includeJanie){
+      const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
+      otherOwners.forEach(o=>{
+        if(!eventsByOwner[o.name]) eventsByOwner[o.name] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name);
+      });
+    }
+  });
+  const rows = [];
+  Object.entries(eventsByOwner).forEach(([ownerName, evts])=>{
+    const col = colorMap[ownerName] || {bg:'#555',text:'#fff'};
+    evts.forEach(ev=>{
+      rows.push(`<div style="display:inline-flex;align-items:center;gap:8px;background:${col.bg};color:${col.text};border-radius:6px;padding:5px 12px;font-size:13px;margin-bottom:4px;">
+        <strong>${esc(ownerName)}</strong>
+        <span>${esc(ev.title)}</span>
+        ${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
+      </div>`);
+    });
+  });
+  if(!rows.length) return '';
+  return `<div style="background:#f0f8ff;border:1px solid #aad4f5;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
+    <strong style="font-size:14px;">Owner Schedules</strong>
+    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${rows.join('')}</div>
+  </div>`;
+}
+
+// Render personal schedule card for dashboard
+function renderPersonalDashCard(){
+  if(!isOwnerLogin()) return '';
+  const today = todayStr();
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const myEvents = personalEventsOnDate(today).filter(ev=>ev.ownerName===myName);
+  const colorMap = getOwnerColorMap();
+  const myCol = colorMap[myName] || {bg:'#1a6fce',text:'#fff'};
+  const sharedEntry = (DATA.personal.sharedToday||[]).find(s=>s.ownerName===myName && s.date===today);
+  const eventRows = myEvents.map(ev=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);">
+    <span style="width:8px;height:8px;border-radius:50%;background:${myCol.bg};flex-shrink:0;"></span>
+    <span style="font-weight:600;font-size:13px;">${esc(ev.title)}</span>
+    ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
+    ${ev.recurring?`<span style="font-size:11px;color:#888;">${(ev.days||[]).join(', ')}</span>`:`<span style="font-size:11px;color:#888;">One-off</span>`}
+  </div>`).join('');
+  return `<div class="card" style="border-left:5px solid ${myCol.bg};">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${myEvents.length?'10px':'0'};">
+      <strong style="font-size:15px;">My Schedule Today</strong>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${sharedEntry
+          ? `<span style="font-size:12px;color:#27ae60;padding:3px 10px;background:#eafaf1;border-radius:12px;border:1px solid #a9dfbf;">Shared to Calendar${sharedEntry.includeJanie?' (incl. Janie)':''}</span>
+             <button class="btn-ghost" style="font-size:12px;" onclick="clearPersonalShare('${myName}')">Clear</button>`
+          : `<button class="btn" style="font-size:13px;background:${myCol.bg};" onclick="openShareTodayModal()">Share Today</button>`
+        }
+        <button class="btn-ghost" style="font-size:13px;" onclick="showTab('personal')">View Personal</button>
+      </div>
+    </div>
+    ${myEvents.length ? `<div>${eventRows}</div>` : `<div style="font-size:13px;color:var(--text-light);">No personal events scheduled for today. <button class="btn-ghost" style="font-size:12px;" onclick="showTab('personal')">Add events</button></div>`}
+  </div>`;
+}
+
+// --- Share Today modal ---
+let PERSONAL_SHARE_OPEN = false;
+function openShareTodayModal(){ PERSONAL_SHARE_OPEN = true; showTab(CURRENT_TAB); }
+function closeShareTodayModal(){ PERSONAL_SHARE_OPEN = false; showTab(CURRENT_TAB); }
+
+function shareTodayAs(includeJanie){
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  if(!myName) return;
+  const today = todayStr();
+  if(!DATA.personal.sharedToday) DATA.personal.sharedToday = [];
+  // Remove existing entry for today by this owner
+  DATA.personal.sharedToday = DATA.personal.sharedToday.filter(s=>!(s.ownerName===myName && s.date===today));
+  DATA.personal.sharedToday.push({ ownerName: myName, date: today, includeJanie });
+  PERSONAL_SHARE_OPEN = false;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+
+function clearPersonalShare(ownerName){
+  const today = todayStr();
+  DATA.personal.sharedToday = (DATA.personal.sharedToday||[]).filter(s=>!(s.ownerName===ownerName && s.date===today));
+  saveData();
+  showTab(CURRENT_TAB);
+}
+
+// Inject share modal into dashboard if open
+function renderShareTodayModal(){
+  if(!PERSONAL_SHARE_OPEN) return '';
+  return `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)closeShareTodayModal()">
+    <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.2);">
+      <h3 style="margin:0 0 8px;">Share Today to Calendar</h3>
+      <p style="font-size:14px;color:#555;margin:0 0 20px;">Your schedule blocks will appear on the main show calendar. They disappear at midnight automatically.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn" style="font-size:14px;background:#1a6fce;" onclick="shareTodayAs(false)">Just Me (blue)</button>
+        <button class="btn" style="font-size:14px;background:#9c27b0;" onclick="shareTodayAs(true)">Include Janie (blue + pink)</button>
+      </div>
+      <button class="btn-ghost" style="margin-top:14px;font-size:13px;width:100%;" onclick="closeShareTodayModal()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+// --- Personal tab ---
+let PERSONAL_FORM_OPEN = false;
+let PERSONAL_FORM_RECURRING = true;
+
+function renderPersonal(){
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const colorMap = getOwnerColorMap();
+  const otherOwnerNames = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==myName).map(l=>l.name);
+  const myCol = colorMap[myName] || {bg:'#1a6fce',text:'#fff'};
+  const today = todayStr();
+  const myEvents = (DATA.personal.events||[]).filter(ev=>ev.ownerName===myName);
+  const sharedEntry = (DATA.personal.sharedToday||[]).find(s=>s.ownerName===myName && s.date===today);
+
+  // Janie's events (read-only view)
+  const otherEventsHtml = otherOwnerNames.map(name=>{
+    const col = colorMap[name] || {bg:'#c2185b',text:'#fff'};
+    const evts = (DATA.personal.events||[]).filter(ev=>ev.ownerName===name);
+    if(!evts.length) return `<div class="card"><strong>${esc(name)}'s Schedule</strong><div style="color:var(--text-light);font-size:13px;margin-top:8px;">No events added yet.</div></div>`;
+    return `<div class="card">
+      <strong>${esc(name)}'s Schedule</strong>
+      <div style="margin-top:10px;">${evts.map(ev=>personalEventRow(ev,col,false)).join('')}</div>
+    </div>`;
+  }).join('');
+
+  const myEventsHtml = myEvents.length
+    ? myEvents.map(ev=>personalEventRow(ev,myCol,true)).join('')
+    : `<div style="font-size:13px;color:var(--text-light);padding:10px 0;">No events yet. Add your first one below.</div>`;
+
+  const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const addForm = PERSONAL_FORM_OPEN ? `
+    <div style="background:#f9f9f9;border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:14px;">
+      <h4 style="margin:0 0 12px;">New Event</h4>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <div class="field-block" style="flex:2;min-width:180px;">
+          <label>Title</label>
+          <input type="text" id="pev-title" placeholder="e.g. Workout">
+        </div>
+        <div class="field-block" style="flex:1;min-width:110px;">
+          <label>Start time</label>
+          <input type="time" id="pev-start" value="08:00">
+        </div>
+        <div class="field-block" style="flex:1;min-width:110px;">
+          <label>End time</label>
+          <input type="time" id="pev-end" value="09:00">
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pev-recurring" ${PERSONAL_FORM_RECURRING?'checked':''} onchange="PERSONAL_FORM_RECURRING=this.checked;showTab('personal')">
+          Recurring (repeats on selected days)
+        </label>
+      </div>
+      ${PERSONAL_FORM_RECURRING ? `
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Days</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${dowLabels.map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:16px;"><input type="checkbox" name="pev-day" value="${d}" ${['Mon','Tue','Wed','Thu','Fri'].includes(d)?'checked':''}> ${d}</label>`).join('')}
+        </div>
+      </div>` : `
+      <div class="field-block" style="margin-bottom:12px;">
+        <label>Date</label>
+        <input type="date" id="pev-date" value="${today}">
+      </div>`}
+      <div style="display:flex;gap:8px;">
+        <button class="btn" onclick="savePersonalEvent()">Save</button>
+        <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=false;showTab('personal')">Cancel</button>
+      </div>
+    </div>` : '';
+
+  return `<div style="padding:16px;max-width:800px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <h2 style="margin:0;">Personal Schedule</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${sharedEntry
+          ? `<span style="font-size:13px;color:#27ae60;padding:4px 12px;background:#eafaf1;border-radius:14px;border:1px solid #a9dfbf;">Shared to Calendar${sharedEntry.includeJanie?' (incl. Janie)':''} ✓</span>
+             <button class="btn-ghost" onclick="clearPersonalShare('${myName}')">Clear Share</button>`
+          : `<button class="btn" style="background:${myCol.bg};" onclick="openShareTodayModal()">Share Today</button>`
+        }
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--text-light);margin:0 0 14px;">This is your private schedule. Only you and Janie can see this tab. Use "Share Today" to push today's blocks to the main show calendar.</p>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+        <strong style="font-size:15px;">My Events</strong>
+        <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add Event'}</button>
+      </div>
+      ${myEventsHtml}
+      ${addForm}
+    </div>
+
+    ${otherEventsHtml}
+  </div>`;
+}
+
+function personalEventRow(ev, col, canDelete){
+  const recurLabel = ev.recurring ? (ev.days||[]).join(', ') : (ev.date ? fmtShortDate(ev.date) : 'One-off');
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+    <span style="width:10px;height:10px;border-radius:50%;background:${col.bg};flex-shrink:0;"></span>
+    <span style="font-weight:600;font-size:13px;flex:1;min-width:120px;">${esc(ev.title)}</span>
+    ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
+    <span style="font-size:12px;color:#888;">${recurLabel}</span>
+    ${canDelete?`<button class="btn-ghost" style="font-size:11px;color:var(--red);padding:2px 6px;" onclick="deletePersonalEvent(${ev.id})">Delete</button>`:''}
+  </div>`;
+}
+
+function savePersonalEvent(){
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const titleEl = document.getElementById('pev-title');
+  const title = titleEl ? titleEl.value.trim() : '';
+  if(!title) { alert('Please enter a title.'); return; }
+  const start = (document.getElementById('pev-start')||{}).value || '';
+  const end   = (document.getElementById('pev-end')||{}).value || '';
+  if(!DATA.personal) DATA.personal = { events: [], sharedToday: [] };
+  const id = nextId(DATA.personal.events);
+  if(PERSONAL_FORM_RECURRING){
+    const checked = Array.from(document.querySelectorAll('input[name="pev-day"]:checked')).map(c=>c.value);
+    if(!checked.length){ alert('Select at least one day.'); return; }
+    DATA.personal.events.push({ id, ownerName: myName, title, startTime: start, endTime: end, recurring: true, days: checked, date: null });
+  } else {
+    const date = (document.getElementById('pev-date')||{}).value || todayStr();
+    DATA.personal.events.push({ id, ownerName: myName, title, startTime: start, endTime: end, recurring: false, days: [], date });
+  }
+  PERSONAL_FORM_OPEN = false;
+  saveData();
+  showTab('personal');
+}
+
+function deletePersonalEvent(id){
+  if(!confirm('Delete this event?')) return;
+  DATA.personal.events = (DATA.personal.events||[]).filter(ev=>ev.id!==id);
+  saveData();
+  showTab('personal');
 }
 
 function renderShows(){
