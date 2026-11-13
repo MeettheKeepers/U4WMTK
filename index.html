@@ -4225,10 +4225,19 @@ let _outroMusic = null; // Audio object for the outro track
 function _startPreshowMusic(minsRemaining){
   if(!_preshowMusic) _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
   const offset = Math.max(0, PRESHOW_TRACK_DURATION - minsRemaining * 60);
-  _preshowMusic.currentTime = offset;
   _preshowMusic.volume = 1;
-  _preshowMusic.play().catch(()=>{});
-  _updatePreshowMusicBtn();
+  const seekAndPlay = () => {
+    _preshowMusic.currentTime = offset;
+    _preshowMusic.play().catch(()=>{});
+    _updatePreshowMusicBtn();
+  };
+  // Must wait for metadata to load before seeking, otherwise currentTime is ignored
+  if(_preshowMusic.readyState >= 1){
+    seekAndPlay();
+  } else {
+    _preshowMusic.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+    _preshowMusic.load();
+  }
 }
 
 function togglePreshowMusic(){
