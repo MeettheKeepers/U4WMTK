@@ -912,9 +912,11 @@ function normalizeData(d){
   if(d.welcome.yourrole===undefined) d.welcome.yourrole = "";
   if(!Array.isArray(d.welcome.trainingPlanRoles)) d.welcome.trainingPlanRoles = ['owner','manager'];
   if(!d.welcome._ts) d.welcome._ts = {};
-  if(!d.personal) d.personal = { events: [], sharedToday: [] };
+  if(!d.personal) d.personal = { events: [], sharedToday: [], mainCalEvents: [] };
   if(!Array.isArray(d.personal.events)) d.personal.events = [];
   if(!Array.isArray(d.personal.sharedToday)) d.personal.sharedToday = [];
+  if(!Array.isArray(d.personal.mainCalEvents)) d.personal.mainCalEvents = [];
+  (d.personal.events||[]).forEach(ev=>{ if(ev.includeJanie===undefined) ev.includeJanie=false; });
   if(d.welcome.mtkprovides===undefined) d.welcome.mtkprovides = "Meet The Keepers Provides the Following!\n\n• MTK adheres to our safe and harassment free workspace.\n• MTK pays $0.50 per km when using own vehicle starting from the center for outreach (Km's based on Google Maps) — If there is a road closure and the route is changed, please contact the office to re-adjust.\n• MTK is an equal opportunity employer and prides itself on its diversity and inclusion.\n• When traveling overnight with MTK, all accommodations are covered.\n• $30 per diem per day for food and expenses when travelling.\n• When traveling with MTK or working fairs and festivals, you will be guaranteed an 8 hour shift per day.\n• MTK will train you on all animals for outreach and will ensure that you are comfortable with all the animals.\n• When wearing mascots, you will be wearing them for a limit of 1 hour at a time to ensure comfort. (Time adjusted for weight of mascot and temperature)\n• Every employee is entitled to an unpaid 30-minute break for every consecutive 5-hour shift. If you are needed by your employer during the 30-minute break, you will be paid for said break.\n• When credit cards are needed, you will be provided with a company card to be used only for work related purchases.";
   if(!d.logins || !d.logins.length) d.logins = [{id:1, username:"kyle", password:"wildlife", name:"Kyle", role:"manager"}];
   (d.team||[]).forEach(m=>{
@@ -9052,62 +9054,84 @@ function getActiveSharedEntries(){
 
 // Render personal event pills for a calendar month cell
 function renderPersonalCalBlocks(ds){
-  const shared = getActiveSharedEntries();
-  if(!shared.length) return '';
   const colorMap = getOwnerColorMap();
-  // Collect events per owner
-  const eventsByOwner = {};
-  shared.forEach(s=>{
-    // includeJanie: if false and s.ownerName !== current, skip — but for calendar display anyone sees shared
-    eventsByOwner[s.ownerName] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
-    // Also check if this entry includes the other owner
-    if(s.includeJanie){
-      // Find the other owner names from the logins
-      const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
+  const pills = [];
+
+  // 1. Permanent mainCalEvents for this date
+  (DATA.personal.mainCalEvents||[]).filter(e=>e.date===ds).forEach(e=>{
+    const col = colorMap[e.ownerName]||{bg:'#555',text:'#fff'};
+    const lbl = (e.startTime?e.startTime.replace(':00','')+' ':'')+esc(e.title);
+    pills.push(`<div title="${esc(e.ownerName)}: ${esc(e.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
+    // If includeJanie, show a pink version too
+    if(e.includeJanie){
+      const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==e.ownerName);
       otherOwners.forEach(o=>{
-        if(!eventsByOwner[o.name]){
-          eventsByOwner[o.name] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name);
-        }
+        const oc = colorMap[o.name]||{bg:'#c2185b',text:'#fff'};
+        pills.push(`<div title="${esc(o.name)}: ${esc(e.title)}" style="background:${oc.bg};color:${oc.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
       });
     }
   });
-  let html = '';
-  Object.entries(eventsByOwner).forEach(([ownerName, evts])=>{
-    const col = colorMap[ownerName] || {bg:'#555',text:'#fff'};
+
+  // 2. Shared today entries
+  const shared = getActiveSharedEntries();
+  shared.forEach(s=>{
+    const evts = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
+    const col = colorMap[s.ownerName]||{bg:'#555',text:'#fff'};
     evts.forEach(ev=>{
       const lbl = (ev.startTime?ev.startTime.replace(':00','')+' ':'')+esc(ev.title);
-      html += `<div title="${esc(ownerName)}: ${esc(ev.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`;
+      pills.push(`<div title="${esc(s.ownerName)}: ${esc(ev.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
     });
+    if(s.includeJanie){
+      const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
+      otherOwners.forEach(o=>{
+        const oc = colorMap[o.name]||{bg:'#c2185b',text:'#fff'};
+        const oEvts = personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name);
+        oEvts.forEach(ev=>{
+          const lbl = (ev.startTime?ev.startTime.replace(':00','')+' ':'')+esc(ev.title);
+          pills.push(`<div title="${esc(o.name)}: ${esc(ev.title)}" style="background:${oc.bg};color:${oc.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
+        });
+      });
+    }
   });
-  return html;
+
+  return pills.join('');
 }
 
 // Render personal day blocks for the calendar day view
 function renderPersonalDayBlocks(ds){
-  const shared = getActiveSharedEntries();
-  if(!shared.length) return '';
   const colorMap = getOwnerColorMap();
-  const eventsByOwner = {};
+  const rows = [];
+
+  // 1. Permanent mainCalEvents
+  (DATA.personal.mainCalEvents||[]).filter(e=>e.date===ds).forEach(e=>{
+    const col = colorMap[e.ownerName]||{bg:'#555',text:'#fff'};
+    rows.push(`<div style="display:inline-flex;align-items:center;gap:8px;background:${col.bg};color:${col.text};border-radius:6px;padding:5px 12px;font-size:13px;"><strong>${esc(e.ownerName)}</strong><span>${esc(e.title)}</span>${e.startTime?`<span style="opacity:.8;font-size:12px;">${e.startTime}${e.endTime?'–'+e.endTime:''}</span>`:''}</div>`);
+  });
+
+  // 2. Shared today
+  const shared = getActiveSharedEntries();
+  const shown = new Set();
   shared.forEach(s=>{
-    eventsByOwner[s.ownerName] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
+    const evts = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
+    const col = colorMap[s.ownerName]||{bg:'#555',text:'#fff'};
+    evts.forEach(ev=>{
+      const key = `${s.ownerName}::${ev.id}`;
+      if(shown.has(key)) return; shown.add(key);
+      rows.push(`<div style="display:inline-flex;align-items:center;gap:8px;background:${col.bg};color:${col.text};border-radius:6px;padding:5px 12px;font-size:13px;"><strong>${esc(s.ownerName)}</strong><span>${esc(ev.title)}</span>${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}</div>`);
+    });
     if(s.includeJanie){
       const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
       otherOwners.forEach(o=>{
-        if(!eventsByOwner[o.name]) eventsByOwner[o.name] = personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name);
+        const oc = colorMap[o.name]||{bg:'#c2185b',text:'#fff'};
+        personalEventsOnDate(ds).filter(ev=>ev.ownerName===o.name).forEach(ev=>{
+          const key = `${o.name}::${ev.id}`;
+          if(shown.has(key)) return; shown.add(key);
+          rows.push(`<div style="display:inline-flex;align-items:center;gap:8px;background:${oc.bg};color:${oc.text};border-radius:6px;padding:5px 12px;font-size:13px;"><strong>${esc(o.name)}</strong><span>${esc(ev.title)}</span>${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}</div>`);
+        });
       });
     }
   });
-  const rows = [];
-  Object.entries(eventsByOwner).forEach(([ownerName, evts])=>{
-    const col = colorMap[ownerName] || {bg:'#555',text:'#fff'};
-    evts.forEach(ev=>{
-      rows.push(`<div style="display:inline-flex;align-items:center;gap:8px;background:${col.bg};color:${col.text};border-radius:6px;padding:5px 12px;font-size:13px;margin-bottom:4px;">
-        <strong>${esc(ownerName)}</strong>
-        <span>${esc(ev.title)}</span>
-        ${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
-      </div>`);
-    });
-  });
+
   if(!rows.length) return '';
   return `<div style="background:#f0f8ff;border:1px solid #aad4f5;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
     <strong style="font-size:14px;">Owner Schedules</strong>
@@ -9190,6 +9214,153 @@ function renderShareTodayModal(){
 // --- Personal tab ---
 let PERSONAL_FORM_OPEN = false;
 let PERSONAL_FORM_RECURRING = true;
+let PERSONAL_VIEW = 'week';   // 'day' | 'week' | 'month'
+let PERSONAL_NAV_DATE = null; // anchor date string for navigation
+
+function personalWeekMondayFor(ds){
+  const d = new Date(ds+'T00:00:00');
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+
+function personalWeekDays(monday){
+  return Array.from({length:7},(_,i)=>addDays(monday,i));
+}
+
+// All personal events (both owners) on a date string
+function _personalEventsOnDate(ds, allEvts){
+  const dow = dateToDow(ds);
+  return allEvts.filter(ev=>{
+    if(ev.recurring) return Array.isArray(ev.days) && ev.days.includes(dow);
+    return ev.date === ds;
+  });
+}
+
+function _personalCellPill(ev, colorMap){
+  const col = colorMap[ev.ownerName] || {bg:'#555',text:'#fff'};
+  const timeStr = ev.startTime ? ev.startTime.slice(0,5)+' ' : '';
+  return `<div style="background:${col.bg};color:${col.text};border-radius:4px;padding:2px 6px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;" title="${esc(ev.ownerName)}: ${esc(ev.title)}">${timeStr}${esc(ev.title)}</div>`;
+}
+
+function renderPersonalWeekView(allEvts, colorMap, today){
+  const monday = personalWeekMondayFor(PERSONAL_NAV_DATE);
+  const weekDays = personalWeekDays(monday);
+  const HOURS = Array.from({length:17},(_,i)=>i+6);
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  const colHeaders = DAY_LABELS.map((lbl,i)=>{
+    const ds = weekDays[i];
+    const isToday = ds===today;
+    const dNum = parseInt(ds.slice(8),10);
+    const mon = MONTH_SHORT[parseInt(ds.slice(5,7),10)-1];
+    return `<div onclick="PERSONAL_VIEW='day';PERSONAL_NAV_DATE='${ds}';showTab('personal')" style="cursor:pointer;text-align:center;padding:6px 2px;background:#f4f4f4;border-right:1px solid var(--border);font-size:12px;font-weight:700;color:${isToday?'var(--green-dark)':'#555'};">${lbl}<br><span style="font-weight:${isToday?700:400};font-size:11px;color:${isToday?'var(--green-dark)':'#888'};">${mon} ${dNum}</span></div>`;
+  }).join('');
+
+  const hourRows = HOURS.map(h=>{
+    const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
+    const cells = weekDays.map(ds=>{
+      const evts = _personalEventsOnDate(ds, allEvts).filter(ev=>{
+        if(!ev.startTime) return false;
+        const sm = timeToMin(ev.startTime);
+        return sm >= h*60 && sm < (h+1)*60;
+      });
+      return `<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 4px;min-height:34px;background:${ds===today?'#f6fff6':'#fff'};">${evts.map(ev=>_personalCellPill(ev,colorMap)).join('')}</div>`;
+    }).join('');
+    return `<div style="display:contents;">
+      <div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;font-size:11px;color:#888;text-align:right;white-space:nowrap;background:#fafafa;">${label}</div>
+      ${cells}
+    </div>`;
+  }).join('');
+
+  const ws = new Date(monday+'T00:00:00'), we = new Date(weekDays[6]+'T00:00:00');
+  const title = ws.getMonth()===we.getMonth()
+    ? `${MONTH_SHORT[ws.getMonth()]} ${ws.getFullYear()}`
+    : `${MONTH_SHORT[ws.getMonth()]} – ${MONTH_SHORT[we.getMonth()]} ${we.getFullYear()}`;
+  const prev = addDays(monday,-7), next = addDays(monday,7);
+
+  return { title, prev, next, grid: `
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;overflow-x:auto;">
+      <div style="display:grid;grid-template-columns:52px repeat(7,1fr);min-width:580px;">
+        <div style="background:#f4f4f4;border-right:1px solid var(--border);border-bottom:1px solid var(--border);"></div>
+        ${colHeaders}
+        ${hourRows}
+      </div>
+    </div>` };
+}
+
+function renderPersonalMonthView(allEvts, colorMap, today){
+  const d = new Date(PERSONAL_NAV_DATE+'T00:00:00');
+  const year = d.getFullYear(), month = d.getMonth();
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  let cells = '';
+  for(let i=0;i<firstDow;i++) cells+=`<div style="min-height:80px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:#fafafa;"></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday = ds===today;
+    const evts = _personalEventsOnDate(ds, allEvts);
+    const pills = evts.slice(0,3).map(ev=>_personalCellPill(ev,colorMap)).join('');
+    const more = evts.length>3?`<div style="font-size:10px;color:#888;">+${evts.length-3} more</div>`:'';
+    cells+=`<div onclick="PERSONAL_VIEW='day';PERSONAL_NAV_DATE='${ds}';showTab('personal')" style="cursor:pointer;min-height:80px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);overflow:hidden;">
+      <div style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:${isToday?700:400};background:${isToday?'#e67e22':'transparent'};color:${isToday?'#fff':'inherit'};margin-bottom:3px;">${day}</div>
+      ${pills}${more}
+    </div>`;
+  }
+  const filled = (firstDow+daysInMonth)%7;
+  if(filled) for(let i=0;i<7-filled;i++) cells+=`<div style="min-height:80px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:#fafafa;"></div>`;
+
+  const prevDate = new Date(year,month-1,1).toISOString().slice(0,10);
+  const nextDate = new Date(year,month+1,1).toISOString().slice(0,10);
+
+  return { title: `${MONTH_NAMES[month]} ${year}`, prev: prevDate, next: nextDate, grid: `
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);">
+        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(l=>`<div style="text-align:center;font-size:12px;font-weight:700;padding:6px 0;background:#f4f4f4;border-right:1px solid var(--border);color:#555;">${l}</div>`).join('')}
+        ${cells}
+      </div>
+    </div>` };
+}
+
+function renderPersonalDayView(allEvts, colorMap, today){
+  const ds = PERSONAL_NAV_DATE;
+  const HOURS = Array.from({length:17},(_,i)=>i+6);
+  const evtsAll = _personalEventsOnDate(ds, allEvts);
+  const noTime = evtsAll.filter(e=>!e.startTime);
+  const d = new Date(ds+'T00:00:00');
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const title = `${DAYS[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  const prev = addDays(ds,-1), next = addDays(ds,1);
+
+  const noTimeHtml = noTime.length?`<div style="margin-bottom:8px;">${noTime.map(ev=>{const col=colorMap[ev.ownerName]||{bg:'#555',text:'#fff'};return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;">${esc(ev.ownerName)} — ${esc(ev.title)} (all day)</div>`;}).join('')}</div>`:'';
+
+  const hourRows = HOURS.map(h=>{
+    const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
+    const evts = evtsAll.filter(ev=>{
+      if(!ev.startTime) return false;
+      const sm = timeToMin(ev.startTime);
+      return sm >= h*60 && sm < (h+1)*60;
+    });
+    const pills = evts.map(ev=>{
+      const col = colorMap[ev.ownerName]||{bg:'#555',text:'#fff'};
+      return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:4px 12px;font-size:13px;display:inline-flex;align-items:center;gap:8px;margin-right:6px;"><strong>${esc(ev.ownerName)}</strong><span>${esc(ev.title)}</span>${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}</div>`;
+    }).join('');
+    return `<div style="display:flex;border-bottom:1px solid var(--border);min-height:${evts.length?50:36}px;${evts.length?'background:#f6fff6;':''}">
+      <div style="width:64px;flex-shrink:0;font-size:12px;color:#888;padding:8px;border-right:1px solid var(--border);white-space:nowrap;">${label}</div>
+      <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${pills}</div>
+    </div>`;
+  }).join('');
+
+  return { title, prev, next, grid: `
+    ${noTimeHtml}
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>` };
+}
 
 function renderPersonal(){
   const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
@@ -9197,27 +9368,26 @@ function renderPersonal(){
   const otherOwnerNames = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==myName).map(l=>l.name);
   const myCol = colorMap[myName] || {bg:'#1a6fce',text:'#fff'};
   const today = todayStr();
-  const myEvents = (DATA.personal.events||[]).filter(ev=>ev.ownerName===myName);
+  if(!PERSONAL_NAV_DATE) PERSONAL_NAV_DATE = today;
+
+  const allPersonalEvts = DATA.personal.events||[];
+  const myEvents = allPersonalEvts.filter(ev=>ev.ownerName===myName);
   const sharedEntry = (DATA.personal.sharedToday||[]).find(s=>s.ownerName===myName && s.date===today);
 
-  // Janie's events (read-only view)
-  const otherEventsHtml = otherOwnerNames.map(name=>{
-    const col = colorMap[name] || {bg:'#c2185b',text:'#fff'};
-    const evts = (DATA.personal.events||[]).filter(ev=>ev.ownerName===name);
-    if(!evts.length) return `<div class="card"><strong>${esc(name)}'s Schedule</strong><div style="color:var(--text-light);font-size:13px;margin-top:8px;">No events added yet.</div></div>`;
-    return `<div class="card">
-      <strong>${esc(name)}'s Schedule</strong>
-      <div style="margin-top:10px;">${evts.map(ev=>personalEventRow(ev,col,false)).join('')}</div>
-    </div>`;
-  }).join('');
+  const allOwnerColors = Object.assign({[myName]:myCol}, Object.fromEntries(
+    otherOwnerNames.map(n=>[n, colorMap[n]||{bg:'#c2185b',text:'#fff'}])
+  ));
 
-  const myEventsHtml = myEvents.length
-    ? myEvents.map(ev=>personalEventRow(ev,myCol,true)).join('')
-    : `<div style="font-size:13px;color:var(--text-light);padding:10px 0;">No events yet. Add your first one below.</div>`;
+  // Build current view
+  let viewData;
+  if(PERSONAL_VIEW==='day')       viewData = renderPersonalDayView(allPersonalEvts, allOwnerColors, today);
+  else if(PERSONAL_VIEW==='month') viewData = renderPersonalMonthView(allPersonalEvts, allOwnerColors, today);
+  else                             viewData = renderPersonalWeekView(allPersonalEvts, allOwnerColors, today);
 
+  // Add event form
   const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const addForm = PERSONAL_FORM_OPEN ? `
-    <div style="background:#f9f9f9;border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:14px;">
+    <div style="background:#f9f9f9;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;">
       <h4 style="margin:0 0 12px;">New Event</h4>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
         <div class="field-block" style="flex:2;min-width:180px;">
@@ -9236,19 +9406,19 @@ function renderPersonal(){
       <div style="margin-bottom:12px;">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
           <input type="checkbox" id="pev-recurring" ${PERSONAL_FORM_RECURRING?'checked':''} onchange="PERSONAL_FORM_RECURRING=this.checked;showTab('personal')">
-          Recurring (repeats on selected days)
+          Recurring (repeats on selected days each week)
         </label>
       </div>
       ${PERSONAL_FORM_RECURRING ? `
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Days</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          ${dowLabels.map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:16px;"><input type="checkbox" name="pev-day" value="${d}" ${['Mon','Tue','Wed','Thu','Fri'].includes(d)?'checked':''}> ${d}</label>`).join('')}
+          ${dowLabels.map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 10px;border:1px solid var(--border);border-radius:16px;background:#fff;"><input type="checkbox" name="pev-day" value="${d}" ${['Mon','Tue','Wed','Thu','Fri'].includes(d)?'checked':''}> ${d}</label>`).join('')}
         </div>
       </div>` : `
       <div class="field-block" style="margin-bottom:12px;">
         <label>Date</label>
-        <input type="date" id="pev-date" value="${today}">
+        <input type="date" id="pev-date" value="${PERSONAL_NAV_DATE}">
       </div>`}
       <div style="display:flex;gap:8px;">
         <button class="btn" onclick="savePersonalEvent()">Save</button>
@@ -9256,41 +9426,174 @@ function renderPersonal(){
       </div>
     </div>` : '';
 
-  return `<div style="padding:16px;max-width:800px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-      <h2 style="margin:0;">Personal Schedule</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+  // Event lists at bottom
+  const myEventsListHtml = myEvents.length
+    ? myEvents.map(ev=>personalEventRow(ev,myCol,true)).join('')
+    : `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No events yet.</div>`;
+  const otherListHtml = otherOwnerNames.map(name=>{
+    const col = colorMap[name]||{bg:'#c2185b',text:'#fff'};
+    const evts = allPersonalEvts.filter(ev=>ev.ownerName===name);
+    return evts.length ? evts.map(ev=>personalEventRow(ev,col,false)).join('') : `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No events yet.</div>`;
+  }).join('');
+
+  const isDay=PERSONAL_VIEW==='day', isWeek=PERSONAL_VIEW==='week', isMonth=PERSONAL_VIEW==='month';
+
+  return `<div style="padding:16px;max-width:1050px;">
+    <!-- Top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <strong style="font-size:20px;">${viewData.title}</strong>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         ${sharedEntry
-          ? `<span style="font-size:13px;color:#27ae60;padding:4px 12px;background:#eafaf1;border-radius:14px;border:1px solid #a9dfbf;">Shared to Calendar${sharedEntry.includeJanie?' (incl. Janie)':''} ✓</span>
-             <button class="btn-ghost" onclick="clearPersonalShare('${myName}')">Clear Share</button>`
-          : `<button class="btn" style="background:${myCol.bg};" onclick="openShareTodayModal()">Share Today</button>`
+          ? `<span style="font-size:12px;color:#27ae60;padding:3px 10px;background:#eafaf1;border-radius:14px;border:1px solid #a9dfbf;">Shared${sharedEntry.includeJanie?' + Janie':''} ✓</span>
+             <button class="btn-ghost" style="font-size:12px;" onclick="clearPersonalShare('${myName}')">Clear</button>`
+          : `<button class="btn" style="background:${myCol.bg};font-size:13px;" onclick="openShareTodayModal()">Share Today</button>`
         }
+        <button class="btn-ghost" style="font-size:13px;" onclick="PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add'}</button>
       </div>
     </div>
-    <p style="font-size:13px;color:var(--text-light);margin:0 0 14px;">This is your private schedule. Only you and Janie can see this tab. Use "Share Today" to push today's blocks to the main show calendar.</p>
 
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
-        <strong style="font-size:15px;">My Events</strong>
-        <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add Event'}</button>
+    <!-- Add form -->
+    ${addForm}
+
+    <!-- Nav + view toggle -->
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+      <button class="btn-small" onclick="PERSONAL_NAV_DATE='${viewData.prev}';showTab('personal')">◀</button>
+      <button class="btn-small" onclick="PERSONAL_NAV_DATE='${viewData.next}';showTab('personal')">▶</button>
+      <button class="btn-small" onclick="PERSONAL_NAV_DATE=todayStr();showTab('personal')">Today</button>
+      <div style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+        <button onclick="PERSONAL_VIEW='day';showTab('personal')" style="padding:4px 12px;background:${isDay?'#222':'transparent'};color:${isDay?'#fff':'#222'};border:none;cursor:pointer;font-size:13px;font-weight:600;">Day</button>
+        <button onclick="PERSONAL_VIEW='week';showTab('personal')" style="padding:4px 12px;background:${isWeek?'#222':'transparent'};color:${isWeek?'#fff':'#222'};border:none;border-left:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;">Week</button>
+        <button onclick="PERSONAL_VIEW='month';showTab('personal')" style="padding:4px 12px;background:${isMonth?'#222':'transparent'};color:${isMonth?'#fff':'#222'};border:none;border-left:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;">Month</button>
       </div>
-      ${myEventsHtml}
-      ${addForm}
     </div>
 
-    ${otherEventsHtml}
+    <!-- Calendar view -->
+    ${viewData.grid}
+
+    <!-- Legend -->
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:8px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:${myCol.bg};display:inline-block;"></span>${esc(myName)} (you)</span>
+      ${otherOwnerNames.map(n=>{const c=allOwnerColors[n]||{bg:'#c2185b'};return `<span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:${c.bg};display:inline-block;"></span>${esc(n)}</span>`;}).join('')}
+    </div>
+
+    <!-- Event lists -->
+    <div style="display:grid;grid-template-columns:1fr${otherOwnerNames.length?' 1fr':''};gap:14px;margin-top:16px;">
+      <div class="card" style="margin:0;">
+        <strong style="font-size:14px;">My Events</strong>
+        <div style="margin-top:8px;">${myEventsListHtml}</div>
+      </div>
+      ${otherOwnerNames.length?`<div class="card" style="margin:0;">
+        <strong style="font-size:14px;">${esc(otherOwnerNames[0])}'s Events</strong>
+        <div style="margin-top:8px;">${otherListHtml}</div>
+      </div>`:''}
+    </div>
   </div>`;
 }
 
-function personalEventRow(ev, col, canDelete){
+let PERSONAL_EDITING_ID = null;
+
+function personalEventRow(ev, col, canEdit){
   const recurLabel = ev.recurring ? (ev.days||[]).join(', ') : (ev.date ? fmtShortDate(ev.date) : 'One-off');
-  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-    <span style="width:10px;height:10px;border-radius:50%;background:${col.bg};flex-shrink:0;"></span>
-    <span style="font-weight:600;font-size:13px;flex:1;min-width:120px;">${esc(ev.title)}</span>
-    ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
-    <span style="font-size:12px;color:#888;">${recurLabel}</span>
-    ${canDelete?`<button class="btn-ghost" style="font-size:11px;color:var(--red);padding:2px 6px;" onclick="deletePersonalEvent(${ev.id})">Delete</button>`:''}
+  const isEditing = canEdit && PERSONAL_EDITING_ID === ev.id;
+  if(isEditing) return renderPersonalEditForm(ev);
+  const janieActive = !!ev.includeJanie;
+  return `<div style="border-bottom:1px solid var(--border);padding:8px 0;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="width:10px;height:10px;border-radius:50%;background:${col.bg};flex-shrink:0;"></span>
+      <span style="font-weight:600;font-size:13px;flex:1;min-width:120px;">${esc(ev.title)}</span>
+      ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
+      <span style="font-size:12px;color:#888;">${recurLabel}</span>
+      ${canEdit?`
+        <button class="btn-ghost" style="font-size:11px;padding:2px 7px;" onclick="PERSONAL_EDITING_ID=${ev.id};showTab('personal')">Edit</button>
+        <button class="btn-ghost" style="font-size:11px;padding:2px 7px;background:${janieActive?'#f8e5f1':'transparent'};color:${janieActive?'#c2185b':'inherit'};" onclick="togglePersonalEventJanie(${ev.id})">${janieActive?'Janie ✓':'Include Janie'}</button>
+        <button class="btn-ghost" style="font-size:11px;padding:2px 7px;" onclick="addPersonalEventToMainCal(${ev.id})">+ Main Calendar</button>
+        <button class="btn-ghost" style="font-size:11px;color:var(--red);padding:2px 6px;" onclick="deletePersonalEvent(${ev.id})">Delete</button>
+      `:''}
+    </div>
   </div>`;
+}
+
+function renderPersonalEditForm(ev){
+  const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return `<div style="background:#f9f9f9;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:4px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="field-block" style="flex:2;min-width:160px;">
+        <label>Title</label>
+        <input type="text" id="pev-edit-title" value="${esc(ev.title)}">
+      </div>
+      <div class="field-block" style="flex:1;min-width:100px;">
+        <label>Start</label>
+        <input type="time" id="pev-edit-start" value="${ev.startTime||''}">
+      </div>
+      <div class="field-block" style="flex:1;min-width:100px;">
+        <label>End</label>
+        <input type="time" id="pev-edit-end" value="${ev.endTime||''}">
+      </div>
+    </div>
+    ${ev.recurring?`<div style="margin-bottom:10px;">
+      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Days</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${dowLabels.map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:2px 8px;border:1px solid var(--border);border-radius:14px;background:${(ev.days||[]).includes(d)?'#e8f0fb':'#fff'};"><input type="checkbox" name="pev-edit-day" value="${d}" ${(ev.days||[]).includes(d)?'checked':''}> ${d}</label>`).join('')}
+      </div>
+    </div>`:ev.date?`<div class="field-block" style="margin-bottom:10px;">
+      <label>Date</label>
+      <input type="date" id="pev-edit-date" value="${ev.date}">
+    </div>`:''}
+    <div style="display:flex;gap:8px;">
+      <button class="btn" onclick="savePersonalEventEdit(${ev.id},${ev.recurring},${!!ev.date&&!ev.recurring})">Save</button>
+      <button class="btn-ghost" onclick="PERSONAL_EDITING_ID=null;showTab('personal')">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function savePersonalEventEdit(id, isRecurring, isOneOff){
+  const ev = (DATA.personal.events||[]).find(e=>e.id===id);
+  if(!ev) return;
+  const title = (document.getElementById('pev-edit-title')||{}).value||'';
+  if(!title.trim()){ alert('Title required.'); return; }
+  ev.title = title.trim();
+  ev.startTime = (document.getElementById('pev-edit-start')||{}).value||'';
+  ev.endTime   = (document.getElementById('pev-edit-end')||{}).value||'';
+  if(isRecurring){
+    const checked = Array.from(document.querySelectorAll('input[name="pev-edit-day"]:checked')).map(c=>c.value);
+    if(!checked.length){ alert('Select at least one day.'); return; }
+    ev.days = checked;
+  } else if(isOneOff){
+    ev.date = (document.getElementById('pev-edit-date')||{}).value||ev.date;
+  }
+  PERSONAL_EDITING_ID = null;
+  saveData();
+  showTab('personal');
+}
+
+function togglePersonalEventJanie(id){
+  const ev = (DATA.personal.events||[]).find(e=>e.id===id);
+  if(!ev) return;
+  ev.includeJanie = !ev.includeJanie;
+  saveData();
+  showTab('personal');
+}
+
+function addPersonalEventToMainCal(id){
+  const ev = (DATA.personal.events||[]).find(e=>e.id===id);
+  if(!ev) return;
+  if(!DATA.personal.mainCalEvents) DATA.personal.mainCalEvents = [];
+  // For recurring: ask which date; for one-off: use the event's date
+  let date;
+  if(ev.recurring){
+    date = prompt('Add to main calendar for which date? (YYYY-MM-DD)', todayStr());
+    if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert('Invalid date.'); return; }
+  } else {
+    date = ev.date;
+  }
+  // Check if already added for this event+date
+  const already = DATA.personal.mainCalEvents.find(e=>e.sourceId===id && e.date===date);
+  if(already){ alert('Already on the main calendar for that date.'); return; }
+  const mcId = nextId(DATA.personal.mainCalEvents);
+  DATA.personal.mainCalEvents.push({ id: mcId, sourceId: id, ownerName: ev.ownerName, title: ev.title, date, startTime: ev.startTime, endTime: ev.endTime, includeJanie: ev.includeJanie });
+  saveData();
+  alert('Added to main calendar for '+date+'.');
+  showTab('personal');
 }
 
 function savePersonalEvent(){
