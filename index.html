@@ -9213,9 +9213,16 @@ function renderShareTodayModal(){
 
 // --- Personal tab ---
 let PERSONAL_FORM_OPEN = false;
-let PERSONAL_FORM_RECURRING = true;
+let PERSONAL_FORM_TYPE = 'recurring'; // 'recurring' | 'oneoff' | 'deadline'
+let PERSONAL_FORM_RECURRING = true;   // legacy alias kept for savePersonalEvent compat
 let PERSONAL_VIEW = 'week';   // 'day' | 'week' | 'month'
 let PERSONAL_NAV_DATE = null; // anchor date string for navigation
+
+function _personalOtherOwnerLabel(){
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
+  const other = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==myName);
+  return other.length ? esc(other[0].name) : 'Janie';
+}
 
 function personalWeekMondayFor(ds){
   const d = new Date(ds+'T00:00:00');
@@ -9239,9 +9246,11 @@ function _personalEventsOnDate(ds, allEvts){
 }
 
 function _personalCellPill(ev, colorMap){
-  const col = colorMap[ev.ownerName] || {bg:'#555',text:'#fff'};
+  const isDeadline = ev.eventType==='deadline';
+  const col = isDeadline ? {bg:'#fff3cd',text:'#7a5000'} : (colorMap[ev.ownerName] || {bg:'#555',text:'#fff'});
   const timeStr = ev.startTime ? ev.startTime.slice(0,5)+' ' : '';
-  return `<div style="background:${col.bg};color:${col.text};border-radius:4px;padding:2px 6px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;" title="${esc(ev.ownerName)}: ${esc(ev.title)}">${timeStr}${esc(ev.title)}</div>`;
+  const prefix = isDeadline ? '⚑ ' : '';
+  return `<div style="background:${col.bg};color:${col.text};border-radius:4px;padding:2px 6px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;${isDeadline?'border:1px solid #f0c040;':''}" title="${esc(ev.ownerName)}: ${esc(ev.title)}">${prefix}${timeStr}${esc(ev.title)}</div>`;
 }
 
 function renderPersonalWeekView(allEvts, colorMap, today){
@@ -9386,14 +9395,26 @@ function renderPersonal(){
 
   // Add event form
   const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const otherOwnerLabel = otherOwnerNames.length ? esc(otherOwnerNames[0]) : 'Janie';
+  const isRecurring = PERSONAL_FORM_TYPE==='recurring';
+  const isOneOff    = PERSONAL_FORM_TYPE==='oneoff';
+  const isDeadline  = PERSONAL_FORM_TYPE==='deadline';
   const addForm = PERSONAL_FORM_OPEN ? `
     <div style="background:#f9f9f9;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;">
       <h4 style="margin:0 0 12px;">New Event</h4>
+
+      <!-- Type selector -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+        ${['recurring','oneoff','deadline'].map(t=>`<button onclick="PERSONAL_FORM_TYPE='${t}';PERSONAL_FORM_RECURRING=(t==='recurring');showTab('personal')" style="padding:5px 14px;border-radius:16px;border:1px solid var(--border);font-size:13px;cursor:pointer;background:${PERSONAL_FORM_TYPE===t?'#222':'#fff'};color:${PERSONAL_FORM_TYPE===t?'#fff':'#333'};">${t==='recurring'?'Recurring':t==='oneoff'?'One-off':'Deadline'}</button>`).join('')}
+      </div>
+
+      <!-- Title row -->
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
         <div class="field-block" style="flex:2;min-width:180px;">
-          <label>Title</label>
-          <input type="text" id="pev-title" placeholder="e.g. Workout">
+          <label>${isDeadline?'Project / Task':'Title'}</label>
+          <input type="text" id="pev-title" placeholder="${isDeadline?'e.g. Submit grant application':'e.g. Workout'}">
         </div>
+        ${!isDeadline?`
         <div class="field-block" style="flex:1;min-width:110px;">
           <label>Start time</label>
           <input type="time" id="pev-start" value="08:00">
@@ -9401,25 +9422,33 @@ function renderPersonal(){
         <div class="field-block" style="flex:1;min-width:110px;">
           <label>End time</label>
           <input type="time" id="pev-end" value="09:00">
-        </div>
+        </div>`:''}
       </div>
-      <div style="margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-          <input type="checkbox" id="pev-recurring" ${PERSONAL_FORM_RECURRING?'checked':''} onchange="PERSONAL_FORM_RECURRING=this.checked;showTab('personal')">
-          Recurring (repeats on selected days each week)
-        </label>
-      </div>
-      ${PERSONAL_FORM_RECURRING ? `
+
+      <!-- Days (recurring) -->
+      ${isRecurring?`
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Days</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${dowLabels.map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 10px;border:1px solid var(--border);border-radius:16px;background:#fff;"><input type="checkbox" name="pev-day" value="${d}" ${['Mon','Tue','Wed','Thu','Fri'].includes(d)?'checked':''}> ${d}</label>`).join('')}
         </div>
-      </div>` : `
+      </div>`:''}
+
+      <!-- Date (one-off or deadline) -->
+      ${(isOneOff||isDeadline)?`
       <div class="field-block" style="margin-bottom:12px;">
-        <label>Date</label>
-        <input type="date" id="pev-date" value="${PERSONAL_NAV_DATE}">
-      </div>`}
+        <label>${isDeadline?'Deadline date':'Date'}</label>
+        <input type="date" id="pev-date" value="${PERSONAL_NAV_DATE||today}">
+      </div>`:''}
+
+      <!-- Include other owner -->
+      <div style="margin-bottom:14px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pev-janie">
+          Include ${otherOwnerLabel} (shows on their calendar too)
+        </label>
+      </div>
+
       <div style="display:flex;gap:8px;">
         <button class="btn" onclick="savePersonalEvent()">Save</button>
         <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=false;showTab('personal')">Cancel</button>
@@ -9493,7 +9522,11 @@ function renderPersonal(){
 let PERSONAL_EDITING_ID = null;
 
 function personalEventRow(ev, col, canEdit){
+  const isDeadline = ev.eventType==='deadline';
   const recurLabel = ev.recurring ? (ev.days||[]).join(', ') : (ev.date ? fmtShortDate(ev.date) : 'One-off');
+  const typeTag = isDeadline
+    ? `<span style="font-size:11px;padding:1px 7px;border-radius:10px;background:#fff3cd;color:#7a5000;border:1px solid #f0c040;">Deadline</span>`
+    : '';
   const isEditing = canEdit && PERSONAL_EDITING_ID === ev.id;
   if(isEditing) return renderPersonalEditForm(ev);
   const janieActive = !!ev.includeJanie;
@@ -9501,11 +9534,12 @@ function personalEventRow(ev, col, canEdit){
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="width:10px;height:10px;border-radius:50%;background:${col.bg};flex-shrink:0;"></span>
       <span style="font-weight:600;font-size:13px;flex:1;min-width:120px;">${esc(ev.title)}</span>
+      ${typeTag}
       ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
       <span style="font-size:12px;color:#888;">${recurLabel}</span>
       ${canEdit?`
         <button class="btn-ghost" style="font-size:11px;padding:2px 7px;" onclick="PERSONAL_EDITING_ID=${ev.id};showTab('personal')">Edit</button>
-        <button class="btn-ghost" style="font-size:11px;padding:2px 7px;background:${janieActive?'#f8e5f1':'transparent'};color:${janieActive?'#c2185b':'inherit'};" onclick="togglePersonalEventJanie(${ev.id})">${janieActive?'Janie ✓':'Include Janie'}</button>
+        <button class="btn-ghost" style="font-size:11px;padding:2px 7px;background:${janieActive?'#f8e5f1':'transparent'};color:${janieActive?'#c2185b':'inherit'};" onclick="togglePersonalEventJanie(${ev.id})">${janieActive?_personalOtherOwnerLabel()+' ✓':'Include '+_personalOtherOwnerLabel()}</button>
         <button class="btn-ghost" style="font-size:11px;padding:2px 7px;" onclick="addPersonalEventToMainCal(${ev.id})">+ Main Calendar</button>
         <button class="btn-ghost" style="font-size:11px;color:var(--red);padding:2px 6px;" onclick="deletePersonalEvent(${ev.id})">Delete</button>
       `:''}
@@ -9598,20 +9632,23 @@ function addPersonalEventToMainCal(id){
 
 function savePersonalEvent(){
   const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '';
-  const titleEl = document.getElementById('pev-title');
-  const title = titleEl ? titleEl.value.trim() : '';
-  if(!title) { alert('Please enter a title.'); return; }
-  const start = (document.getElementById('pev-start')||{}).value || '';
-  const end   = (document.getElementById('pev-end')||{}).value || '';
-  if(!DATA.personal) DATA.personal = { events: [], sharedToday: [] };
+  const title = (document.getElementById('pev-title')||{}).value||'';
+  if(!title.trim()){ alert('Please enter a title.'); return; }
+  const start = (document.getElementById('pev-start')||{}).value||'';
+  const end   = (document.getElementById('pev-end')||{}).value||'';
+  const includeJanie = !!(document.getElementById('pev-janie')||{}).checked;
+  if(!DATA.personal) DATA.personal = { events: [], sharedToday: [], mainCalEvents: [] };
   const id = nextId(DATA.personal.events);
-  if(PERSONAL_FORM_RECURRING){
+  if(PERSONAL_FORM_TYPE==='recurring'){
     const checked = Array.from(document.querySelectorAll('input[name="pev-day"]:checked')).map(c=>c.value);
     if(!checked.length){ alert('Select at least one day.'); return; }
-    DATA.personal.events.push({ id, ownerName: myName, title, startTime: start, endTime: end, recurring: true, days: checked, date: null });
+    DATA.personal.events.push({ id, ownerName: myName, title: title.trim(), startTime: start, endTime: end, recurring: true, days: checked, date: null, eventType: 'recurring', includeJanie });
+  } else if(PERSONAL_FORM_TYPE==='deadline'){
+    const date = (document.getElementById('pev-date')||{}).value || todayStr();
+    DATA.personal.events.push({ id, ownerName: myName, title: title.trim(), startTime: '', endTime: '', recurring: false, days: [], date, eventType: 'deadline', includeJanie });
   } else {
     const date = (document.getElementById('pev-date')||{}).value || todayStr();
-    DATA.personal.events.push({ id, ownerName: myName, title, startTime: start, endTime: end, recurring: false, days: [], date });
+    DATA.personal.events.push({ id, ownerName: myName, title: title.trim(), startTime: start, endTime: end, recurring: false, days: [], date, eventType: 'oneoff', includeJanie });
   }
   PERSONAL_FORM_OPEN = false;
   saveData();
