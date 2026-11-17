@@ -14779,7 +14779,7 @@ function renderManager(){
     `;
     } // end else (content subtab)
   } else if(MANAGER_TAB === 'analytics'){
-    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'},{id:'creditcards',label:'Credit Cards'}];
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'},...(isOwnerLogin()?[{id:'creditcards',label:'Credit Cards'}]:[])];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
     let analyticsBody = '';
 
@@ -16460,7 +16460,7 @@ function renderManager(){
            Income and expense figures are from your Excel records. Show counts and package breakdowns are from the outreach tracking sheets. 2021 expenses were not recorded. 2025 outreach shows reflect Jan–Mar only.
         </div>`;
     } else if(ANALYTICS_TAB === 'creditcards'){
-      analyticsBody = renderCreditCardsTab();
+      analyticsBody = isOwnerLogin() ? renderCreditCardsTab() : '<p>Owner access only.</p>';
     }
 
     body = `
