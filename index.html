@@ -9359,12 +9359,27 @@ function renderPersonalWeekView(allEvts, colorMap, today){
   const hourRows = HOURS.map(h=>{
     const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
     const cells = weekDays.map(ds=>{
-      const evts = _personalEventsOnDate(ds, allEvts).filter(ev=>{
+      const allDay = _personalEventsOnDate(ds, allEvts);
+      // Events that START in this hour
+      const startingEvts = allDay.filter(ev=>{
         if(!ev.startTime) return false;
         const sm = timeToMin(ev.startTime);
         return sm >= h*60 && sm < (h+1)*60;
       });
-      return `<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 4px;min-height:34px;background:${ds===today?'#f6fff6':'#fff'};">${evts.map(ev=>_personalCellPill(ev,colorMap)).join('')}</div>`;
+      // Events that SPAN through this hour (started earlier, end after this hour starts)
+      const continuingEvts = allDay.filter(ev=>{
+        if(!ev.startTime || !ev.endTime) return false;
+        const sm = timeToMin(ev.startTime);
+        const em = timeToMin(ev.endTime);
+        return sm < h*60 && em > h*60;
+      });
+      const contHtml = continuingEvts.map(ev=>{
+        const isDeadline = ev.eventType==='deadline';
+        const colorKey = (!isDeadline && ev.assignedTo) ? ev.assignedTo : ev.ownerName;
+        const col = isDeadline ? {bg:'#fff3cd'} : (colorMap[colorKey]||{bg:'#555'});
+        return `<div style="background:${col.bg};border-radius:2px;height:16px;margin-bottom:2px;opacity:0.75;" title="${esc(ev.title)}"></div>`;
+      }).join('');
+      return `<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 4px;min-height:34px;background:${ds===today?'#f6fff6':'#fff'};">${startingEvts.map(ev=>_personalCellPill(ev,colorMap)).join('')}${contHtml}</div>`;
     }).join('');
     return `<div style="display:contents;">
       <div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;font-size:11px;color:#888;text-align:right;white-space:nowrap;background:#fafafa;">${label}</div>
@@ -9559,7 +9574,7 @@ function renderPersonal(){
 
       <div style="display:flex;gap:8px;">
         <button class="btn" onclick="savePersonalEvent()">Save</button>
-        <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=false;showTab('personal')">Cancel</button>
+        <button class="btn-ghost" onclick="PERSONAL_FORM_OPEN=false;PERSONAL_FORM_TYPE='recurring';PERSONAL_FORM_RECURRING=true;showTab('personal')">Cancel</button>
       </div>
     </div>` : '';
 
@@ -9594,7 +9609,7 @@ function renderPersonal(){
              <button class="btn-ghost" style="font-size:12px;" onclick="clearPersonalShare('${myName}')">Clear</button>`
           : `<button class="btn" style="background:${myCol.bg};font-size:13px;" onclick="openShareTodayModal()">Share Today</button>`
         }
-        <button class="btn-ghost" style="font-size:13px;" onclick="PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add'}</button>
+        <button class="btn-ghost" style="font-size:13px;" onclick="if(!PERSONAL_FORM_OPEN){PERSONAL_FORM_TYPE='recurring';PERSONAL_FORM_RECURRING=true;}PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add'}</button>
       </div>
     </div>
 
