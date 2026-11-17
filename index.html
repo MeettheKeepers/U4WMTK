@@ -9344,47 +9344,80 @@ function _personalCellPill(ev, colorMap){
 function renderPersonalWeekView(allEvts, colorMap, today){
   const monday = personalWeekMondayFor(PERSONAL_NAV_DATE);
   const weekDays = personalWeekDays(monday);
-  const HOURS = Array.from({length:17},(_,i)=>i+6);
+  const START_HOUR = 6, END_HOUR = 23;
+  const HOUR_H = 60; // px per hour = 1px per minute
+  const HOURS = Array.from({length: END_HOUR - START_HOUR}, (_,i) => i + START_HOUR);
+  const TOTAL_H = HOURS.length * HOUR_H;
+  const START_MIN = START_HOUR * 60;
   const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  // Assign columns within a day to handle overlapping events
+  function layoutEvts(evts){
+    const sorted = evts.slice().sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
+    const cols = [];
+    sorted.forEach(ev=>{
+      const sm = timeToMin(ev.startTime);
+      const em = ev.endTime ? timeToMin(ev.endTime) : sm+60;
+      let placed = false;
+      for(let ci=0;ci<cols.length;ci++){
+        const last = cols[ci][cols[ci].length-1];
+        const lastEnd = last._em;
+        if(sm >= lastEnd){ last._em=last._em; cols[ci].push({...ev,_em:em}); placed=true; break; }
+      }
+      if(!placed) cols.push([{...ev,_em:em}]);
+    });
+    const total = cols.length;
+    const result = [];
+    cols.forEach((col,ci)=>col.forEach(ev=>result.push({ev, l:ci/total, w:1/total})));
+    return result;
+  }
 
   const colHeaders = DAY_LABELS.map((lbl,i)=>{
     const ds = weekDays[i];
     const isToday = ds===today;
     const dNum = parseInt(ds.slice(8),10);
     const mon = MONTH_SHORT[parseInt(ds.slice(5,7),10)-1];
-    return `<div onclick="PERSONAL_VIEW='day';PERSONAL_NAV_DATE='${ds}';showTab('personal')" style="cursor:pointer;text-align:center;padding:6px 2px;background:#f4f4f4;border-right:1px solid var(--border);font-size:12px;font-weight:700;color:${isToday?'var(--green-dark)':'#555'};">${lbl}<br><span style="font-weight:${isToday?700:400};font-size:11px;color:${isToday?'var(--green-dark)':'#888'};">${mon} ${dNum}</span></div>`;
+    return `<div onclick="PERSONAL_VIEW='day';PERSONAL_NAV_DATE='${ds}';showTab('personal')" style="flex:1;cursor:pointer;text-align:center;padding:6px 2px;background:#f4f4f4;border-right:1px solid var(--border);font-size:12px;font-weight:700;color:${isToday?'var(--green-dark)':'#555'};">${lbl}<br><span style="font-weight:${isToday?700:400};font-size:11px;color:${isToday?'var(--green-dark)':'#888'};">${mon} ${dNum}</span></div>`;
   }).join('');
 
-  const hourRows = HOURS.map(h=>{
+  // Time label column
+  const timeColHtml = HOURS.map((h,i)=>{
     const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
-    const cells = weekDays.map(ds=>{
-      const allDay = _personalEventsOnDate(ds, allEvts);
-      // Events that START in this hour
-      const startingEvts = allDay.filter(ev=>{
-        if(!ev.startTime) return false;
-        const sm = timeToMin(ev.startTime);
-        return sm >= h*60 && sm < (h+1)*60;
-      });
-      // Events that SPAN through this hour (started earlier, end after this hour starts)
-      const continuingEvts = allDay.filter(ev=>{
-        if(!ev.startTime || !ev.endTime) return false;
-        const sm = timeToMin(ev.startTime);
-        const em = timeToMin(ev.endTime);
-        return sm < h*60 && em > h*60;
-      });
-      const contHtml = continuingEvts.map(ev=>{
-        const isDeadline = ev.eventType==='deadline';
-        const colorKey = (!isDeadline && ev.assignedTo) ? ev.assignedTo : ev.ownerName;
-        const col = isDeadline ? {bg:'#fff3cd'} : (colorMap[colorKey]||{bg:'#555'});
-        return `<div style="background:${col.bg};border-radius:2px;height:16px;margin-bottom:2px;opacity:0.75;" title="${esc(ev.title)}"></div>`;
-      }).join('');
-      return `<div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 4px;min-height:34px;background:${ds===today?'#f6fff6':'#fff'};">${startingEvts.map(ev=>_personalCellPill(ev,colorMap)).join('')}${contHtml}</div>`;
+    return `<div style="position:absolute;top:${i*HOUR_H}px;height:${HOUR_H}px;width:52px;font-size:10px;color:#aaa;text-align:right;padding-right:6px;padding-top:3px;box-sizing:border-box;">${label}</div>`;
+  }).join('');
+
+  // Day columns with absolutely-positioned event blocks
+  const dayColsHtml = weekDays.map(ds=>{
+    const isToday = ds===today;
+    const evtsDay = _personalEventsOnDate(ds, allEvts).filter(ev=>ev.startTime);
+    const laid = layoutEvts(evtsDay);
+
+    // Hour grid lines
+    const gridLines = HOURS.map((h,i)=>[
+      `<div style="position:absolute;top:${i*HOUR_H}px;left:0;right:0;border-top:1px solid #e8e8e8;pointer-events:none;"></div>`,
+      `<div style="position:absolute;top:${i*HOUR_H+30}px;left:0;right:0;border-top:1px dashed #f2f2f2;pointer-events:none;"></div>`
+    ].join('')).join('');
+
+    const evtBlocks = laid.map(({ev,l,w})=>{
+      const isDeadline = ev.eventType==='deadline';
+      const colorKey = (!isDeadline && !ev.isShow && ev.assignedTo) ? ev.assignedTo : ev.ownerName;
+      const col = isDeadline
+        ? {bg:'#fff3cd',text:'#7a5000',border:'1px solid #f0c040'}
+        : {...(colorMap[colorKey]||{bg:'#555',text:'#fff'}), border:'none'};
+      const sm = timeToMin(ev.startTime);
+      const em = ev.endTime ? timeToMin(ev.endTime) : sm+60;
+      const topPx = Math.max(0, sm - START_MIN);
+      const rawH  = Math.max(20, Math.min(em - sm, TOTAL_H - topPx));
+      const leftPct = (l*100).toFixed(1)+'%';
+      const widthCalc = `calc(${(w*100).toFixed(1)}% - 3px)`;
+      const prefix = isDeadline ? '⚑ ' : (ev.isShow ? '' : '');
+      const timeLbl = `<span style="font-size:10px;opacity:.85;">${ev.startTime.slice(0,5)}</span> `;
+      const showBadge = ev.isShow ? `<span style="font-size:9px;background:rgba(255,255,255,.25);border-radius:3px;padding:0 3px;margin-left:2px;">Show</span>` : '';
+      return `<div style="position:absolute;top:${topPx}px;height:${rawH}px;left:${leftPct};width:${widthCalc};background:${col.bg};color:${col.text};border-radius:4px;padding:3px 5px;font-size:11px;overflow:hidden;box-sizing:border-box;z-index:1;border:${col.border};line-height:1.3;" title="${esc(ev.title)}">${prefix}${timeLbl}<strong style="font-size:11px;">${esc(ev.title)}</strong>${showBadge}</div>`;
     }).join('');
-    return `<div style="display:contents;">
-      <div style="border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 6px;font-size:11px;color:#888;text-align:right;white-space:nowrap;background:#fafafa;">${label}</div>
-      ${cells}
-    </div>`;
+
+    return `<div style="flex:1;position:relative;height:${TOTAL_H}px;background:${isToday?'#f0fff4':'#fff'};border-right:1px solid var(--border);overflow:hidden;">${gridLines}${evtBlocks}</div>`;
   }).join('');
 
   const ws = new Date(monday+'T00:00:00'), we = new Date(weekDays[6]+'T00:00:00');
@@ -9395,10 +9428,15 @@ function renderPersonalWeekView(allEvts, colorMap, today){
 
   return { title, prev, next, grid: `
     <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;overflow-x:auto;">
-      <div style="display:grid;grid-template-columns:52px repeat(7,1fr);min-width:580px;">
-        <div style="background:#f4f4f4;border-right:1px solid var(--border);border-bottom:1px solid var(--border);"></div>
-        ${colHeaders}
-        ${hourRows}
+      <div style="min-width:580px;">
+        <div style="display:flex;border-bottom:2px solid var(--border);">
+          <div style="width:52px;flex-shrink:0;background:#f4f4f4;border-right:1px solid var(--border);"></div>
+          ${colHeaders}
+        </div>
+        <div style="display:flex;">
+          <div style="width:52px;flex-shrink:0;position:relative;height:${TOTAL_H}px;background:#fafafa;border-right:1px solid var(--border);">${timeColHtml}</div>
+          ${dayColsHtml}
+        </div>
       </div>
     </div>` };
 }
@@ -9441,39 +9479,81 @@ function renderPersonalMonthView(allEvts, colorMap, today){
 
 function renderPersonalDayView(allEvts, colorMap, today){
   const ds = PERSONAL_NAV_DATE;
-  const HOURS = Array.from({length:17},(_,i)=>i+6);
+  const START_HOUR = 6, END_HOUR = 23;
+  const HOUR_H = 60; // 1px per minute
+  const HOURS = Array.from({length: END_HOUR - START_HOUR}, (_,i) => i + START_HOUR);
+  const TOTAL_H = HOURS.length * HOUR_H;
+  const START_MIN = START_HOUR * 60;
   const evtsAll = _personalEventsOnDate(ds, allEvts);
   const noTime = evtsAll.filter(e=>!e.startTime);
+  const timedEvts = evtsAll.filter(e=>e.startTime);
   const d = new Date(ds+'T00:00:00');
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const title = `${DAYS[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   const prev = addDays(ds,-1), next = addDays(ds,1);
 
-  const noTimeHtml = noTime.length?`<div style="margin-bottom:8px;">${noTime.map(ev=>{const colorKey=(ev.assignedTo&&ev.eventType!=='deadline')?ev.assignedTo:ev.ownerName;const col=colorMap[colorKey]||{bg:'#555',text:'#fff'};const lbl=ev.isShow?'Show':(ev.eventType==='deadline'?'⚑ Deadline':esc(ev.ownerName));return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;">${lbl} — ${esc(ev.title)} (all day)</div>`;}).join('')}</div>`:'';
+  const noTimeHtml = noTime.length?`<div style="margin-bottom:8px;">${noTime.map(ev=>{
+    const colorKey=(ev.assignedTo&&ev.eventType!=='deadline')?ev.assignedTo:ev.ownerName;
+    const col=colorMap[colorKey]||{bg:'#555',text:'#fff'};
+    const lbl=ev.isShow?'Show':(ev.eventType==='deadline'?'⚑ Deadline':esc(ev.ownerName));
+    return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:5px 12px;margin-bottom:4px;font-size:13px;">${lbl} — ${esc(ev.title)} (all day)</div>`;
+  }).join('')}</div>`:'';
 
-  const hourRows = HOURS.map(h=>{
+  // Overlap layout (same as week view)
+  const sorted = timedEvts.slice().sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
+  const cols = [];
+  sorted.forEach(ev=>{
+    const sm = timeToMin(ev.startTime);
+    const em = ev.endTime ? timeToMin(ev.endTime) : sm+60;
+    let placed = false;
+    for(let ci=0;ci<cols.length;ci++){
+      const last = cols[ci][cols[ci].length-1];
+      if(sm >= last._em){ cols[ci].push({...ev,_em:em}); placed=true; break; }
+    }
+    if(!placed) cols.push([{...ev,_em:em}]);
+  });
+  const totalCols = cols.length || 1;
+  const laid = [];
+  cols.forEach((col,ci)=>col.forEach(ev=>laid.push({ev, l:ci/totalCols, w:1/totalCols})));
+
+  const timeColHtml = HOURS.map((h,i)=>{
     const label = h===12?'12 PM':h<12?`${h} AM`:`${h-12} PM`;
-    const evts = evtsAll.filter(ev=>{
-      if(!ev.startTime) return false;
-      const sm = timeToMin(ev.startTime);
-      return sm >= h*60 && sm < (h+1)*60;
-    });
-    const pills = evts.map(ev=>{
-      const colorKey = (ev.assignedTo && ev.eventType!=='deadline') ? ev.assignedTo : ev.ownerName;
-      const col = colorMap[colorKey]||{bg:'#555',text:'#fff'};
-      const ownerLabel = ev.isShow ? 'Show' : (ev.eventType==='deadline' ? '⚑' : esc(ev.ownerName));
-      return `<div style="background:${col.bg};color:${col.text};border-radius:5px;padding:4px 12px;font-size:13px;display:inline-flex;align-items:center;gap:8px;margin-right:6px;"><strong>${ownerLabel}</strong><span>${esc(ev.title)}</span>${ev.startTime?`<span style="opacity:.8;font-size:12px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}</div>`;
-    }).join('');
-    return `<div style="display:flex;border-bottom:1px solid var(--border);min-height:${evts.length?50:36}px;${evts.length?'background:#f6fff6;':''}">
-      <div style="width:64px;flex-shrink:0;font-size:12px;color:#888;padding:8px;border-right:1px solid var(--border);white-space:nowrap;">${label}</div>
-      <div style="flex:1;padding:6px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${pills}</div>
+    return `<div style="position:absolute;top:${i*HOUR_H}px;height:${HOUR_H}px;width:64px;font-size:11px;color:#aaa;text-align:right;padding-right:8px;padding-top:3px;box-sizing:border-box;">${label}</div>`;
+  }).join('');
+
+  const gridLines = HOURS.map((h,i)=>[
+    `<div style="position:absolute;top:${i*HOUR_H}px;left:0;right:0;border-top:1px solid #e8e8e8;"></div>`,
+    `<div style="position:absolute;top:${i*HOUR_H+30}px;left:0;right:0;border-top:1px dashed #f2f2f2;"></div>`
+  ].join('')).join('');
+
+  const evtBlocks = laid.map(({ev,l,w})=>{
+    const isDeadline = ev.eventType==='deadline';
+    const colorKey = (!isDeadline && !ev.isShow && ev.assignedTo) ? ev.assignedTo : ev.ownerName;
+    const col = isDeadline
+      ? {bg:'#fff3cd',text:'#7a5000',border:'1px solid #f0c040'}
+      : {...(colorMap[colorKey]||{bg:'#555',text:'#fff'}), border:'none'};
+    const sm = timeToMin(ev.startTime);
+    const em = ev.endTime ? timeToMin(ev.endTime) : sm+60;
+    const topPx = Math.max(0, sm - START_MIN);
+    const rawH = Math.max(20, Math.min(em - sm, TOTAL_H - topPx));
+    const leftCalc = `calc(${(l*100).toFixed(1)}% + 2px)`;
+    const widthCalc = `calc(${(w*100).toFixed(1)}% - 4px)`;
+    const ownerLbl = ev.isShow ? 'Show' : (isDeadline ? '⚑' : esc(ev.ownerName));
+    return `<div style="position:absolute;top:${topPx}px;height:${rawH}px;left:${leftCalc};width:${widthCalc};background:${col.bg};color:${col.text};border-radius:5px;padding:4px 10px;font-size:13px;overflow:hidden;box-sizing:border-box;z-index:1;border:${col.border};line-height:1.4;" title="${esc(ev.title)}">
+      <strong>${ownerLbl}</strong> ${esc(ev.title)}
+      <span style="opacity:.75;font-size:11px;margin-left:6px;">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>
     </div>`;
   }).join('');
 
   return { title, prev, next, grid: `
     ${noTimeHtml}
-    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${hourRows}</div>` };
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;overflow-y:auto;max-height:70vh;">
+      <div style="display:flex;min-height:${TOTAL_H}px;">
+        <div style="width:64px;flex-shrink:0;position:relative;height:${TOTAL_H}px;background:#fafafa;border-right:1px solid var(--border);">${timeColHtml}</div>
+        <div style="flex:1;position:relative;height:${TOTAL_H}px;background:#fff;">${gridLines}${evtBlocks}</div>
+      </div>
+    </div>` };
 }
 
 function renderPersonal(){
