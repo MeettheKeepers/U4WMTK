@@ -9833,7 +9833,7 @@ function personalEventRow(ev, col, canEdit){
   const janieActive = !!ev.includeJanie;
   return `<div style="border-bottom:1px solid var(--border);padding:8px 0;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span style="width:10px;height:10px;border-radius:50%;background:${col.bg};flex-shrink:0;"></span>
+      <span style="width:10px;height:10px;border-radius:50%;background:${janieActive?'#e6b800':col.bg};flex-shrink:0;"></span>
       <span style="font-weight:600;font-size:13px;flex:1;min-width:120px;">${esc(ev.title)}</span>
       ${typeTag}
       ${ev.startTime?`<span style="font-size:12px;color:var(--text-light);">${ev.startTime}${ev.endTime?'–'+ev.endTime:''}</span>`:''}
