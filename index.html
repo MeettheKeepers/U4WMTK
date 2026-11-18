@@ -9272,12 +9272,48 @@ function renderPersonalDashCard(){
     ${hasVisible ? `<div>${eventRows}</div>` : `<div style="font-size:13px;color:var(--text-light);">${dismissedCount?'All items hidden.':'No personal events or shows today.'} <button class="btn-ghost" style="font-size:12px;" onclick="showTab('personal')">Add events</button></div>`}
     ${assignedCard}
     ${undoBanner}
+    ${_renderCreditCardDashReminder()}
   </div>`;
 }
 
 function markPersonalAssignmentDone(id){
   const ev = (DATA.personal.events||[]).find(e=>e.id===id);
   if(ev){ ev.assignedDone = true; saveData(); showTab('dashboard'); }
+}
+
+// --- Credit card dashboard reminder ---
+function _renderCreditCardDashReminder(){
+  if(!isOwnerLogin()) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const warn = (DATA.creditCards||[]).filter(c=>{
+    const owed = parseFloat(c.owed)||0;
+    if(!owed || !c.dueDate) return false;
+    const due = new Date(c.dueDate); due.setHours(0,0,0,0);
+    const diff = Math.round((due - today) / 86400000);
+    return diff >= 0 && diff <= 10;
+  });
+  if(!warn.length) return '';
+  const fmtD = n => '$'+Math.abs(parseFloat(n)||0).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const rows = warn.map(c=>{
+    const due = new Date(c.dueDate); due.setHours(0,0,0,0);
+    const diff = Math.round((due - today) / 86400000);
+    const dueLabel = diff===0 ? 'Due TODAY' : diff===1 ? 'Due TOMORROW' : `Due in ${diff} days`;
+    const urgColor = diff<=2 ? '#c0392b' : '#e67e22';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;">
+        <strong style="font-size:13px;">${esc(c.name)}</strong>
+        <div style="font-size:11px;color:#666;">${c.owner?esc(c.owner):''}</div>
+      </div>
+      <div style="font-size:13px;">Owed: <strong style="color:#c0392b;">${fmtD(c.owed)}</strong></div>
+      ${c.minPayment?`<div style="font-size:13px;">Min: <strong>${fmtD(c.minPayment)}</strong></div>`:''}
+      <div style="font-size:12px;font-weight:700;color:${urgColor};background:${diff<=2?'#fff0f0':'#fffbe6'};padding:3px 8px;border-radius:12px;">${dueLabel}</div>
+      <button class="btn-ghost" style="font-size:12px;" onclick="ANALYTICS_TAB='creditcards';setManagerTab('analytics')">Go to Cards</button>
+    </div>`;
+  }).join('');
+  return `<div class="card" style="border-left:5px solid #c0392b;margin-top:10px;">
+    <strong style="font-size:14px;">Credit Card Payment${warn.length>1?'s':''} Due Soon</strong>
+    <div style="margin-top:8px;">${rows}</div>
+  </div>`;
 }
 
 // --- Dashboard dismiss (session-only, no persistence) ---
@@ -12096,7 +12132,7 @@ function renderCreditCardsTab(){
           <input type="number" step="0.01" value="${parseFloat(c.minPayment)||0}" onchange="saveCreditCardField(${c.id},'minPayment',this.value)" style="width:80px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
         </td>
         <td style="padding:8px 10px;">
-          <input type="text" value="${esc(c.dueDate||'')}" placeholder="e.g. 07-Nov" onchange="saveCreditCardField(${c.id},'dueDate',this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+          <input type="date" value="${esc(c.dueDate||'')}" onchange="saveCreditCardField(${c.id},'dueDate',this.value)" style="width:130px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
         </td>
         <td style="padding:8px 10px;text-align:right;">
           <input type="number" step="0.01" value="${parseFloat(c.lastPaymentAmt)||0}" onchange="saveCreditCardField(${c.id},'lastPaymentAmt',this.value)" style="width:80px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
@@ -12280,32 +12316,59 @@ function renderOngoingBillsTab(){
   const ob = DATA.ongoingBills;
   const startBal = parseFloat(ob.startingBalance)||0;
   const fmtD = n => { const v=parseFloat(n)||0; return (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
 
-  // Sort items by date ascending
-  const sorted = (ob.items||[]).slice().sort((a,b)=>{
-    const da = a.date ? new Date(a.date) : new Date('9999-12-31');
-    const db = b.date ? new Date(b.date) : new Date('9999-12-31');
+  // ---- Virtual show items from DATA.shows ----
+  const showVirtual = (DATA.shows||[])
+    .filter(s => showStatus(s) !== 'cancelled' && s.date && s.date >= todayStr)
+    .map(s => ({
+      id: 'show-' + s.id,
+      name: s.title || 'Show',
+      amount: s.paid ? 0 : (outreachShowRevenue(s) || 0),
+      date: s.date,
+      isShow: true,
+      isPaid: !!(s.paid)
+    }));
+
+  // ---- Merge manual items (future only) + show virtuals, sort by date ----
+  const manualFuture = (ob.items||[]).filter(x => x.date && x.date >= todayStr);
+  const manualPastCount = (ob.items||[]).filter(x => !x.date || x.date < todayStr).length;
+
+  const allItems = [...manualFuture, ...showVirtual].sort((a,b)=>{
+    const da = new Date(a.date||'9999-12-31');
+    const db = new Date(b.date||'9999-12-31');
     return da-db;
   });
 
-  // Build rows with running balance
+  // ---- Running balance rows ----
   let running = startBal;
-  const today = new Date(); today.setHours(0,0,0,0);
-  const rows = sorted.map(item=>{
+  const rows = allItems.map(item => {
     const amt = parseFloat(item.amount)||0;
     running += amt;
-    const isIncome = amt >= 0;
+    const isIncome = amt > 0;
+    const isZero = amt === 0;
     const runColor = running < 0 ? '#c0392b' : running < 500 ? '#e67e22' : '#1a6b35';
     const runBg    = running < 0 ? '#fff0f0' : running < 500 ? '#fffbe6' : '';
-    const itemDate = item.date ? new Date(item.date) : null;
-    const isPast   = itemDate && itemDate < today;
-    const rowStyle = isPast ? 'opacity:0.6;' : '';
-    return `<tr style="border-bottom:1px solid var(--border);${rowStyle}">
+
+    if(item.isShow){
+      return `<tr style="border-bottom:1px solid var(--border);background:#f7fcf7;">
+        <td style="padding:7px 10px;font-size:13px;">
+          <span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:#1a6b35;color:#fff;margin-right:6px;vertical-align:middle;">SHOW</span>${esc(item.name)}${item.isPaid?' <span style="font-size:10px;color:#1a6b35;font-weight:600;">(paid)</span>':''}
+        </td>
+        <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:600;color:${isZero?'#999':isIncome?'#1a6b35':'#c0392b'};">${isZero?'$0.00':fmtD(amt)}</td>
+        <td style="padding:7px 10px;font-size:13px;color:#666;">${item.date}</td>
+        <td style="padding:7px 14px;text-align:right;font-weight:700;font-size:13px;color:${runColor};background:${runBg};">${fmtD(running)}</td>
+        <td style="padding:7px 10px;text-align:center;font-size:11px;color:#aaa;">auto</td>
+      </tr>`;
+    }
+
+    return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:7px 10px;">
         <input type="text" value="${esc(item.name)}" onchange="updateOngoingBillItem(${item.id},'name',this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;min-width:160px;">
       </td>
       <td style="padding:7px 10px;">
-        <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillItem(${item.id},'amount',this.value)" style="width:110px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:${isIncome?'#1a6b35':'#c0392b'};">
+        <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillItem(${item.id},'amount',this.value)" style="width:110px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">
       </td>
       <td style="padding:7px 10px;">
         <input type="date" value="${esc(item.date||'')}" onchange="updateOngoingBillItem(${item.id},'date',this.value)" style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
@@ -12317,56 +12380,33 @@ function renderOngoingBillsTab(){
     </tr>`;
   }).join('');
 
-  const noRows = sorted.length===0 ? `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-light);font-size:13px;">No items yet — add one below.</td></tr>` : '';
-
-  // Summary items (bottom debts)
-  const sumRows = (ob.summaryItems||[]).map(s=>{
-    const amt = parseFloat(s.amount)||0;
-    return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:7px 10px;">
-        <input type="text" value="${esc(s.name)}" onchange="updateOngoingBillSummaryItem(${s.id},'name',this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;min-width:160px;">
-      </td>
-      <td colspan="2" style="padding:7px 10px;">
-        <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillSummaryItem(${s.id},'amount',this.value)" style="width:140px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:${amt>=0?'#1a6b35':'#c0392b'};">
-      </td>
-      <td style="padding:7px 10px;text-align:center;">
-        <button onclick="deleteOngoingBillSummaryItem(${s.id})" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Remove">×</button>
-      </td>
-    </tr>`;
-  }).join('');
-
-  // Today's projected balance marker
-  const todayStr = today.toISOString().slice(0,10);
-  const itemsToday = sorted.filter(x=>x.date===todayStr);
-  const nextItem = sorted.find(x=>x.date>todayStr);
-
-  // Figure out balance as of today
-  let balAsOfToday = startBal;
-  sorted.filter(x=>x.date<=todayStr).forEach(x=>{ balAsOfToday+=parseFloat(x.amount)||0; });
-  const todayBg = balAsOfToday < 0 ? '#c0392b' : balAsOfToday < 500 ? '#e67e22' : '#27ae60';
+  const noRows = allItems.length===0 ? `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-light);font-size:13px;">No upcoming items.</td></tr>` : '';
+  const nextItem = allItems.find(x=>x.date>todayStr);
+  const todayBg  = startBal < 0 ? '#c0392b' : startBal < 500 ? '#e67e22' : '#27ae60';
 
   return `
     <h2 style="margin-bottom:4px;">Ongoing Bills</h2>
-    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Track income and expenses in date order. The balance column updates automatically. Positive amounts = income, negative = expense.</div>
+    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Past items are removed automatically. Shows pull in from your show list — when a show is marked paid it drops to $0. Positive = income, negative = expense.</div>
 
-    <!-- Current balance + today summary -->
+    <!-- Summary strip -->
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-start;">
       <div style="background:#f4f6f9;border-radius:8px;padding:12px 16px;min-width:200px;">
-        <div style="font-size:12px;color:#888;margin-bottom:4px;">Starting / Current Balance</div>
+        <div style="font-size:12px;color:#888;margin-bottom:4px;">Current Balance (today)</div>
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:14px;font-weight:600;">$</span>
           <input type="number" step="0.01" value="${startBal}" onchange="saveOngoingBillsStartingBalance(this.value)" style="width:120px;font-size:18px;font-weight:700;padding:4px 6px;border:1px solid var(--border);border-radius:6px;text-align:right;">
         </div>
+        ${manualPastCount>0?`<div style="font-size:11px;color:#888;margin-top:4px;">${manualPastCount} past item${manualPastCount!==1?'s':''} hidden</div>`:''}
       </div>
       <div style="background:${todayBg};color:#fff;border-radius:8px;padding:12px 16px;min-width:160px;">
-        <div style="font-size:12px;opacity:.8;margin-bottom:4px;">Balance as of Today</div>
-        <div style="font-size:22px;font-weight:700;">${fmtD(balAsOfToday)}</div>
-        ${nextItem ? `<div style="font-size:11px;opacity:.8;margin-top:4px;">Next: ${esc(nextItem.name)} on ${nextItem.date}</div>` : ''}
+        <div style="font-size:12px;opacity:.8;margin-bottom:4px;">Starting From</div>
+        <div style="font-size:22px;font-weight:700;">${fmtD(startBal)}</div>
+        ${nextItem?`<div style="font-size:11px;opacity:.8;margin-top:4px;">Next: ${esc(nextItem.name)} on ${nextItem.date}</div>`:''}
       </div>
       <div style="background:#f4f6f9;border-radius:8px;padding:12px 16px;min-width:160px;">
         <div style="font-size:12px;color:#888;margin-bottom:4px;">Final Projected Balance</div>
         <div style="font-size:18px;font-weight:700;color:${running<0?'#c0392b':running<500?'#e67e22':'#1a6b35'};">${fmtD(running)}</div>
-        <div style="font-size:11px;color:#888;margin-top:2px;">${sorted.length} item${sorted.length!==1?'s':''}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">${allItems.length} upcoming item${allItems.length!==1?'s':''}</div>
       </div>
     </div>
 
@@ -12386,7 +12426,7 @@ function renderOngoingBillsTab(){
           <tr style="background:#eaf4ee;border-bottom:1px solid var(--border);">
             <td style="padding:8px 10px;font-weight:700;font-size:13px;color:#1a6b35;">Current Balance</td>
             <td style="padding:8px 10px;"></td>
-            <td style="padding:8px 10px;font-size:12px;color:#888;">Starting point</td>
+            <td style="padding:8px 10px;font-size:12px;color:#888;">Today</td>
             <td style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;color:#1a6b35;">${fmtD(startBal)}</td>
             <td></td>
           </tr>
@@ -12395,9 +12435,9 @@ function renderOngoingBillsTab(){
       </table>
     </div>
 
-    <!-- Add item row -->
+    <!-- Add item -->
     <div style="margin-top:16px;padding:14px 16px;background:#f9f9f9;border:1px solid var(--border);border-radius:10px;">
-      <strong style="font-size:14px;">Add Item</strong>
+      <strong style="font-size:14px;">Add Manual Item</strong>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:flex-end;">
         <div class="field-block" style="min-width:200px;flex:2;">
           <label>Description</label>
@@ -12414,39 +12454,6 @@ function renderOngoingBillsTab(){
         <button class="btn" onclick="addOngoingBillItem()">Add</button>
       </div>
     </div>
-
-    ${ob.summaryItems && ob.summaryItems.length>0 || true ? `
-    <!-- Summary / standing debts -->
-    <div style="margin-top:28px;">
-      <div style="font-weight:700;font-size:15px;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--border);">Standing Balances</div>
-      <div style="font-size:12px;color:var(--text-light);margin-bottom:10px;">Track ongoing debt totals like credit cards, loans, CRA balance — these don't affect the running total above.</div>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;max-width:500px;">
-          <thead>
-            <tr style="background:#f4f6f9;border-bottom:2px solid var(--border);">
-              <th style="padding:8px 10px;text-align:left;font-size:12px;">Label</th>
-              <th style="padding:8px 10px;text-align:right;font-size:12px;">Balance</th>
-              <th style="padding:8px 10px;"></th>
-            </tr>
-          </thead>
-          <tbody>${sumRows || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text-light);font-size:13px;">None added yet.</td></tr>`}</tbody>
-        </table>
-      </div>
-      <div style="margin-top:12px;padding:12px 16px;background:#f9f9f9;border:1px solid var(--border);border-radius:10px;">
-        <strong style="font-size:13px;">Add Standing Balance</strong>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;">
-          <div class="field-block" style="min-width:200px;flex:2;">
-            <label>Label</label>
-            <input type="text" id="ob-sum-name" placeholder="e.g. Credit Card Balance">
-          </div>
-          <div class="field-block" style="min-width:140px;">
-            <label>Amount</label>
-            <input type="number" step="0.01" id="ob-sum-amount" placeholder="-61105.97">
-          </div>
-          <button class="btn" onclick="addOngoingBillSummaryItem()">Add</button>
-        </div>
-      </div>
-    </div>` : ''}
   `;
 }
 // ---- End Ongoing Bills ----
