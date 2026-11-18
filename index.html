@@ -936,6 +936,7 @@ function normalizeData(d){
     if(x.amount===undefined) x.amount=0;
     if(x.date===undefined) x.date='';
     if(x.recurrence===undefined) x.recurrence='';
+    if(!x.overrides) x.overrides={};
   });
   (d.ongoingBills.summaryItems||[]).forEach(x=>{
     if(x.id===undefined) x.id=Date.now();
@@ -952,6 +953,7 @@ function normalizeData(d){
     if(x.amount===undefined) x.amount=0;
     if(x.date===undefined) x.date='';
     if(x.recurrence===undefined) x.recurrence='';
+    if(!x.overrides) x.overrides={};
   });
   if(!d.jointOngoingBills) d.jointOngoingBills = { startingBalance:0, items:[], summaryItems:[] };
   if(d.jointOngoingBills.startingBalance===undefined) d.jointOngoingBills.startingBalance=0;
@@ -963,6 +965,7 @@ function normalizeData(d){
     if(x.amount===undefined) x.amount=0;
     if(x.date===undefined) x.date='';
     if(x.recurrence===undefined) x.recurrence='';
+    if(!x.overrides) x.overrides={};
   });
   if(!d.personal) d.personal = { events: [], sharedToday: [], mainCalEvents: [] };
   if(!Array.isArray(d.personal.events)) d.personal.events = [];
@@ -12393,7 +12396,7 @@ function saveOngoingBillsStartingBalance(val, org){
 
 function addOngoingBillItem(org){
   org = org||CASHFLOW_ORG;
-  const sfx      = org==='u4w' ? '-u4w' : '';
+  const sfx = org==='u4w' ? '-u4w' : org==='joint' ? '-joint' : '';
   const name       = (document.getElementById('ob-add-name'+sfx)||{}).value||'';
   const amount     = parseFloat((document.getElementById('ob-add-amount'+sfx)||{}).value)||0;
   const date       = (document.getElementById('ob-add-date'+sfx)||{}).value||'';
@@ -12413,6 +12416,24 @@ function updateOngoingBillItem(id, field, value, org){
   saveData(); showTab('manager');
 }
 
+function updateOngoingBillRecurringField(parentId, date, field, value, org){
+  const ob = _obData(org||CASHFLOW_ORG);
+  const item = (ob.items||[]).find(x=>x.id===parentId);
+  if(!item) return;
+  const parsed = field==='amount' ? (parseFloat(value)||0) : value.trim();
+  const all = confirm('Update ALL upcoming occurrences of "' + item.name + '"?\n\nOK = update all future dates\nCancel = change only ' + date);
+  if(all){
+    item[field] = parsed;
+    // Clear any override for this field across all stored overrides
+    Object.keys(item.overrides||{}).forEach(d=>{ if(item.overrides[d] && item.overrides[d][field]!==undefined) delete item.overrides[d][field]; });
+  } else {
+    if(!item.overrides) item.overrides = {};
+    if(!item.overrides[date]) item.overrides[date] = {};
+    item.overrides[date][field] = parsed;
+  }
+  saveData(); showTab('manager');
+}
+
 function deleteOngoingBillItem(id, org){
   const ob = _obData(org||CASHFLOW_ORG);
   ob.items = (ob.items||[]).filter(x=>x.id!==id);
@@ -12421,7 +12442,7 @@ function deleteOngoingBillItem(id, org){
 
 function addOngoingBillSummaryItem(org){
   org = org||CASHFLOW_ORG;
-  const sfx  = org==='u4w' ? '-u4w' : '';
+  const sfx = org==='u4w' ? '-u4w' : org==='joint' ? '-joint' : '';
   const name   = (document.getElementById('ob-sum-name'+sfx)||{}).value||'';
   const amount = parseFloat((document.getElementById('ob-sum-amount'+sfx)||{}).value)||0;
   if(!name.trim()){ alert('Label is required.'); return; }
@@ -12493,7 +12514,8 @@ function _renderOngoingBillsContent(org){
     while(cur.toISOString().slice(0,10) <= horizonStr){
       const ds = cur.toISOString().slice(0,10);
       if(ds >= todayStr){
-        instances.push({...item, date:ds, _isRecurring:true, _parentId:item.id, id:item.id+'-'+ds});
+        const ov = (item.overrides||{})[ds]||{};
+        instances.push({...item, ...ov, date:ds, _isRecurring:true, _parentId:item.id, _parentName:item.name, _parentAmount:item.amount, id:item.id+'-'+ds, _hasOverride:!!(ov.name||ov.amount!=null)});
       }
       if(item.recurrence==='monthly'){
         cur.setMonth(cur.getMonth()+1);
@@ -12540,14 +12562,18 @@ function _renderOngoingBillsContent(org){
       </tr>`;
     }
 
-    // Recurring: show read-only row with badge; delete targets parent ID
+    // Recurring: editable row; changes ask "this date only or all future?"
     if(item._isRecurring){
       const recurLabel = item.recurrence==='monthly'?'MONTHLY':item.recurrence==='biweekly'?'BI-WEEKLY':'WEEKLY';
+      const ovMark = item._hasOverride ? ' <span style="font-size:9px;color:#8a5a00;font-weight:700;vertical-align:middle;" title="This date has a custom value">*</span>' : '';
       return `<tr style="border-bottom:1px solid var(--border);">
         <td style="padding:7px 10px;font-size:13px;">
-          <span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:#6c5ce7;color:#fff;margin-right:6px;vertical-align:middle;">↻ ${recurLabel}</span>${esc(item.name)}
+          <span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:#6c5ce7;color:#fff;margin-right:6px;vertical-align:middle;">↻ ${recurLabel}</span>
+          <input type="text" value="${esc(item.name)}" onchange="updateOngoingBillRecurringField(${item._parentId},'${item.date}','name',this.value,'${org}')" style="width:calc(100% - 90px);padding:3px 6px;border:1px solid #d0c8f0;border-radius:4px;font-size:13px;min-width:130px;">${ovMark}
         </td>
-        <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:600;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">${fmtD(amt)}</td>
+        <td style="padding:7px 10px;">
+          <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillRecurringField(${item._parentId},'${item.date}','amount',this.value,'${org}')" style="width:110px;text-align:right;padding:3px 6px;border:1px solid #d0c8f0;border-radius:4px;font-size:13px;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">
+        </td>
         <td style="padding:7px 10px;font-size:13px;color:#666;">${item.date}</td>
         <td style="padding:7px 14px;text-align:right;font-weight:700;font-size:13px;color:${runColor};background:${runBg};">${fmtD(running)}</td>
         <td style="padding:7px 10px;text-align:center;">
@@ -14678,15 +14704,24 @@ function renderManager(){
           const collapsed = !!COLLAPSED_SHOW_DATES[g.date];
           const dgs = showDateGroupStatus(g.instances);
           const hasBorder = dgs.border !== 'transparent';
-          // Profit pill — manager/owner only, outreach shows only, day-level calculation
+          // Profit pill — manager/owner only, all priceable show types
           const profitPill = (()=>{
             if(!isOwnerOrManager()) return '';
+            // Outreach: day-level calc (merges shared mileage + staff hours intelligently)
             const day = calcDayProfit(g.instances);
-            if(!day) return '';
-            const col = day.profit >= 0 ? '#1a6b2e' : '#c0392b';
-            const bg  = day.profit >= 0 ? '#edfaf2' : '#fff0f0';
-            const bdr = day.profit >= 0 ? '#7dcfa0' : '#f0a0a0';
-            return `<span style="font-size:11px;font-weight:700;color:${col};padding:2px 9px;border-radius:10px;border:1px solid ${bdr};background:${bg};">${day.profit>=0?'+':''}$${Math.abs(day.profit).toFixed(2)}</span>`;
+            // Non-outreach: per-show profit (MTK Racing, Char Walkaround, Fairs, etc.)
+            const nonOutreach = g.instances.map(i=>i.s)
+              .filter(s=>!(s.showTypes||[]).some(t=>OUTREACH_PRICES[t]));
+            const nonOutreachProfit = nonOutreach.reduce((sum,s)=>{
+              const p = calcShowProfit(s); return sum + (p ? p.profit : 0);
+            }, 0);
+            const hasAny = day || nonOutreach.some(s=>calcShowProfit(s));
+            if(!hasAny) return '';
+            const totalProfit = (day ? day.profit : 0) + nonOutreachProfit;
+            const col = totalProfit >= 0 ? '#1a6b2e' : '#c0392b';
+            const bg  = totalProfit >= 0 ? '#edfaf2' : '#fff0f0';
+            const bdr = totalProfit >= 0 ? '#7dcfa0' : '#f0a0a0';
+            return `<span style="font-size:11px;font-weight:700;color:${col};padding:2px 9px;border-radius:10px;border:1px solid ${bdr};background:${bg};">${totalProfit>=0?'+':''}$${Math.abs(totalProfit).toFixed(2)}</span>`;
           })();
           return `
           <div class="card" style="${hasBorder ? `border-left:5px solid ${dgs.border};` : ''}">
