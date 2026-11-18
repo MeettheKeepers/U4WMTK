@@ -1076,6 +1076,8 @@ function normalizeData(d){
     if(s.endDate===undefined) s.endDate='';
     if(s.overnight===undefined) s.overnight=false;
     if(s.overnightNote===undefined) s.overnightNote='';
+    if(s.travelDay===undefined) s.travelDay=false;
+    if(s.travelDayHours===undefined) s.travelDayHours=8;
     if(s.clientEmail===undefined) s.clientEmail='';
     if(s.clientPhone===undefined) s.clientPhone='';
     if(s.region===undefined) s.region='';
@@ -8053,6 +8055,68 @@ function calcOutreachProfit(s){
   return {revenue, baseRevenue, mileageCharge, staffLines, shiftHours, totalStaffCost:knownStaffCost, km, kmRate, mileageCost, totalKnownCost, profit, missingRates, outreachTypes};
 }
 
+// Generalized profit calc for ANY priceable show type (outreach, MTK Racing, Char Walkaround, Fairs).
+// Extends calcOutreachProfit to handle all types + travel day expenses.
+function calcShowProfit(s){
+  const types = s.showTypes||[];
+  const hasOutreach   = types.some(t=>OUTREACH_PRICES[t]);
+  const hasCharWalk   = types.includes('Character Walkaround');
+  const hasMTKRacing  = types.includes('MTK Racing');
+  const hasFairs      = types.some(t=>[...FAIRS_SHOW_TYPES,'Family Fun Fest'].includes(t));
+  if(!hasOutreach && !hasCharWalk && !hasMTKRacing && !hasFairs) return null;
+
+  const baseRevenue = showRevenue(s);
+  const mileageCharge = parseFloat(s.mileageCharge)||0;
+  const revenue = baseRevenue + mileageCharge;
+
+  const plan = showShiftPlan(s);
+  const shiftHours = Math.ceil(plan.totalMinutes / 60);
+  let staffLines = [];
+  (s.staffNames||[]).forEach(name=>{
+    const m = DATA.team.find(x=>x.name===name);
+    const rate = m && m.hourlyRate ? parseFloat(m.hourlyRate) : null;
+    staffLines.push({name, rate, hours:shiftHours, cost: rate!=null ? shiftHours*rate : null});
+  });
+
+  const km = travelKm(s.travelMinutes);
+  const kmRate = (s.vehicle||'').toLowerCase().includes('chevy express') ? 0.70 : 0.50;
+  const mileageCost = km * 2 * kmRate;
+
+  // Travel day costs
+  const travelDay = !!s.travelDay;
+  const travelDayHours = Math.max(1, parseInt(s.travelDayHours)||8);
+  const PER_DIEM = 30;
+  let travelDayLines = [];
+  if(travelDay){
+    (s.staffNames||[]).forEach(name=>{
+      const m = DATA.team.find(x=>x.name===name);
+      const rate = m && m.hourlyRate ? parseFloat(m.hourlyRate) : null;
+      travelDayLines.push({name, rate, hours:travelDayHours, cost: rate!=null ? travelDayHours*rate : null});
+    });
+  }
+  const travelDayStaffCost = travelDayLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
+  const perDiemTotal = travelDay ? PER_DIEM * (s.staffNames||[]).length : 0;
+
+  const knownStaffCost = staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
+  const missingRates = staffLines.filter(l=>l.cost===null);
+  const totalKnownCost = knownStaffCost + mileageCost + travelDayStaffCost + perDiemTotal;
+  const profit = revenue - totalKnownCost;
+
+  // Build show type label
+  let typeLabel = '';
+  if(hasOutreach){
+    const outreachTypes = types.filter(t=>OUTREACH_PRICES[t]);
+    typeLabel = outreachTypes.join(' + ') + ((s.presentationCount||1)>1 ? ' × '+s.presentationCount+' presentations' : '');
+  } else if(hasCharWalk) typeLabel = 'Character Walkaround';
+  else if(hasMTKRacing)  typeLabel = 'MTK Racing';
+  else                   typeLabel = types.filter(t=>hasFairs||FAIRS_SHOW_TYPES.includes(t)).join(' / ') || 'Show';
+
+  return {revenue, baseRevenue, mileageCharge, staffLines, shiftHours, km, kmRate, mileageCost,
+          travelDay, travelDayHours, travelDayLines, travelDayStaffCost, perDiemTotal, PER_DIEM,
+          knownStaffCost, totalKnownCost, profit, missingRates, typeLabel,
+          outreachTypes: types.filter(t=>OUTREACH_PRICES[t])};
+}
+
 // Calculate total profit for a DAY (array of show instances from a date group).
 // Correctly handles multiple shows: one hour-span per staff member across all their
 // shows that day, and mileage as one round trip to the furthest location.
@@ -12465,7 +12529,7 @@ function renderOngoingBillsTab(){
   const todayBg  = startBal < 0 ? '#c0392b' : startBal < 500 ? '#e67e22' : '#27ae60';
 
   return `
-    <h2 style="margin-bottom:4px;">Ongoing Bills</h2>
+    <h2 style="margin-bottom:4px;">Cashflow Forecast</h2>
     <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Past items are removed automatically. Shows pull in from your show list — when a show is marked paid it drops to $0. Positive = income, negative = expense.</div>
 
     <!-- Summary strip -->
@@ -13203,6 +13267,22 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
               <span style="font-size:12px;color:#888;">+HST — added to show income</span>
             </div>
           </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #d0dff0;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:700;color:#7a4a00;">
+                <input type="checkbox" ${s.travelDay?'checked':''} onchange="saveShowField(${s.id},'travelDay',this.checked)">
+                Travel / Setup Day
+              </label>
+              <span style="font-size:12px;color:#888;">2-day event — 1 income, adds staff wages + $30/person per diem for travel day</span>
+            </div>
+            ${s.travelDay ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+              <span style="font-size:13px;color:#555;">Travel day hours per staff member:</span>
+              <input type="number" min="1" max="24" step="1" value="${s.travelDayHours||8}"
+                style="width:65px;padding:4px 8px;border:1px solid #d0b080;border-radius:6px;font-size:14px;"
+                onblur="saveShowField(${s.id},'travelDayHours',this.value?parseInt(this.value):8)">
+              <span style="font-size:12px;color:#888;">hours (default: 8)</span>
+            </div>` : ''}
+          </div>
         </div>`;
       })()}
       ${s.showTypes&&s.showTypes.some(t=>OCCASION_SHOW_TYPES.includes(t)) ? `
@@ -13292,15 +13372,16 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       </div>` : ''}
       ${(()=>{
         if(!isOwnerOrManager()) return '';
-        const prof = calcOutreachProfit(s);
+        const prof = calcShowProfit(s);
         if(!prof) return '';
         const fmtC = v => '$'+v.toFixed(2);
         const profitColor = prof.profit >= 0 ? '#1a6b2e' : '#c0392b';
         const profitBg    = prof.profit >= 0 ? '#edfaf2' : '#fff0f0';
+        const vehicleLabel = (s.vehicle||'').toLowerCase().includes('personal') ? 'personal vehicle' : 'company vehicle';
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:10px;">Show Profit Breakdown</div>
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-            <span style="color:#555;">Show price (${prof.outreachTypes.join(' + ')}${(s.presentationCount||1)>1?' × '+s.presentationCount+' presentations':''})${s.discountPrice!=null?' — discounted':''}</span>
+            <span style="color:#555;">Show price (${prof.typeLabel})${s.discountPrice!=null?' — discounted':''}</span>
             <span style="font-weight:600;">${fmtC(prof.baseRevenue)}</span>
           </div>
           ${prof.mileageCharge > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
@@ -13313,9 +13394,22 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
             <span style="color:#c0392b;">${l.cost!=null?'−'+fmtC(l.cost):'—'}</span>
           </div>`).join('')}
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-            <span style="color:#555;">Mileage — ${prof.km} km × 2 @ ${fmtC(prof.kmRate)}/km (${(s.vehicle||'').toLowerCase().includes('personal')?'personal vehicle':'company vehicle'})</span>
+            <span style="color:#555;">Mileage — ${prof.km} km × 2 @ ${fmtC(prof.kmRate)}/km (${vehicleLabel})</span>
             <span style="color:#c0392b;">−${fmtC(prof.mileageCost)}</span>
           </div>
+          ${prof.travelDay ? `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-bottom:1px solid #f0ece3;font-size:12px;color:#8a5a00;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">
+            <span>Travel / Setup Day Expenses</span><span></span>
+          </div>
+          ${prof.travelDayLines.map(l=>`
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+            <span style="color:#555;">${esc(l.name)} — ${l.hours}h (travel day) @ ${l.rate!=null?fmtC(l.rate)+'/hr':'no rate set'}</span>
+            <span style="color:#c0392b;">${l.cost!=null?'−'+fmtC(l.cost):'—'}</span>
+          </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+            <span style="color:#555;">Per diem — ${(s.staffNames||[]).length} staff × $${prof.PER_DIEM}/day</span>
+            <span style="color:#c0392b;">−${fmtC(prof.perDiemTotal)}</span>
+          </div>` : ''}
           ${prof.missingRates.length ? `<div style="font-size:12px;color:#c08000;padding:4px 0;">No hourly rate set for: ${prof.missingRates.map(l=>esc(l.name)).join(', ')}</div>` : ''}
           <div style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-top:6px;background:${profitBg};">
             <span style="font-weight:700;font-size:14px;">Estimated Profit</span>
@@ -15142,7 +15236,7 @@ function renderManager(){
     `;
     } // end else (content subtab)
   } else if(MANAGER_TAB === 'analytics'){
-    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'},...(isOwnerLogin()?[{id:'creditcards',label:'Credit Cards'},{id:'ongoingbills',label:'Ongoing Bills'}]:[])];
+    const analyticsTabs = [{id:'shows',label:'Shows'},{id:'clients',label:'Clients'},{id:'animals',label:'Animals'},{id:'financials',label:'Financials'},{id:'history',label:'Totals'},...(isOwnerLogin()?[{id:'creditcards',label:'Credit Cards'},{id:'ongoingbills',label:'Cashflow Forecast'}]:[])];
     const analyticsTabsHtml = analyticsTabs.map(t=>`<button class="detail-tab-btn ${ANALYTICS_TAB===t.id?'active':''}" onclick="ANALYTICS_TAB='${t.id}';showTab('manager')">${t.label}</button>`).join('');
     let analyticsBody = '';
 
