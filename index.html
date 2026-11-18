@@ -9787,7 +9787,7 @@ function renderPersonal(){
 
       <!-- Type selector -->
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
-        ${['recurring','oneoff','deadline'].map(t=>`<button onclick="PERSONAL_FORM_TYPE='${t}';PERSONAL_FORM_RECURRING=(t==='recurring');showTab('personal')" style="padding:5px 14px;border-radius:16px;border:1px solid var(--border);font-size:13px;cursor:pointer;background:${PERSONAL_FORM_TYPE===t?'#222':'#fff'};color:${PERSONAL_FORM_TYPE===t?'#fff':'#333'};">${t==='recurring'?'Recurring':t==='oneoff'?'One-off':'Deadline'}</button>`).join('')}
+        ${['recurring','oneoff','deadline'].map(t=>`<button onclick="PERSONAL_FORM_TYPE='${t}';PERSONAL_FORM_RECURRING=${t==='recurring'};showTab('personal')" style="padding:5px 14px;border-radius:16px;border:1px solid var(--border);font-size:13px;cursor:pointer;background:${PERSONAL_FORM_TYPE===t?'#222':'#fff'};color:${PERSONAL_FORM_TYPE===t?'#fff':'#333'};">${t==='recurring'?'Recurring':t==='oneoff'?'One-off':'Deadline'}</button>`).join('')}
       </div>
 
       <!-- Title row -->
