@@ -9214,8 +9214,10 @@ function renderPersonalCalBlocks(ds){
   // 1. Permanent mainCalEvents for this date
   (DATA.personal.mainCalEvents||[]).filter(e=>e.date===ds).forEach(e=>{
     const col = colorMap[e.ownerName]||{bg:'#555',text:'#fff'};
+    const pillBg   = e.includeJanie ? '#e6b800' : col.bg;
+    const pillText = e.includeJanie ? '#3a2d00' : col.text;
     const lbl = (e.startTime?e.startTime.replace(':00','')+' ':'')+esc(e.title);
-    pills.push(`<div title="${esc(e.ownerName)}: ${esc(e.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
+    pills.push(`<div title="${esc(e.ownerName)}: ${esc(e.title)}" style="background:${pillBg};color:${pillText};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
     // If includeJanie, show a pink version too
     if(e.includeJanie){
       const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==e.ownerName);
@@ -9232,8 +9234,10 @@ function renderPersonalCalBlocks(ds){
     const evts = personalEventsOnDate(ds).filter(ev=>ev.ownerName===s.ownerName);
     const col = colorMap[s.ownerName]||{bg:'#555',text:'#fff'};
     evts.forEach(ev=>{
+      const pillBg   = ev.includeJanie ? '#e6b800' : col.bg;
+      const pillText = ev.includeJanie ? '#3a2d00' : col.text;
       const lbl = (ev.startTime?ev.startTime.replace(':00','')+' ':'')+esc(ev.title);
-      pills.push(`<div title="${esc(s.ownerName)}: ${esc(ev.title)}" style="background:${col.bg};color:${col.text};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
+      pills.push(`<div title="${esc(s.ownerName)}: ${esc(ev.title)}" style="background:${pillBg};color:${pillText};border-radius:3px;padding:1px 5px;font-size:11px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lbl}</div>`);
     });
     if(s.includeJanie){
       const otherOwners = (DATA.logins||[]).filter(l=>(l.role||'').toLowerCase()==='owner'&&l.name!==s.ownerName);
