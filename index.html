@@ -935,6 +935,7 @@ function normalizeData(d){
     if(x.name===undefined) x.name='';
     if(x.amount===undefined) x.amount=0;
     if(x.date===undefined) x.date='';
+    if(x.recurrence===undefined) x.recurrence='';
   });
   (d.ongoingBills.summaryItems||[]).forEach(x=>{
     if(x.id===undefined) x.id=Date.now();
@@ -8000,6 +8001,30 @@ function outreachShowRevenue(s){
   });
   return total;
 }
+// Standard (undiscounted) price for any show type
+function showStdPrice(s){
+  const types = s.showTypes||[];
+  const outreachTypes = types.filter(t=>OUTREACH_PRICES[t]);
+  if(outreachTypes.length){
+    const count = Math.min(4, Math.max(1, parseInt(s.presentationCount)||1));
+    let t=0;
+    outreachTypes.forEach(type=>{ if(MULTI_PRICES[type]) t+=MULTI_PRICES[type][count]||OUTREACH_PRICES[type]; else t+=OUTREACH_PRICES[type]||0; });
+    return t;
+  }
+  if(types.includes('Character Walkaround')){
+    const cc = Math.min(3, Math.max(1, s.charCount || (s.characters||[]).length||1));
+    return parseFloat(((DATA.showCosts||{}).characterWalkaround||{})['charPrice'+cc])||0;
+  }
+  if(types.includes('MTK Racing')) return parseFloat(((DATA.showCosts||{}).mtkRacing||{}).basePrice)||0;
+  if(types.some(t=>FAIRS_SHOW_TYPES.includes(t))) return parseFloat(((DATA.showCosts||{}).display||{}).basePrice)||0;
+  if(types.includes('Family Fun Fest')) return parseFloat(((DATA.showCosts||{}).wildPresentations||{}).basePrice)||0;
+  return 0;
+}
+// Effective revenue for any show type (discount overrides std price)
+function showRevenue(s){
+  if(s.discountPrice!=null && s.discountPrice!=='') return parseFloat(s.discountPrice)||0;
+  return showStdPrice(s);
+}
 
 // Calculate revenue, staff cost, mileage and profit for a SINGLE outreach show.
 // Used for the per-show breakdown panel inside each card.
@@ -11679,6 +11704,14 @@ function saveShowPresentationCount(id, count){
   s.presentationCount = count;
   saveData(); showTab('manager');
 }
+function saveShowCharacterCount(id, count){
+  // Sets a manual character count override (charCount) used for pricing when
+  // the character checklist may not perfectly reflect booking tier
+  const s = DATA.shows.find(x=>x.id===id);
+  if(!s) return;
+  s.charCount = count;
+  saveData(); showTab('manager');
+}
 function saveShowDiscountPrice(id, val){
   const s = DATA.shows.find(x=>x.id===id);
   if(!s) return;
@@ -12271,12 +12304,13 @@ function saveOngoingBillsStartingBalance(val){
 }
 
 function addOngoingBillItem(){
-  const name   = (document.getElementById('ob-add-name')||{}).value||'';
-  const amount = parseFloat((document.getElementById('ob-add-amount')||{}).value)||0;
-  const date   = (document.getElementById('ob-add-date')||{}).value||'';
+  const name       = (document.getElementById('ob-add-name')||{}).value||'';
+  const amount     = parseFloat((document.getElementById('ob-add-amount')||{}).value)||0;
+  const date       = (document.getElementById('ob-add-date')||{}).value||'';
+  const recurrence = (document.getElementById('ob-add-recurrence')||{}).value||'';
   if(!name.trim()){ alert('Description is required.'); return; }
   if(!date){ alert('Date is required.'); return; }
-  DATA.ongoingBills.items.push({ id:_obNextId(DATA.ongoingBills.items), name:name.trim(), amount, date });
+  DATA.ongoingBills.items.push({ id:_obNextId(DATA.ongoingBills.items), name:name.trim(), amount, date, recurrence });
   saveData(); showTab('manager');
 }
 
@@ -12319,23 +12353,54 @@ function renderOngoingBillsTab(){
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = today.toISOString().slice(0,10);
 
+  // ---- Horizon: rolling 6 months from today ----
+  const horizon = new Date(today); horizon.setMonth(horizon.getMonth() + 6);
+  const horizonStr = horizon.toISOString().slice(0,10);
+
   // ---- Virtual show items from DATA.shows ----
   const showVirtual = (DATA.shows||[])
-    .filter(s => showStatus(s) !== 'cancelled' && s.date && s.date >= todayStr)
+    .filter(s => showStatus(s) !== 'cancelled' && s.date && s.date >= todayStr && s.date <= horizonStr)
     .map(s => ({
       id: 'show-' + s.id,
       name: s.title || 'Show',
-      amount: s.paid ? 0 : (outreachShowRevenue(s) || 0),
+      amount: s.paid ? 0 : (showRevenue(s) || 0),
       date: s.date,
       isShow: true,
       isPaid: !!(s.paid)
     }));
 
-  // ---- Merge manual items (future only) + show virtuals, sort by date ----
-  const manualFuture = (ob.items||[]).filter(x => x.date && x.date >= todayStr);
+  // ---- Expand recurring manual items, filter to future only ----
+
+  function expandItem(item){
+    if(!item.recurrence || item.recurrence===''){
+      return item.date >= todayStr ? [{...item, _isRecurring:false}] : [];
+    }
+    const instances = [];
+    let cur = new Date(item.date+'T00:00:00');
+    const origDay = cur.getDate();
+    while(cur.toISOString().slice(0,10) <= horizonStr){
+      const ds = cur.toISOString().slice(0,10);
+      if(ds >= todayStr){
+        instances.push({...item, date:ds, _isRecurring:true, _parentId:item.id, id:item.id+'-'+ds});
+      }
+      if(item.recurrence==='monthly'){
+        cur.setMonth(cur.getMonth()+1);
+        // keep same day-of-month (setMonth may roll over for short months)
+        const maxDay = new Date(cur.getFullYear(), cur.getMonth()+1, 0).getDate();
+        cur.setDate(Math.min(origDay, maxDay));
+      } else if(item.recurrence==='biweekly'){
+        cur = new Date(cur.getTime() + 14*86400000);
+      } else if(item.recurrence==='weekly'){
+        cur = new Date(cur.getTime() + 7*86400000);
+      } else { break; }
+    }
+    return instances;
+  }
+
+  const manualExpanded = (ob.items||[]).flatMap(expandItem);
   const manualPastCount = (ob.items||[]).filter(x => !x.date || x.date < todayStr).length;
 
-  const allItems = [...manualFuture, ...showVirtual].sort((a,b)=>{
+  const allItems = [...manualExpanded, ...showVirtual].sort((a,b)=>{
     const da = new Date(a.date||'9999-12-31');
     const db = new Date(b.date||'9999-12-31');
     return da-db;
@@ -12363,6 +12428,21 @@ function renderOngoingBillsTab(){
       </tr>`;
     }
 
+    // Recurring: show read-only row with badge; delete targets parent ID
+    if(item._isRecurring){
+      const recurLabel = item.recurrence==='monthly'?'MONTHLY':item.recurrence==='biweekly'?'BI-WEEKLY':'WEEKLY';
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:7px 10px;font-size:13px;">
+          <span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:#6c5ce7;color:#fff;margin-right:6px;vertical-align:middle;">↻ ${recurLabel}</span>${esc(item.name)}
+        </td>
+        <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:600;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">${fmtD(amt)}</td>
+        <td style="padding:7px 10px;font-size:13px;color:#666;">${item.date}</td>
+        <td style="padding:7px 14px;text-align:right;font-weight:700;font-size:13px;color:${runColor};background:${runBg};">${fmtD(running)}</td>
+        <td style="padding:7px 10px;text-align:center;">
+          <button onclick="deleteOngoingBillItem(${item._parentId})" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Delete series">×</button>
+        </td>
+      </tr>`;
+    }
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:7px 10px;">
         <input type="text" value="${esc(item.name)}" onchange="updateOngoingBillItem(${item.id},'name',this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;min-width:160px;">
@@ -12448,8 +12528,17 @@ function renderOngoingBillsTab(){
           <input type="number" step="0.01" id="ob-add-amount" placeholder="-1585.95">
         </div>
         <div class="field-block" style="min-width:140px;">
-          <label>Date</label>
+          <label>Date (first occurrence)</label>
           <input type="date" id="ob-add-date">
+        </div>
+        <div class="field-block" style="min-width:140px;">
+          <label>Recurrence</label>
+          <select id="ob-add-recurrence">
+            <option value="">One-time</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Bi-weekly</option>
+            <option value="monthly">Monthly (same date)</option>
+          </select>
         </div>
         <button class="btn" onclick="addOngoingBillItem()">Add</button>
       </div>
@@ -13034,42 +13123,69 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         </div>
       </div>` : ''}
       ${(()=>{
-        // Presentation count + discount — only for Country/Continent shows, manager only
+        // Pricing block — outreach, MTK Racing, Character Walkaround, Fairs/Festivals
         if(!isOwnerOrManager()) return '';
-        const hasMulti = (s.showTypes||[]).some(t=>MULTI_PRICES[t]);
-        const hasOutreach = (s.showTypes||[]).some(t=>OUTREACH_PRICES[t]);
-        if(!hasOutreach) return '';
-        const count = Math.min(4, Math.max(1, parseInt(s.presentationCount)||1));
-        const hasDiscount = s.discountPrice != null && s.discountPrice !== '';
-        const stdRevenue = (()=>{ const tmp = s.discountPrice; const o = Object.assign({},s,{discountPrice:null}); return outreachShowRevenue(o); })();
-        const dispRevenue = hasDiscount ? parseFloat(s.discountPrice) : stdRevenue;
-        return `<div class="field-block" style="background:#f4f8ff;border:1px solid #b8d0f0;border-radius:8px;padding:10px;">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            ${hasMulti ? `<div style="flex:1;min-width:200px;">
+        const types = s.showTypes||[];
+        const hasOutreach   = types.some(t=>OUTREACH_PRICES[t]);
+        const hasCharWalk   = types.includes('Character Walkaround');
+        const hasMTKRacing  = types.includes('MTK Racing');
+        const hasFairs      = types.some(t=>[...FAIRS_SHOW_TYPES,'Family Fun Fest'].includes(t));
+        if(!hasOutreach && !hasCharWalk && !hasMTKRacing && !hasFairs) return '';
+
+        const hasDiscount = s.discountPrice!=null && s.discountPrice!=='';
+        const stdPrice    = showStdPrice(s);
+        const dispPrice   = hasDiscount ? parseFloat(s.discountPrice) : stdPrice;
+
+        // ---- Top section: count selector (outreach) or info line (others) ----
+        let topSection = '';
+        if(hasOutreach){
+          const hasMulti = types.some(t=>MULTI_PRICES[t]);
+          const count = Math.min(4, Math.max(1, parseInt(s.presentationCount)||1));
+          if(hasMulti) topSection = `<div style="flex:1;min-width:200px;">
               <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Presentations this day</div>
               <div style="display:flex;gap:6px;">
                 ${[1,2,3,4].map(n=>{
-                  const price = (()=>{
-                    let t=0;
-                    (s.showTypes||[]).forEach(type=>{ if(MULTI_PRICES[type]) t+=MULTI_PRICES[type][n]||0; else if(OUTREACH_PRICES[type]) t+=OUTREACH_PRICES[type]; });
-                    return t;
-                  })();
-                  const active = count===n;
-                  return `<button onclick="saveShowPresentationCount(${s.id},${n})" style="padding:5px 12px;border-radius:8px;border:2px solid ${active?'#2a5fa8':'#b8d0f0'};background:${active?'#2a5fa8':'#fff'};color:${active?'#fff':'#2a5fa8'};font-weight:700;font-size:13px;cursor:pointer;" title="$${price}+HST">${n}</button>`;
+                  let t=0; types.forEach(type=>{ if(MULTI_PRICES[type]) t+=MULTI_PRICES[type][n]||0; else if(OUTREACH_PRICES[type]) t+=OUTREACH_PRICES[type]; });
+                  const active=count===n;
+                  return `<button onclick="saveShowPresentationCount(${s.id},${n})" style="padding:5px 12px;border-radius:8px;border:2px solid ${active?'#2a5fa8':'#b8d0f0'};background:${active?'#2a5fa8':'#fff'};color:${active?'#fff':'#2a5fa8'};font-weight:700;font-size:13px;cursor:pointer;" title="$${t}+HST">${n}</button>`;
                 }).join('')}
               </div>
-            </div>` : ''}
+            </div>`;
+        } else if(hasCharWalk){
+          const cc = Math.min(3, Math.max(1, s.charCount || (s.characters||[]).length||1));
+          const costs = (DATA.showCosts||{}).characterWalkaround||{};
+          const charBtns = [1,2,3].map(n=>{
+            const p = parseFloat(costs['charPrice'+n])||0;
+            const active = cc===n;
+            return `<button onclick="saveShowCharacterCount(${s.id},${n})" style="padding:5px 12px;border-radius:8px;border:2px solid ${active?'#2a5fa8':'#b8d0f0'};background:${active?'#2a5fa8':'#fff'};color:${active?'#fff':'#2a5fa8'};font-weight:700;font-size:13px;cursor:pointer;" title="$${p}+HST">${n} char${n!==1?'s':''}</button>`;
+          }).join('');
+          topSection = `<div style="flex:1;min-width:200px;">
+            <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Characters this booking</div>
+            <div style="display:flex;gap:6px;">${charBtns}</div>
+            <div style="font-size:11px;color:#888;margin-top:4px;">Currently ${(s.characters||[]).length} character${(s.characters||[]).length!==1?'s':''} selected above</div>
+          </div>`;
+        } else {
+          const typeLabel = hasMTKRacing ? 'MTK Racing' : 'Fair / Festival';
+          topSection = `<div style="flex:1;min-width:200px;">
+            <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">${typeLabel}</div>
+            <div style="font-size:12px;color:#555;">Base price from Analytics pricing settings: <strong>$${stdPrice.toFixed(2)}</strong></div>
+          </div>`;
+        }
+
+        return `<div class="field-block" style="background:#f4f8ff;border:1px solid #b8d0f0;border-radius:8px;padding:10px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+            ${topSection}
             <div style="flex:1;min-width:200px;">
               <div style="font-size:12px;font-weight:700;color:#1a3a6a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Show Price</div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:15px;font-weight:700;color:${hasDiscount?'#c08000':'#1a3a6a'};">${hasDiscount?'Discounted: ':'Standard: '}$${dispRevenue.toFixed(2)}+HST</span>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:15px;font-weight:700;color:${hasDiscount?'#c08000':'#1a3a6a'};">${hasDiscount?'Discounted: ':'Standard: '}$${dispPrice.toFixed(2)}+HST</span>
                 ${hasDiscount
-                  ? `<button onclick="saveShowDiscountPrice(${s.id},null)" style="padding:3px 8px;border-radius:6px;border:1px solid #c0392b;background:#fff5f5;color:#c0392b;font-size:12px;cursor:pointer;">✕ Clear discount</button>`
+                  ? `<button onclick="saveShowDiscountPrice(${s.id},null)" style="padding:3px 8px;border-radius:6px;border:1px solid #c0392b;background:#fff5f5;color:#c0392b;font-size:12px;cursor:pointer;">✕ Clear</button>`
                   : `<button onclick="document.getElementById('discount-box-${s.id}').style.display='flex'" style="padding:3px 10px;border-radius:6px;border:1px solid #b8d0f0;background:#fff;color:#2a5fa8;font-size:12px;cursor:pointer;">Apply Discount</button>`}
               </div>
               <div id="discount-box-${s.id}" style="display:${hasDiscount?'flex':'none'};align-items:center;gap:6px;margin-top:8px;">
                 <span style="font-size:13px;color:#555;">Custom price $</span>
-                <input type="number" min="0" step="0.01" value="${hasDiscount?parseFloat(s.discountPrice).toFixed(2):''}" placeholder="${stdRevenue.toFixed(2)}"
+                <input type="number" min="0" step="0.01" value="${hasDiscount?parseFloat(s.discountPrice).toFixed(2):''}" placeholder="${stdPrice.toFixed(2)}"
                   style="width:100px;padding:4px 8px;border:1px solid #b8d0f0;border-radius:6px;font-size:14px;"
                   onblur="if(this.value)saveShowDiscountPrice(${s.id},this.value)">
                 <span style="font-size:12px;color:#888;">+HST</span>
