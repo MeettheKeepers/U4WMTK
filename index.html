@@ -942,6 +942,28 @@ function normalizeData(d){
     if(x.name===undefined) x.name='';
     if(x.amount===undefined) x.amount=0;
   });
+  if(!d.u4wOngoingBills) d.u4wOngoingBills = { startingBalance:0, items:[], summaryItems:[] };
+  if(d.u4wOngoingBills.startingBalance===undefined) d.u4wOngoingBills.startingBalance=0;
+  if(!Array.isArray(d.u4wOngoingBills.items)) d.u4wOngoingBills.items=[];
+  if(!Array.isArray(d.u4wOngoingBills.summaryItems)) d.u4wOngoingBills.summaryItems=[];
+  (d.u4wOngoingBills.items||[]).forEach(x=>{
+    if(x.id===undefined) x.id=Date.now();
+    if(x.name===undefined) x.name='';
+    if(x.amount===undefined) x.amount=0;
+    if(x.date===undefined) x.date='';
+    if(x.recurrence===undefined) x.recurrence='';
+  });
+  if(!d.jointOngoingBills) d.jointOngoingBills = { startingBalance:0, items:[], summaryItems:[] };
+  if(d.jointOngoingBills.startingBalance===undefined) d.jointOngoingBills.startingBalance=0;
+  if(!Array.isArray(d.jointOngoingBills.items)) d.jointOngoingBills.items=[];
+  if(!Array.isArray(d.jointOngoingBills.summaryItems)) d.jointOngoingBills.summaryItems=[];
+  (d.jointOngoingBills.items||[]).forEach(x=>{
+    if(x.id===undefined) x.id=Date.now();
+    if(x.name===undefined) x.name='';
+    if(x.amount===undefined) x.amount=0;
+    if(x.date===undefined) x.date='';
+    if(x.recurrence===undefined) x.recurrence='';
+  });
   if(!d.personal) d.personal = { events: [], sharedToday: [], mainCalEvents: [] };
   if(!Array.isArray(d.personal.events)) d.personal.events = [];
   if(!Array.isArray(d.personal.sharedToday)) d.personal.sharedToday = [];
@@ -11735,6 +11757,7 @@ let MANAGER_TAB = 'overview';
 let MANAGER_WELCOME_SUBTAB = 'content';
 let MANAGER_U4W_SUBTAB = 'nonprofit';
 let ANALYTICS_TAB = 'shows';
+let CASHFLOW_ORG  = 'mtk'; // 'mtk' | 'u4w'
 let FINANCIALS_SUB_TAB = 'income';
 let SHOWS_YEAR_DRILL = null; // year string when drilling into a year's show types
 
@@ -12361,57 +12384,82 @@ function renderCreditCardsTab(){
 
 // ---- Ongoing Bills ----
 function _obNextId(arr){ return Math.max(0,...(arr||[]).map(x=>x.id||0))+1; }
+function _obData(org){ return org==='u4w' ? DATA.u4wOngoingBills : org==='joint' ? DATA.jointOngoingBills : DATA.ongoingBills; }
 
-function saveOngoingBillsStartingBalance(val){
-  DATA.ongoingBills.startingBalance = parseFloat(val)||0;
+function saveOngoingBillsStartingBalance(val, org){
+  _obData(org||CASHFLOW_ORG).startingBalance = parseFloat(val)||0;
   saveData(); showTab('manager');
 }
 
-function addOngoingBillItem(){
-  const name       = (document.getElementById('ob-add-name')||{}).value||'';
-  const amount     = parseFloat((document.getElementById('ob-add-amount')||{}).value)||0;
-  const date       = (document.getElementById('ob-add-date')||{}).value||'';
-  const recurrence = (document.getElementById('ob-add-recurrence')||{}).value||'';
+function addOngoingBillItem(org){
+  org = org||CASHFLOW_ORG;
+  const sfx      = org==='u4w' ? '-u4w' : '';
+  const name       = (document.getElementById('ob-add-name'+sfx)||{}).value||'';
+  const amount     = parseFloat((document.getElementById('ob-add-amount'+sfx)||{}).value)||0;
+  const date       = (document.getElementById('ob-add-date'+sfx)||{}).value||'';
+  const recurrence = (document.getElementById('ob-add-recurrence'+sfx)||{}).value||'';
   if(!name.trim()){ alert('Description is required.'); return; }
   if(!date){ alert('Date is required.'); return; }
-  DATA.ongoingBills.items.push({ id:_obNextId(DATA.ongoingBills.items), name:name.trim(), amount, date, recurrence });
+  const ob = _obData(org);
+  ob.items.push({ id:_obNextId(ob.items), name:name.trim(), amount, date, recurrence });
   saveData(); showTab('manager');
 }
 
-function updateOngoingBillItem(id, field, value){
-  const item = (DATA.ongoingBills.items||[]).find(x=>x.id===id);
+function updateOngoingBillItem(id, field, value, org){
+  const ob = _obData(org||CASHFLOW_ORG);
+  const item = (ob.items||[]).find(x=>x.id===id);
   if(!item) return;
   item[field] = field==='amount' ? (parseFloat(value)||0) : value;
   saveData(); showTab('manager');
 }
 
-function deleteOngoingBillItem(id){
-  DATA.ongoingBills.items = (DATA.ongoingBills.items||[]).filter(x=>x.id!==id);
+function deleteOngoingBillItem(id, org){
+  const ob = _obData(org||CASHFLOW_ORG);
+  ob.items = (ob.items||[]).filter(x=>x.id!==id);
   saveData(); showTab('manager');
 }
 
-function addOngoingBillSummaryItem(){
-  const name   = (document.getElementById('ob-sum-name')||{}).value||'';
-  const amount = parseFloat((document.getElementById('ob-sum-amount')||{}).value)||0;
+function addOngoingBillSummaryItem(org){
+  org = org||CASHFLOW_ORG;
+  const sfx  = org==='u4w' ? '-u4w' : '';
+  const name   = (document.getElementById('ob-sum-name'+sfx)||{}).value||'';
+  const amount = parseFloat((document.getElementById('ob-sum-amount'+sfx)||{}).value)||0;
   if(!name.trim()){ alert('Label is required.'); return; }
-  DATA.ongoingBills.summaryItems.push({ id:_obNextId(DATA.ongoingBills.summaryItems), name:name.trim(), amount });
+  const ob = _obData(org);
+  ob.summaryItems.push({ id:_obNextId(ob.summaryItems), name:name.trim(), amount });
   saveData(); showTab('manager');
 }
 
-function updateOngoingBillSummaryItem(id, field, value){
-  const item = (DATA.ongoingBills.summaryItems||[]).find(x=>x.id===id);
+function updateOngoingBillSummaryItem(id, field, value, org){
+  const ob = _obData(org||CASHFLOW_ORG);
+  const item = (ob.summaryItems||[]).find(x=>x.id===id);
   if(!item) return;
   item[field] = field==='amount' ? (parseFloat(value)||0) : value;
   saveData(); showTab('manager');
 }
 
-function deleteOngoingBillSummaryItem(id){
-  DATA.ongoingBills.summaryItems = (DATA.ongoingBills.summaryItems||[]).filter(x=>x.id!==id);
+function deleteOngoingBillSummaryItem(id, org){
+  const ob = _obData(org||CASHFLOW_ORG);
+  ob.summaryItems = (ob.summaryItems||[]).filter(x=>x.id!==id);
   saveData(); showTab('manager');
 }
 
 function renderOngoingBillsTab(){
-  const ob = DATA.ongoingBills;
+  const orgTabs = [
+    {id:'mtk',   label:'Meet the Keepers'},
+    {id:'u4w',   label:'Unite for Wildlife'},
+    {id:'joint', label:'Joint Account'}
+  ];
+  const orgNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;">
+    ${orgTabs.map(t=>`<button onclick="CASHFLOW_ORG='${t.id}';showTab('manager')" style="padding:8px 20px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${CASHFLOW_ORG===t.id?'2px solid var(--accent)':'2px solid transparent'};margin-bottom:-2px;color:${CASHFLOW_ORG===t.id?'var(--accent)':'#666'};">${t.label}</button>`).join('')}
+  </div>`;
+  return orgNav + _renderOngoingBillsContent(CASHFLOW_ORG);
+}
+
+function _renderOngoingBillsContent(org){
+  const ob = _obData(org);
+  const isMTK = org==='mtk';
+  const sfx = org==='u4w' ? '-u4w' : org==='joint' ? '-joint' : '';
   const startBal = parseFloat(ob.startingBalance)||0;
   const fmtD = n => { const v=parseFloat(n)||0; return (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2}); };
   const today = new Date(); today.setHours(0,0,0,0);
@@ -12421,8 +12469,8 @@ function renderOngoingBillsTab(){
   const horizon = new Date(today); horizon.setMonth(horizon.getMonth() + 6);
   const horizonStr = horizon.toISOString().slice(0,10);
 
-  // ---- Virtual show items from DATA.shows ----
-  const showVirtual = (DATA.shows||[])
+  // ---- Virtual show items from DATA.shows (MTK only) ----
+  const showVirtual = isMTK ? (DATA.shows||[])
     .filter(s => showStatus(s) !== 'cancelled' && s.date && s.date >= todayStr && s.date <= horizonStr)
     .map(s => ({
       id: 'show-' + s.id,
@@ -12431,7 +12479,7 @@ function renderOngoingBillsTab(){
       date: s.date,
       isShow: true,
       isPaid: !!(s.paid)
-    }));
+    })) : [];
 
   // ---- Expand recurring manual items, filter to future only ----
 
@@ -12503,23 +12551,23 @@ function renderOngoingBillsTab(){
         <td style="padding:7px 10px;font-size:13px;color:#666;">${item.date}</td>
         <td style="padding:7px 14px;text-align:right;font-weight:700;font-size:13px;color:${runColor};background:${runBg};">${fmtD(running)}</td>
         <td style="padding:7px 10px;text-align:center;">
-          <button onclick="deleteOngoingBillItem(${item._parentId})" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Delete series">×</button>
+          <button onclick="deleteOngoingBillItem(${item._parentId},'${org}')" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Delete series">×</button>
         </td>
       </tr>`;
     }
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:7px 10px;">
-        <input type="text" value="${esc(item.name)}" onchange="updateOngoingBillItem(${item.id},'name',this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;min-width:160px;">
+        <input type="text" value="${esc(item.name)}" onchange="updateOngoingBillItem(${item.id},'name',this.value,'${org}')" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;min-width:160px;">
       </td>
       <td style="padding:7px 10px;">
-        <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillItem(${item.id},'amount',this.value)" style="width:110px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">
+        <input type="number" step="0.01" value="${amt}" onchange="updateOngoingBillItem(${item.id},'amount',this.value,'${org}')" style="width:110px;text-align:right;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;color:${isIncome?'#1a6b35':isZero?'#999':'#c0392b'};">
       </td>
       <td style="padding:7px 10px;">
-        <input type="date" value="${esc(item.date||'')}" onchange="updateOngoingBillItem(${item.id},'date',this.value)" style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+        <input type="date" value="${esc(item.date||'')}" onchange="updateOngoingBillItem(${item.id},'date',this.value,'${org}')" style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
       </td>
       <td style="padding:7px 14px;text-align:right;font-weight:700;font-size:13px;color:${runColor};background:${runBg};">${fmtD(running)}</td>
       <td style="padding:7px 10px;text-align:center;">
-        <button onclick="deleteOngoingBillItem(${item.id})" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Remove">×</button>
+        <button onclick="deleteOngoingBillItem(${item.id},'${org}')" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;padding:0 4px;" title="Remove">×</button>
       </td>
     </tr>`;
   }).join('');
@@ -12529,8 +12577,8 @@ function renderOngoingBillsTab(){
   const todayBg  = startBal < 0 ? '#c0392b' : startBal < 500 ? '#e67e22' : '#27ae60';
 
   return `
-    <h2 style="margin-bottom:4px;">Cashflow Forecast</h2>
-    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Past items are removed automatically. Shows pull in from your show list — when a show is marked paid it drops to $0. Positive = income, negative = expense.</div>
+    <h2 style="margin-bottom:4px;">Cashflow Forecast — ${org==='u4w'?'Unite for Wildlife':org==='joint'?'Joint Account':'Meet the Keepers'}</h2>
+    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Past items are removed automatically.${isMTK?' Shows pull in from your show list — when a show is marked paid it drops to $0.':''} Positive = income, negative = expense.</div>
 
     <!-- Summary strip -->
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-start;">
@@ -12538,7 +12586,7 @@ function renderOngoingBillsTab(){
         <div style="font-size:12px;color:#888;margin-bottom:4px;">Current Balance (today)</div>
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:14px;font-weight:600;">$</span>
-          <input type="number" step="0.01" value="${startBal}" onchange="saveOngoingBillsStartingBalance(this.value)" style="width:120px;font-size:18px;font-weight:700;padding:4px 6px;border:1px solid var(--border);border-radius:6px;text-align:right;">
+          <input type="number" step="0.01" value="${startBal}" onchange="saveOngoingBillsStartingBalance(this.value,'${org}')" style="width:120px;font-size:18px;font-weight:700;padding:4px 6px;border:1px solid var(--border);border-radius:6px;text-align:right;">
         </div>
         ${manualPastCount>0?`<div style="font-size:11px;color:#888;margin-top:4px;">${manualPastCount} past item${manualPastCount!==1?'s':''} hidden</div>`:''}
       </div>
@@ -12585,26 +12633,26 @@ function renderOngoingBillsTab(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:flex-end;">
         <div class="field-block" style="min-width:200px;flex:2;">
           <label>Description</label>
-          <input type="text" id="ob-add-name" placeholder="e.g. Mortgage, Payroll...">
+          <input type="text" id="ob-add-name${sfx}" placeholder="e.g. Mortgage, Payroll...">
         </div>
         <div class="field-block" style="min-width:120px;">
           <label>Amount (+ income, − expense)</label>
-          <input type="number" step="0.01" id="ob-add-amount" placeholder="-1585.95">
+          <input type="number" step="0.01" id="ob-add-amount${sfx}" placeholder="-1585.95">
         </div>
         <div class="field-block" style="min-width:140px;">
           <label>Date (first occurrence)</label>
-          <input type="date" id="ob-add-date">
+          <input type="date" id="ob-add-date${sfx}">
         </div>
         <div class="field-block" style="min-width:140px;">
           <label>Recurrence</label>
-          <select id="ob-add-recurrence">
+          <select id="ob-add-recurrence${sfx}">
             <option value="">One-time</option>
             <option value="weekly">Weekly</option>
             <option value="biweekly">Bi-weekly</option>
             <option value="monthly">Monthly (same date)</option>
           </select>
         </div>
-        <button class="btn" onclick="addOngoingBillItem()">Add</button>
+        <button class="btn" onclick="addOngoingBillItem('${org}')">Add</button>
       </div>
     </div>
   `;
