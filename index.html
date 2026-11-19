@@ -9425,6 +9425,8 @@ function _renderCreditCardDashReminder(){
   const warn = (DATA.creditCards||[]).filter(c=>{
     const owed = parseFloat(c.owed)||0;
     if(!owed || !c.dueDate) return false;
+    const minPayment = parseFloat(c.minPayment)||0;
+    if(minPayment === 0) return false; // 0 means payment has been made
     const due = new Date(c.dueDate); due.setHours(0,0,0,0);
     const diff = Math.round((due - today) / 86400000);
     return diff >= 0 && diff <= 10;
