@@ -4104,14 +4104,19 @@ function closeSinEntryModal(){
   document.removeEventListener('keydown',_sinEntryKeydown);
 }
 function sinFieldHtml(memberId, sinValue){
-  if(!sinValue) return `<span style="color:var(--gray);font-style:italic;">Not on file</span>`;
+  const canEdit = isOwnerOrManager();
+  const editBtn = canEdit ? `&nbsp;<button class="btn-ghost" style="font-size:12px;" onclick="openSinEntryModal(${memberId})">Edit</button>` : '';
+  if(!sinValue){
+    if(canEdit) return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="color:var(--gray);font-style:italic;">Not on file</span><button class="btn-small" onclick="openSinEntryModal(${memberId})">+ Enter SIN</button></div>`;
+    return `<span style="color:var(--gray);font-style:italic;">Not on file</span>`;
+  }
   if(SIN_UNLOCKED.has(memberId)){
     return `<span style="font-family:monospace;font-size:14px;letter-spacing:.5px;">${esc(sinValue)}</span>
-      &nbsp;<button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${memberId})"> Lock</button>`;
+      &nbsp;<button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="lockSin(${memberId})"> Lock</button>${editBtn}`;
   }
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
-    <button class="btn-small" onclick="openSinModal(${memberId})"> Reveal</button>
+    <button class="btn-small" onclick="openSinModal(${memberId})"> Reveal</button>${editBtn}
   </div>`;
 }
 
