@@ -1043,6 +1043,7 @@ function normalizeData(d){
   if(!d.admin.training.roles) d.admin.training.roles = {};
   if(!d.admin.training._savedAt) d.admin.training._savedAt = 0;
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
+  if(!d.dashDismissals) d.dashDismissals = {};
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
   d.contracts.forEach(c=>{
@@ -6423,12 +6424,19 @@ function accountantReminderCard(){
 }
 
 /* ── PAYDAY REMINDER ───────────────────────────────────────────────────── */
-let PAYDAY_REMINDER_DISMISSED = null; // date string on which it was dismissed
-function dismissPaydayReminder(){ PAYDAY_REMINDER_DISMISSED = todayStr(); showTab('dashboard'); }
+function _dashDismissEntry(){
+  const name = CURRENT_LOGIN ? CURRENT_LOGIN.name : '__guest';
+  if(!DATA.dashDismissals) DATA.dashDismissals = {};
+  if(!DATA.dashDismissals[name]) DATA.dashDismissals[name] = {};
+  return DATA.dashDismissals[name];
+}
+function dismissPaydayReminder(){
+  _dashDismissEntry().paydayDate = todayStr();
+  saveData(); showTab('dashboard');
+}
 function paydayReminderCard(){
-  // Auto-clear dismissal from a previous day
-  if(PAYDAY_REMINDER_DISMISSED && PAYDAY_REMINDER_DISMISSED !== todayStr()) PAYDAY_REMINDER_DISMISSED = null;
-  if(PAYDAY_REMINDER_DISMISSED) return '';
+  const entry = _dashDismissEntry();
+  if(entry.paydayDate === todayStr()) return '';
   const tomorrow = addDays(todayStr(), 1);
   if(!isPayDay(tomorrow)) return '';
   return `<div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
@@ -9332,10 +9340,11 @@ function renderPersonalDashCard(){
   const allMyShows  = _myShowsOnDate(today, myName);
   const allAssigned = (DATA.personal.events||[]).filter(ev=>ev.assignedTo===myName && !ev.assignedDone && personalEventsOnDate(today).some(e=>e.id===ev.id));
 
-  const myEvents   = allMyEvents.filter(ev=>!PERSONAL_DASH_DISMISSED.has('ev-'+ev.id));
-  const myShows    = allMyShows.filter(s=>!PERSONAL_DASH_DISMISSED.has('show-'+s.id));
-  const assignedToMe = allAssigned.filter(ev=>!PERSONAL_DASH_DISMISSED.has('asgn-'+ev.id));
-  const dismissedCount = PERSONAL_DASH_DISMISSED.size;
+  const _dismissed = _getDashDismissed();
+  const myEvents   = allMyEvents.filter(ev=>!_dismissed.has('ev-'+ev.id));
+  const myShows    = allMyShows.filter(s=>!_dismissed.has('show-'+s.id));
+  const assignedToMe = allAssigned.filter(ev=>!_dismissed.has('asgn-'+ev.id));
+  const dismissedCount = _dismissed.size;
 
   const dismissBtn = (key) => `<button onclick="dismissPersonalDashEvent('${key}')" title="Dismiss" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#bbb;font-size:16px;line-height:1;padding:0 2px;flex-shrink:0;" onmouseover="this.style.color='#888'" onmouseout="this.style.color='#bbb'">×</button>`;
 
@@ -9444,10 +9453,23 @@ function _renderCreditCardDashReminder(){
   </div>`;
 }
 
-// --- Dashboard dismiss (session-only, no persistence) ---
-let PERSONAL_DASH_DISMISSED = new Set();
-function dismissPersonalDashEvent(key){ PERSONAL_DASH_DISMISSED.add(key); showTab('dashboard'); }
-function undoPersonalDashDismiss(){ PERSONAL_DASH_DISMISSED.clear(); showTab('dashboard'); }
+// --- Dashboard dismiss (persisted per user, items expire at end of day) ---
+function _getDashDismissed(){
+  const entry = _dashDismissEntry();
+  if(entry.itemsDate !== todayStr()) return new Set();
+  return new Set(entry.items||[]);
+}
+function dismissPersonalDashEvent(key){
+  const entry = _dashDismissEntry();
+  if(entry.itemsDate !== todayStr()){ entry.itemsDate = todayStr(); entry.items = []; }
+  if(!(entry.items||[]).includes(key)) entry.items.push(key);
+  saveData(); showTab('dashboard');
+}
+function undoPersonalDashDismiss(){
+  const entry = _dashDismissEntry();
+  entry.items = []; entry.itemsDate = '';
+  saveData(); showTab('dashboard');
+}
 
 // --- Share Today modal ---
 let PERSONAL_SHARE_OPEN = false;
