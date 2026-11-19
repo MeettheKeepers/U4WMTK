@@ -1146,9 +1146,10 @@ function normalizeData(d){
     if(!Array.isArray(m.quizAttempts)) m.quizAttempts = [];
     if(m.quizPassedUntil===undefined) m.quizPassedUntil = null;
     if(m.hourlyRate===undefined) m.hourlyRate = "18.00";
-    if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '', fileUrl: '', storagePath: '', fileName: '' };
+    if(!m.vsc) m.vsc = { hasVSC: false, expiryDate: '', issueDate: '', fileUrl: '', storagePath: '', fileName: '' };
     if(m.vsc.hasVSC===undefined) m.vsc.hasVSC = false;
     if(m.vsc.expiryDate===undefined) m.vsc.expiryDate = '';
+    if(m.vsc.issueDate===undefined) m.vsc.issueDate = '';
     if(m.vsc.fileUrl===undefined) m.vsc.fileUrl = '';
     if(m.vsc.storagePath===undefined) m.vsc.storagePath = '';
     if(m.vsc.fileName===undefined) m.vsc.fileName = '';
@@ -5186,12 +5187,13 @@ function renderStaffFileReadOnly(m){
       ${(()=>{
         const v = m.vsc||{};
         if(!v.hasVSC) return '<div class="sub" style="color:#c0392b;">No VSC on file for this employee.</div>';
-        if(!v.expiryDate) return '<div style="color:#27ae60;font-weight:600;">VSC on file — no expiry date set.</div>';
-        const daysLeft = daysBetween(todayStr(), v.expiryDate);
-        const expFmt = fmtShortDate(v.expiryDate);
-        if(daysLeft < 0) return `<div style="color:#c0392b;font-weight:600;">VSC EXPIRED — expired ${expFmt}</div>`;
-        if(daysLeft <= 30) return `<div style="color:#c0392b;font-weight:600;">VSC on file — expires ${expFmt} (${daysLeft} day${daysLeft!==1?'s':''} remaining)</div>`;
-        return `<div style="color:#27ae60;font-weight:600;">VSC on file — expires ${expFmt}</div>`;
+        const renewal = vscRenewalDate(v);
+        if(!renewal) return '<div style="color:#27ae60;font-weight:600;">VSC on file — no issue date set.</div>';
+        const daysLeft = daysBetween(todayStr(), renewal);
+        const expFmt = fmtShortDate(renewal);
+        if(daysLeft < 0) return `<div style="color:#c0392b;font-weight:600;">VSC RENEWAL OVERDUE — renewal was due ${expFmt}</div>`;
+        if(daysLeft <= 30) return `<div style="color:#c0392b;font-weight:600;">VSC renewal due ${expFmt} (${daysLeft} day${daysLeft!==1?'s':''} remaining)</div>`;
+        return `<div style="color:#27ae60;font-weight:600;">VSC on file — renewal due ${expFmt}</div>`;
       })()}
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn-ghost" onclick="closeStaffFilePreview();openEmployeeFile(${m.id});showTab('manager')">Edit VSC in Employee File →</button>
@@ -5931,11 +5933,12 @@ function renderTeam(){
             const vscCell = isManagerLogin() ? (()=>{
               const v = m.vsc||{};
               if(!v.hasVSC) return '<td style="color:#c0392b;font-size:12px;">None</td>';
-              if(!v.expiryDate) return '<td style="color:#27ae60;font-size:12px;">On file</td>';
-              const dl = daysBetween(todayStr(), v.expiryDate);
-              if(dl < 0) return '<td style="color:#c0392b;font-size:12px;font-weight:700;">Expired</td>';
-              if(dl <= 30) return `<td style="color:#c0392b;font-size:12px;">Exp. ${fmtShortDate(v.expiryDate)}</td>`;
-              return `<td style="color:#27ae60;font-size:12px;">Exp. ${fmtShortDate(v.expiryDate)}</td>`;
+              const renewal = vscRenewalDate(v);
+              if(!renewal) return '<td style="color:#27ae60;font-size:12px;">On file</td>';
+              const dl = daysBetween(todayStr(), renewal);
+              if(dl < 0) return '<td style="color:#c0392b;font-size:12px;font-weight:700;">Renewal overdue</td>';
+              if(dl <= 30) return `<td style="color:#c0392b;font-size:12px;">Renew ${fmtShortDate(renewal)}</td>`;
+              return `<td style="color:#27ae60;font-size:12px;">Renew ${fmtShortDate(renewal)}</td>`;
             })() : '';
             const rateCell = isManagerLogin() ? `${vscCell}<td>${m.hourlyRate ? '$'+parseFloat(m.hourlyRate).toFixed(2)+'/hr' : '—'}</td><td style="font-size:13px;color:var(--gray);">${lastLogin}</td>` : '';
             return `<tr><td style="display:flex;align-items:center;gap:6px;">${isManagerLogin() ? `<button class="btn-ghost" style="padding:2px 6px;font-weight:600;" onclick="openStaffFilePreview(${m.id})">${esc(m.name)}</button>` : esc(m.name)}<button class="btn-ghost" style="padding:2px 8px;font-size:12px;border-radius:12px;" onclick="openDMChat('${m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"></button></td><td><span style="background:${rCol}22;color:${rCol};font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;border:1px solid ${rCol}55;">${displayRole}</span></td><td>${m.phone || '—'}</td>${rateCell}</tr>`;
@@ -6590,20 +6593,22 @@ function renderDashboard(){
     return pr.needsAck && !pr.employeeAckedAt ? {memberId:me.id, updatedAt:pr.updatedAt} : null;
   })();
   const managerProgressAcks = isManagerLogin() ? DATA.team.filter(m=>!m.archived&&m.evaluation&&m.evaluation.progressReport&&m.evaluation.progressReport.needsAck&&!m.evaluation.progressReport.managerAckedAt) : [];
-  // VSC expiry notifications
+  // VSC renewal notifications
   const myVscExpiry = (() => {
     if(isManagerLogin() || !myName) return null;
     const me = DATA.team.find(x=>x.name===myName && !x.archived); if(!me) return null;
-    const v = me.vsc||{}; if(!v.hasVSC || !v.expiryDate) return null;
-    const dl = daysBetween(todayStr(), v.expiryDate);
-    if(dl <= 30) return { daysLeft: dl, expiryDate: v.expiryDate };
+    const v = me.vsc||{}; if(!v.hasVSC) return null;
+    const renewal = vscRenewalDate(v); if(!renewal) return null;
+    const dl = daysBetween(todayStr(), renewal);
+    if(dl <= 30) return { daysLeft: dl, expiryDate: renewal };
     return null;
   })();
   const managerVscExpiring = isManagerLogin() ? DATA.team.filter(m=>{
     if(m.archived) return false;
-    const v = m.vsc||{}; if(!v.hasVSC || !v.expiryDate) return false;
-    return daysBetween(todayStr(), v.expiryDate) <= 30;
-  }).map(m=>({ m, daysLeft: daysBetween(todayStr(), m.vsc.expiryDate) })) : [];
+    const v = m.vsc||{}; if(!v.hasVSC) return false;
+    const renewal = vscRenewalDate(v); if(!renewal) return false;
+    return daysBetween(todayStr(), renewal) <= 30;
+  }).map(m=>({ m, daysLeft: daysBetween(todayStr(), vscRenewalDate(m.vsc)) })) : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! </span>
@@ -6671,7 +6676,7 @@ function renderDashboard(){
     ${myVscExpiry ? `
     <div class="card" style="border-left:5px solid #c0392b;">
       <h2 style="margin-bottom:6px;">Vulnerable Sector Check Expiring Soon</h2>
-      <div class="sub" style="margin-bottom:12px;">${myVscExpiry.daysLeft < 0 ? 'Your Vulnerable Sector Check has <strong>expired</strong>.' : `Your Vulnerable Sector Check expires on <strong>${fmtShortDate(myVscExpiry.expiryDate)}</strong> — ${myVscExpiry.daysLeft === 0 ? 'that is today!' : `in ${myVscExpiry.daysLeft} day${myVscExpiry.daysLeft!==1?'s':''}.`}`} Please arrange for a renewal with your manager.</div>
+      <div class="sub" style="margin-bottom:12px;">${myVscExpiry.daysLeft < 0 ? 'Your Vulnerable Sector Check renewal is <strong>overdue</strong>.' : `Your Vulnerable Sector Check renewal is due on <strong>${fmtShortDate(myVscExpiry.expiryDate)}</strong> — ${myVscExpiry.daysLeft === 0 ? 'that is today!' : `in ${myVscExpiry.daysLeft} day${myVscExpiry.daysLeft!==1?'s':''}.`}`} Please arrange for a renewal with your manager.</div>
       <button class="btn-ghost" onclick="downloadVSCLetter()">Download VSC Letter</button>
     </div>` : ''}
     ${managerVscExpiring.length ? `
@@ -6681,7 +6686,7 @@ function renderDashboard(){
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
           <div>
             <span style="font-weight:600;">${esc(m.name)}</span>
-            <span style="margin-left:8px;font-size:13px;color:${daysLeft<0?'#c0392b':'var(--text-light)'};">${daysLeft<0?'EXPIRED':'Expires '+fmtShortDate(m.vsc.expiryDate)+' ('+daysLeft+' day'+(daysLeft!==1?'s':'')+' remaining)'}</span>
+            <span style="margin-left:8px;font-size:13px;color:${daysLeft<0?'#c0392b':'var(--text-light)'};">${daysLeft<0?'RENEWAL OVERDUE':'Renewal due '+fmtShortDate(vscRenewalDate(m.vsc))+' ('+daysLeft+' day'+(daysLeft!==1?'s':'')+' remaining)'}</span>
           </div>
           <button class="btn-small" onclick="openEmployeeFile(${m.id});showTab('manager')">View Employee File →</button>
         </div>`).join('')}
@@ -13522,6 +13527,18 @@ function saveStaffField(id, field, value){
   saveData();
   showTab(CURRENT_TAB);
 }
+// Returns the renewal/expiry date string for a VSC object.
+// If issueDate is set: renewal = issueDate + 1 calendar year.
+// Falls back to legacy expiryDate for records entered before this change.
+function vscRenewalDate(v){
+  if(v && v.issueDate){
+    const d = new Date(v.issueDate+'T00:00:00');
+    d.setFullYear(d.getFullYear()+1);
+    return d.toISOString().slice(0,10);
+  }
+  return (v && v.expiryDate) ? v.expiryDate : '';
+}
+
 function updateVSC(id, field, value){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
@@ -13769,14 +13786,16 @@ function renderEmployeeFile(m){
       </div>
       ${m.vsc&&m.vsc.hasVSC ? `
       <div class="field-block" style="margin-top:8px;">
-        <label>Expiry Date</label>
-        <input type="date" value="${esc(m.vsc.expiryDate||'')}" onchange="updateVSC(${m.id},'expiryDate',this.value)">
-        ${m.vsc.expiryDate ? (()=>{
-          const daysLeft = daysBetween(todayStr(), m.vsc.expiryDate);
-          if(daysLeft < 0) return '<div class="sub" style="color:#c0392b;margin-top:4px;">EXPIRED — this VSC is no longer valid.</div>';
-          if(daysLeft <= 30) return `<div class="sub" style="color:#c0392b;margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''} — renewal needed soon.</div>`;
-          return `<div class="sub" style="color:var(--gray);margin-top:4px;">Expires in ${daysLeft} day${daysLeft!==1?'s':''}.</div>`;
-        })() : ''}
+        <label>Issue Date</label>
+        <input type="date" value="${esc(m.vsc.issueDate||'')}" onchange="updateVSC(${m.id},'issueDate',this.value)">
+        ${m.vsc.issueDate ? (()=>{
+          const renewal = vscRenewalDate(m.vsc);
+          const daysLeft = daysBetween(todayStr(), renewal);
+          const renewalFmt = fmtShortDate(renewal);
+          if(daysLeft < 0) return `<div class="sub" style="color:#c0392b;margin-top:4px;">Renewal was due ${renewalFmt} — VSC may no longer be valid.</div>`;
+          if(daysLeft <= 60) return `<div class="sub" style="color:#c0392b;margin-top:4px;">Renewal due ${renewalFmt} — ${daysLeft} day${daysLeft!==1?'s':''} away.</div>`;
+          return `<div class="sub" style="color:var(--gray);margin-top:4px;">Renewal due ${renewalFmt} (${daysLeft} day${daysLeft!==1?'s':''} away).</div>`;
+        })() : '<div class="sub" style="color:#888;margin-top:4px;">Enter issue date to calculate renewal reminder (1 year from issue).</div>'}
       </div>
       <div class="field-block" style="margin-top:12px;">
         <label>VSC Document</label>
