@@ -1093,6 +1093,22 @@ function normalizeData(d){
   });
   if(d.welcome && !d.welcome.customTabs) d.welcome.customTabs=[];
   if(d.welcome && d.welcome.keeperssong===undefined) d.welcome.keeperssong='';
+  if(d.welcome && !d.welcome.orgChart){
+    d.welcome.orgChart = {
+      nodes:[
+        {id:1,name:'Kyle',title:'Co-Owner / Chief Executive Officer (CEO)',responsibilities:['Shows & Events','Scheduling & Payroll','Finances & Business Decisions','Client Relations'],color:'#1e3a5f',tier:0,assignedMember:'Kyle'},
+        {id:2,name:'Janie',title:'Co-Owner / Animal Care Curator',responsibilities:['Animal Health & Welfare','Diets & Husbandry','Veterinary Care','Animal Care Standards'],color:'#2d5a4a',tier:0,assignedMember:'Janie'},
+        {id:3,name:'Alan',title:'Operations Manager',responsibilities:['Enforce Policies & Procedures','Staff Accountability','Inspections & Work Quality','Injury & Incident Compliance','Corrective Action Follow-Up'],color:'#3d4873',tier:1,assignedMember:'Alan'},
+        {id:4,name:'Office',title:'Office Administrator',responsibilities:['Answer Emails & Inquiries','Social Media Content','Grant Applications','Fundraising Coordination','Administrative Records'],color:'#5a3d75',tier:1,assignedMember:''}
+      ],
+      bottomBox:{title:'ALL OPERATIONAL EMPLOYEES',subtitle:'Animal Care • Wildlife Educators • Events & Entertainment • Support Staff',description:'Alan oversees compliance with established procedures; Kyle and Janie direct their respective departments'}
+    };
+  }
+  if(d.welcome && d.welcome.orgChart){
+    if(!Array.isArray(d.welcome.orgChart.nodes)) d.welcome.orgChart.nodes=[];
+    if(!d.welcome.orgChart.bottomBox) d.welcome.orgChart.bottomBox={title:'',subtitle:'',description:''};
+    d.welcome.orgChart.nodes.forEach(n=>{ if(!n.id) n.id=Date.now()+Math.random(); if(!n.responsibilities) n.responsibilities=[]; });
+  }
   if(d.welcome && d.welcome.soundsystems===undefined) d.welcome.soundsystems='';
   if(d.welcome && d.welcome.incidents===undefined) d.welcome.incidents='Log any injury or minor incident here. For major incidents, contact a supervisor immediately.';
   if(d.welcome && d.welcome.team===undefined) d.welcome.team="Your employee file, emergency contact, pay stubs, everyone's contact info, quiz results, approved animal list, and stats.";
@@ -3254,7 +3270,8 @@ const WELCOME_TABS = [
   {id:'policies', label:'Policies & Procedures'},
   {id:'safety', label:'Health & Safety'},
   {id:'soundsystems', label:'Sound Systems'},
-  {id:'shows', label:'Shows & Presentations'}
+  {id:'shows', label:'Shows & Presentations'},
+  {id:'orgchart', label:'Org Chart'}
 ];
 let WELCOME_TAB = 'about';
 function getAllWelcomeTabs(){
@@ -3327,6 +3344,20 @@ function renderWelcome(){
         <div class="detail-tabs">${tabsHtml}</div>
       </div>
       ${renderQuizWelcomeTab()}`;
+  }
+
+  // Org chart tab
+  if(WELCOME_TAB === 'orgchart'){
+    return `
+      <div class="card">
+        <h2>Welcome</h2>
+        ${staffName ? `<div class="sub">Signed in as <strong>${esc(staffName)}</strong>.</div>` : ''}
+        <div class="detail-tabs">${tabsHtml}</div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:4px;">Organizational Chart</h2>
+        ${renderWelcomeOrgChart()}
+      </div>`;
   }
 
   const isCustomTab = WELCOME_TAB.startsWith('custom_');
@@ -4114,6 +4145,157 @@ function sinFieldHtml(memberId, sinValue){
     <span style="letter-spacing:3px;font-size:16px;color:var(--gray);">••• ••• •••</span>
     <button class="btn-small" onclick="openSinModal(${memberId})"> Reveal</button>${editBtn}
   </div>`;
+}
+
+/* ---------- ORG CHART ---------- */
+function saveOrgChartNodeField(id, field, value){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===id);
+  if(!node) return;
+  node[field] = value;
+  saveData();
+}
+function saveOrgChartResponsibility(nodeId, idx, value){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
+  if(!node) return;
+  node.responsibilities[idx] = value;
+  saveData();
+}
+function addOrgChartResponsibility(nodeId){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
+  if(!node) return;
+  node.responsibilities.push('New item');
+  saveData(); showTab('welcome');
+}
+function removeOrgChartResponsibility(nodeId, idx){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
+  if(!node) return;
+  node.responsibilities.splice(idx, 1);
+  saveData(); showTab('welcome');
+}
+function saveOrgChartBottomField(field, value){
+  if(!DATA.welcome.orgChart.bottomBox) DATA.welcome.orgChart.bottomBox={};
+  DATA.welcome.orgChart.bottomBox[field] = value;
+  saveData();
+}
+function addOrgChartNode(tier){
+  if(!DATA.welcome.orgChart.nodes) DATA.welcome.orgChart.nodes=[];
+  const maxId = Math.max(0,...DATA.welcome.orgChart.nodes.map(n=>n.id||0));
+  DATA.welcome.orgChart.nodes.push({id:maxId+1,name:'New Role',title:'Title',responsibilities:[],color:'#3d4873',tier:parseInt(tier),assignedMember:''});
+  saveData(); showTab('welcome');
+}
+function removeOrgChartNode(id){
+  if(!confirm('Remove this position from the org chart?')) return;
+  DATA.welcome.orgChart.nodes = DATA.welcome.orgChart.nodes.filter(n=>n.id!==id);
+  saveData(); showTab('welcome');
+}
+function renderWelcomeOrgChart(){
+  const oc = DATA.welcome.orgChart||{nodes:[],bottomBox:{}};
+  const nodes = oc.nodes||[];
+  const bottom = oc.bottomBox||{};
+  const isMgr = isManagerLogin();
+  const activeMembers = (DATA.team||[]).filter(m=>!m.archived).map(m=>m.name);
+
+  // Group nodes by tier
+  const tierMap = {};
+  nodes.forEach(n=>{ const t=n.tier||0; if(!tierMap[t]) tierMap[t]=[]; tierMap[t].push(n); });
+  const tierKeys = Object.keys(tierMap).map(Number).sort();
+
+  function renderNode(n){
+    const bg = n.color||'#3d4873';
+    const nameEl = isMgr
+      ? `<div contenteditable="true" spellcheck="false" style="font-size:22px;font-weight:800;color:#fff;text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'name',this.textContent.trim())">${esc(n.name)}</div>`
+      : `<div style="font-size:22px;font-weight:800;color:#fff;text-align:center;">${esc(n.assignedMember||n.name)}</div>`;
+    const memberDropdown = isMgr ? `
+      <select onchange="saveOrgChartNodeField(${n.id},'assignedMember',this.value)" style="width:100%;margin-top:5px;padding:3px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:#fff;font-size:12px;cursor:pointer;">
+        <option value="">— assign team member —</option>
+        ${activeMembers.map(m=>`<option value="${esc(m)}" ${n.assignedMember===m?'selected':''}>${esc(m)}</option>`).join('')}
+      </select>` : '';
+    const titleEl = isMgr
+      ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'title',this.textContent.trim())">${esc(n.title||'')}</div>`
+      : `<div style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;">${esc(n.title||'')}</div>`;
+    const respItems = isMgr
+      ? (n.responsibilities||[]).map((r,i)=>`
+          <div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:2px 0;">
+            <span contenteditable="true" spellcheck="false" style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartResponsibility(${n.id},${i},this.textContent.trim())">${esc(r)}</span>
+            <button onclick="removeOrgChartResponsibility(${n.id},${i})" style="font-size:11px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:3px;padding:0 5px;line-height:16px;cursor:pointer;">×</button>
+          </div>`).join('')
+        + `<button onclick="addOrgChartResponsibility(${n.id})" style="margin-top:6px;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;">+ Add</button>`
+      : (n.responsibilities||[]).map(r=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:2px 0;">${esc(r)}</div>`).join('');
+    const mgmtRow = isMgr ? `
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <label style="font-size:11px;color:rgba(255,255,255,0.7);">Color:</label>
+        <input type="color" value="${esc(bg)}" onchange="saveOrgChartNodeField(${n.id},'color',this.value);showTab('welcome')" style="width:28px;height:20px;border:none;border-radius:3px;cursor:pointer;padding:0;background:none;">
+        <button onclick="removeOrgChartNode(${n.id})" style="font-size:11px;background:rgba(255,0,0,0.25);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">Remove</button>
+      </div>` : '';
+    return `<div style="flex:1;background:${bg};border-radius:12px;padding:20px 16px 16px;min-width:0;display:flex;flex-direction:column;">
+      ${nameEl}
+      ${memberDropdown}
+      <div style="border-top:1px solid rgba(255,255,255,0.3);margin:10px 0 8px;"></div>
+      ${titleEl}
+      <div style="border-top:1px solid rgba(255,255,255,0.3);margin:8px 0 10px;"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;">${respItems}</div>
+      ${mgmtRow}
+    </div>`;
+  }
+
+  function renderConnector(topNodes, bottomNodes){
+    if(!topNodes.length||!bottomNodes.length) return '';
+    const tc=topNodes.length, bc=bottomNodes.length;
+    const lines=[];
+    // Verticals from top nodes down to crossbar
+    for(let i=0;i<tc;i++){
+      const pct=(2*i+1)/(2*tc)*100;
+      lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:0;width:2px;height:30px;background:#ccc;"></div>`);
+    }
+    // Top horizontal bar
+    const tl=1/(2*tc)*100, tr=(2*tc-1)/(2*tc)*100;
+    if(tc>1) lines.push(`<div style="position:absolute;left:${tl}%;top:29px;width:${tr-tl}%;height:2px;background:#ccc;"></div>`);
+    // Center vertical down
+    const mid=50;
+    lines.push(`<div style="position:absolute;left:calc(${mid}% - 1px);top:29px;width:2px;height:${bc>1?31:60}px;background:#ccc;"></div>`);
+    if(bc>1){
+      const bl=1/(2*bc)*100, br=(2*bc-1)/(2*bc)*100;
+      lines.push(`<div style="position:absolute;left:${bl}%;top:59px;width:${br-bl}%;height:2px;background:#ccc;"></div>`);
+      for(let i=0;i<bc;i++){
+        const pct=(2*i+1)/(2*bc)*100;
+        lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:59px;width:2px;height:31px;background:#ccc;"></div>`);
+      }
+    }
+    return `<div style="position:relative;height:90px;">${lines.join('')}</div>`;
+  }
+
+  let chartHtml = '';
+  for(let ti=0;ti<tierKeys.length;ti++){
+    const tier=tierKeys[ti];
+    chartHtml += `<div style="display:flex;gap:12px;">${tierMap[tier].map(n=>renderNode(n)).join('')}</div>`;
+    if(isMgr) chartHtml += `<div style="text-align:center;margin:4px 0;">
+      <button onclick="addOrgChartNode(${tier})" style="font-size:11px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:2px 10px;cursor:pointer;">+ Add box to this row</button>
+    </div>`;
+    if(ti<tierKeys.length-1) chartHtml += renderConnector(tierMap[tier], tierMap[tierKeys[ti+1]]);
+  }
+  if(isMgr) chartHtml += `<div style="text-align:center;margin:12px 0 0;">
+    <button onclick="addOrgChartNode(${tierKeys.length>0?Math.max(...tierKeys)+1:0})" style="font-size:12px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:4px 14px;cursor:pointer;">+ Add new row</button>
+  </div>`;
+
+  // Bottom box
+  const bTitle = isMgr
+    ? `<div contenteditable="true" spellcheck="false" style="font-weight:800;font-size:16px;text-align:center;outline:none;" onblur="saveOrgChartBottomField('title',this.textContent.trim())">${esc(bottom.title||'')}</div>`
+    : `<div style="font-weight:800;font-size:16px;text-align:center;">${esc(bottom.title||'')}</div>`;
+  const bSub = isMgr
+    ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:#555;text-align:center;margin-top:4px;outline:none;" onblur="saveOrgChartBottomField('subtitle',this.textContent.trim())">${esc(bottom.subtitle||'')}</div>`
+    : `<div style="font-size:13px;color:#555;text-align:center;margin-top:4px;">${esc(bottom.subtitle||'')}</div>`;
+  const bDesc = isMgr
+    ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:#666;text-align:center;margin-top:4px;outline:none;" onblur="saveOrgChartBottomField('description',this.textContent.trim())">${esc(bottom.description||'')}</div>`
+    : `<div style="font-size:13px;color:#666;text-align:center;margin-top:4px;">${esc(bottom.description||'')}</div>`;
+
+  const bottomHtml = `
+    <div style="display:flex;justify-content:center;height:30px;"><div style="border-left:2px solid #ccc;width:2px;"></div></div>
+    <div style="border:2px solid #ddd;border-radius:12px;padding:16px;background:#f9f9f9;">
+      ${bTitle}${bSub}${bDesc}
+    </div>`;
+
+  const hint = isMgr ? `<div style="font-size:12px;color:#999;text-align:center;margin-bottom:10px;">Click any text to edit • Changes save automatically</div>` : '';
+  return `<div style="max-width:900px;margin:0 auto;">${hint}${chartHtml}${bottomHtml}</div>`;
 }
 
 /* ---------- SCRIPTS TAB ---------- */
