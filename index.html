@@ -17209,7 +17209,7 @@ function renderManager(){
       };
       function showTypeRevenue(s) {
         const types = s.showTypes || [];
-        const days  = getShowDays(s).length;
+        const days  = Math.max(1, getShowDays(s).length - (s.travelDay ? 1 : 0));
         let total = 0;
         const breakdown = {};
         types.forEach(t => {
@@ -17415,7 +17415,7 @@ function renderManager(){
       const liveOnlyShows = (DATA.shows||[]).filter(s=>showStatus(s)==='completed' && !historicalYearSet.has((s.date||'').slice(0,4)));
       const TOTALS_PRICES = {'Country':350,'Continent':475,'Display':2500,'MTK Racing':2000,'Archeology':299,'Battle Match':350,'Science':299,'Fairs/Festivals':1400};
       const liveShowIncome = liveOnlyShows.reduce((sum,s)=>{
-        const days = getShowDays(s).length;
+        const days = Math.max(1, getShowDays(s).length - (s.travelDay ? 1 : 0));
         return sum + (s.showTypes||[]).reduce((t,type)=>{
           if(type==='Character Walkaround'){ const nc=(s.characters||[]).length; return t+(nc>=3?1800:nc===2?1500:1200)*days; }
           const p=TOTALS_PRICES[type]; if(!p) return t;
