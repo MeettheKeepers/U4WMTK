@@ -17257,12 +17257,13 @@ function renderManager(){
           else if(isUp){ typeTotals[t].upcoming+=v; }
         });
       });
-      // Add Family Fun Fest income to the type table
-      const fffTotalIncome = fffGetEvents().reduce((sum,ev)=>{
+      // Add Family Fun Fest income to the type table (filtered by year)
+      const _fffFiltered = fffGetEvents().filter(ev => FINANCIALS_YEAR === 'all' || String(ev.year) === FINANCIALS_YEAR);
+      const fffTotalIncome = _fffFiltered.reduce((sum,ev)=>{
         return sum + (ev.income||[]).reduce((s,i)=>s+parseFloat(i.amount||0),0);
       }, 0);
       if(fffTotalIncome > 0){
-        typeTotals['Family Fun Fest'] = {earned: fffTotalIncome, upcoming: 0, count: fffGetEvents().length};
+        typeTotals['Family Fun Fest'] = {earned: fffTotalIncome, upcoming: 0, count: _fffFiltered.length};
       }
 
       const sortedTypeList = Object.entries(typeTotals)
