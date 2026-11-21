@@ -12780,17 +12780,152 @@ function renderCashTill(){
       </div>
     </div>`;
 }
+function renderTotalsTab(){
+  const fmtD = n=>{
+    const abs = Math.abs(n);
+    const str = '$'+abs.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return n<0 ? '-'+str : str;
+  };
+  const fmtRow = (label, amount, sub, color, bold)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:14px;${bold?'font-weight:700;':''}">${label}</div>
+        ${sub?`<div style="font-size:12px;color:#999;margin-top:1px;">${sub}</div>`:''}
+      </div>
+      <div style="font-size:15px;font-weight:700;color:${color||'var(--text)'};">${fmtD(amount)}</div>
+    </div>`;
+
+  // Bank accounts (starting balances from each org)
+  const mtkBal   = parseFloat(DATA.ongoingBills.startingBalance)||0;
+  const u4wBal   = parseFloat(DATA.u4wOngoingBills.startingBalance)||0;
+  const jointBal = parseFloat(DATA.jointOngoingBills.startingBalance)||0;
+  const totalBankBal = mtkBal + u4wBal + jointBal;
+
+  // Cash till
+  const till = DATA.cashTill||{counts:{},rolled:{}};
+  const counts = till.counts||{};
+  let tillTotal = 0;
+  TILL_DENOMS.forEach(d=>{ tillTotal += (counts[d.key]||0)*d.value; });
+
+  // Total liquid
+  const totalLiquid = totalBankBal + tillTotal;
+
+  // Credit cards
+  const cards = DATA.creditCards||[];
+  const totalLimit = cards.reduce((s,c)=>s+(parseFloat(c.limit)||0),0);
+  const totalOwed  = cards.reduce((s,c)=>s+(parseFloat(c.owed)||0),0);
+  const totalAvailCredit = totalLimit - totalOwed;
+
+  // Grand total available
+  const grandTotal = totalLiquid + totalAvailCredit;
+
+  const cardRows = cards.map(c=>{
+    const lim = parseFloat(c.limit)||0;
+    const owed = parseFloat(c.owed)||0;
+    const avail = lim - owed;
+    const pct = lim>0 ? Math.round(owed/lim*100) : 0;
+    const barColor = pct>=80?'#c0392b':pct>=60?'#e67e22':'#2a9d5c';
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div>
+          <span style="font-size:14px;">${esc(c.name)}</span>
+          ${c.owner?`<span style="font-size:12px;color:#999;margin-left:6px;">${esc(c.owner)}</span>`:''}
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:14px;font-weight:700;color:#2a9d5c;">${fmtD(avail)}</span>
+          <span style="font-size:12px;color:#999;margin-left:6px;">available</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;height:5px;background:#eee;border-radius:3px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;"></div>
+        </div>
+        <span style="font-size:11px;color:#999;white-space:nowrap;">${fmtD(owed)} of ${fmtD(lim)} used</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const sectionHead = (title, icon)=>`<div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-light);margin:20px 0 4px;">${icon} ${title}</div>`;
+
+  return `
+    <h2 style="margin-bottom:4px;">Financial Overview</h2>
+    <div class="sub" style="margin-bottom:16px;">Live snapshot across all accounts, cash, and available credit. Updates automatically as you change balances.</div>
+
+    <!-- Big summary cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:4px;">
+      <div style="background:#f0f7f0;border:2px solid #2a9d5c;border-radius:10px;padding:14px 16px;text-align:center;">
+        <div style="font-size:12px;color:#555;margin-bottom:4px;">Total Liquid</div>
+        <div style="font-size:22px;font-weight:800;color:#1a6b35;">${fmtD(totalLiquid)}</div>
+        <div style="font-size:11px;color:#999;margin-top:2px;">accounts + cash</div>
+      </div>
+      <div style="background:#f0f4ff;border:2px solid #6c5ce7;border-radius:10px;padding:14px 16px;text-align:center;">
+        <div style="font-size:12px;color:#555;margin-bottom:4px;">Credit Available</div>
+        <div style="font-size:22px;font-weight:800;color:#6c5ce7;">${fmtD(totalAvailCredit)}</div>
+        <div style="font-size:11px;color:#999;margin-top:2px;">across ${cards.length} card${cards.length!==1?'s':''}</div>
+      </div>
+      <div style="background:#fff8e6;border:2px solid #e67e22;border-radius:10px;padding:14px 16px;text-align:center;">
+        <div style="font-size:12px;color:#555;margin-bottom:4px;">Total Available</div>
+        <div style="font-size:22px;font-weight:800;color:#e67e22;">${fmtD(grandTotal)}</div>
+        <div style="font-size:11px;color:#999;margin-top:2px;">liquid + credit</div>
+      </div>
+    </div>
+
+    <!-- Bank accounts breakdown -->
+    ${sectionHead('Bank Accounts','')}
+    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:0 12px;">
+      ${fmtRow('Meet the Keepers', mtkBal, 'Current balance (MTK account)', mtkBal>=0?'#1a6b35':'#c0392b')}
+      ${fmtRow('Unite for Wildlife', u4wBal, 'Current balance (U4W account)', u4wBal>=0?'#1a6b35':'#c0392b')}
+      ${fmtRow('Joint Account', jointBal, 'Current balance (joint account)', jointBal>=0?'#1a6b35':'#c0392b')}
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <div style="font-weight:700;font-size:14px;">Bank Total</div>
+        <div style="font-size:15px;font-weight:700;color:${totalBankBal>=0?'#1a6b35':'#c0392b'};">${fmtD(totalBankBal)}</div>
+      </div>
+    </div>
+
+    <!-- Cash till breakdown -->
+    ${sectionHead('Cash Till','')}
+    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:0 12px;">
+      ${(()=>{
+        const bills = TILL_DENOMS.filter(d=>d.type==='bill');
+        const coins = TILL_DENOMS.filter(d=>d.type==='coin');
+        let billAmt=0, coinAmt=0;
+        bills.forEach(d=>{ const c=counts[d.key]||0; if(c) billAmt+=c*d.value; });
+        coins.forEach(d=>{ const c=counts[d.key]||0; if(c) coinAmt+=c*d.value; });
+        return fmtRow('Bills ($5 and up)', billAmt, null, '#1a6b35')
+          + fmtRow('Change (coins + $1 + $2)', coinAmt, null, '#555')
+          + `<div style="display:flex;justify-content:space-between;padding:10px 0;">
+              <div style="font-weight:700;font-size:14px;">Till Total</div>
+              <div style="font-size:15px;font-weight:700;color:#1a6b35;">${fmtD(tillTotal)}</div>
+            </div>`;
+      })()}
+    </div>
+
+    <!-- Credit cards -->
+    ${sectionHead('Credit Cards','')}
+    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:0 12px;">
+      ${cardRows||'<div style="padding:12px 0;color:#999;font-size:13px;">No credit cards on file.</div>'}
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <div>
+          <div style="font-weight:700;font-size:14px;">Total Available Credit</div>
+          <div style="font-size:12px;color:#999;">${fmtD(totalOwed)} owed of ${fmtD(totalLimit)} total limit</div>
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#6c5ce7;">${fmtD(totalAvailCredit)}</div>
+      </div>
+    </div>`;
+}
 function renderOngoingBillsTab(){
   const orgTabs = [
     {id:'mtk',   label:'Meet the Keepers'},
     {id:'u4w',   label:'Unite for Wildlife'},
     {id:'joint', label:'Joint Account'},
-    {id:'till',  label:'Cash Till'}
+    {id:'till',  label:'Cash Till'},
+    {id:'totals',label:'Total'}
   ];
-  const orgNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;">
+  const orgNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;flex-wrap:wrap;">
     ${orgTabs.map(t=>`<button onclick="CASHFLOW_ORG='${t.id}';showTab('manager')" style="padding:8px 20px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${CASHFLOW_ORG===t.id?'2px solid var(--accent)':'2px solid transparent'};margin-bottom:-2px;color:${CASHFLOW_ORG===t.id?'var(--accent)':'#666'};">${t.label}</button>`).join('')}
   </div>`;
-  if(CASHFLOW_ORG==='till') return orgNav + `<div class="card">${renderCashTill()}</div>`;
+  if(CASHFLOW_ORG==='till')   return orgNav + `<div class="card">${renderCashTill()}</div>`;
+  if(CASHFLOW_ORG==='totals') return orgNav + `<div class="card">${renderTotalsTab()}</div>`;
   return orgNav + _renderOngoingBillsContent(CASHFLOW_ORG);
 }
 
