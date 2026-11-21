@@ -1044,6 +1044,7 @@ function normalizeData(d){
   if(!d.admin.training._savedAt) d.admin.training._savedAt = 0;
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(!d.dashDismissals) d.dashDismissals = {};
+  if(!d.cashTill) d.cashTill = {counts:{}, rolled:{}};
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
   d.contracts.forEach(c=>{
@@ -12680,15 +12681,116 @@ function deleteOngoingBillSummaryItem(id, org){
   saveData(); showTab('manager');
 }
 
+const TILL_DENOMS = [
+  {key:'d100',  label:'$100.00', value:100,  type:'bill'},
+  {key:'d50',   label:'$50.00',  value:50,   type:'bill'},
+  {key:'d20',   label:'$20.00',  value:20,   type:'bill'},
+  {key:'d10',   label:'$10.00',  value:10,   type:'bill'},
+  {key:'d5',    label:'$5.00',   value:5,    type:'bill'},
+  {key:'d2',    label:'$2.00',   value:2,    type:'coin'},
+  {key:'d1',    label:'$1.00',   value:1,    type:'coin'},
+  {key:'d025',  label:'$0.25',   value:0.25, type:'coin'},
+  {key:'d010',  label:'$0.10',   value:0.10, type:'coin'},
+  {key:'d005',  label:'$0.05',   value:0.05, type:'coin'},
+];
+function saveTillCount(key, val){
+  if(!DATA.cashTill) DATA.cashTill={counts:{},rolled:{}};
+  DATA.cashTill.counts[key] = parseInt(val)||0;
+  saveData(); showTab('manager');
+}
+function saveTillRolled(key, val){
+  if(!DATA.cashTill) DATA.cashTill={counts:{},rolled:{}};
+  DATA.cashTill.rolled[key] = parseFloat(val)||0;
+  saveData(); showTab('manager');
+}
+function renderCashTill(){
+  const till = DATA.cashTill||{counts:{},rolled:{}};
+  const counts = till.counts||{};
+  const rolled = till.rolled||{};
+  const fmtD = n=>'$'+Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  let grandTotal=0, changeTotal=0, billTotal=0;
+  TILL_DENOMS.forEach(d=>{
+    const count = counts[d.key]||0;
+    const lineTotal = count * d.value;
+    grandTotal += lineTotal;
+    if(d.type==='coin') changeTotal += lineTotal;
+    else billTotal += lineTotal;
+  });
+  const cashTotal = billTotal;
+
+  const rows = TILL_DENOMS.map(d=>{
+    const count = counts[d.key]||0;
+    const lineTotal = count * d.value;
+    const showRolled = d.type==='coin' || d.value===5;
+    const rolledVal = rolled[d.key]||0;
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;font-weight:700;font-size:14px;width:110px;">${d.label}</td>
+      <td style="padding:8px 10px;width:110px;">
+        <input type="number" min="0" value="${count}" onchange="saveTillCount('${d.key}',this.value)"
+          style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;">
+      </td>
+      <td style="padding:8px 12px;font-weight:600;font-size:14px;text-align:right;color:${lineTotal>0?'#1a6b35':'#999'};width:110px;">${fmtD(lineTotal)}</td>
+      <td style="padding:8px 10px;width:130px;">
+        ${showRolled?`<input type="number" min="0" step="0.01" value="${rolledVal||''}" placeholder="0.00" onchange="saveTillRolled('${d.key}',this.value)"
+          style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-align:right;">`:''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  const rolledGrandTotal = TILL_DENOMS.filter(d=>d.type==='coin'||d.value===5).reduce((s,d)=>s+(rolled[d.key]||0),0);
+
+  return `
+    <h2 style="margin-bottom:4px;">Cash Till</h2>
+    <div class="sub" style="margin-bottom:16px;">Enter the count of each denomination. Rolled Total tracks what's in rolls. Changes save automatically.</div>
+    <div style="overflow-x:auto;">
+      <table style="border-collapse:collapse;min-width:460px;width:100%;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="padding:8px 12px;text-align:left;font-size:13px;color:var(--text-light);">Till</th>
+            <th style="padding:8px 10px;text-align:right;font-size:13px;color:var(--text-light);">#</th>
+            <th style="padding:8px 12px;text-align:right;font-size:13px;color:var(--text-light);">$</th>
+            <th style="padding:8px 10px;text-align:right;font-size:13px;color:var(--text-light);">Rolled Total</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border);background:#f5f5f5;">
+            <td colspan="2" style="padding:10px 12px;font-weight:700;font-size:14px;">Total</td>
+            <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:15px;color:#1a6b35;">${fmtD(grandTotal)}</td>
+            <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px;color:#555;">${fmtD(rolledGrandTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:20px;flex-wrap:wrap;">
+      <div style="border:2px solid var(--border);border-radius:10px;padding:14px 24px;min-width:150px;text-align:center;">
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">Change Total</div>
+        <div style="font-size:20px;font-weight:700;color:#555;">${fmtD(changeTotal)}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;">coins + $1 + $2</div>
+      </div>
+      <div style="border:2px solid var(--border);border-radius:10px;padding:14px 24px;min-width:150px;text-align:center;">
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">Cash Total</div>
+        <div style="font-size:20px;font-weight:700;color:#1a6b35;">${fmtD(cashTotal)}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;">bills $5 and up</div>
+      </div>
+      <div style="border:2px solid #1a6b35;border-radius:10px;padding:14px 24px;min-width:150px;text-align:center;background:#f0f7f0;">
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">Grand Total</div>
+        <div style="font-size:20px;font-weight:700;color:#1a6b35;">${fmtD(grandTotal)}</div>
+      </div>
+    </div>`;
+}
 function renderOngoingBillsTab(){
   const orgTabs = [
     {id:'mtk',   label:'Meet the Keepers'},
     {id:'u4w',   label:'Unite for Wildlife'},
-    {id:'joint', label:'Joint Account'}
+    {id:'joint', label:'Joint Account'},
+    {id:'till',  label:'Cash Till'}
   ];
   const orgNav = `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;">
     ${orgTabs.map(t=>`<button onclick="CASHFLOW_ORG='${t.id}';showTab('manager')" style="padding:8px 20px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${CASHFLOW_ORG===t.id?'2px solid var(--accent)':'2px solid transparent'};margin-bottom:-2px;color:${CASHFLOW_ORG===t.id?'var(--accent)':'#666'};">${t.label}</button>`).join('')}
   </div>`;
+  if(CASHFLOW_ORG==='till') return orgNav + `<div class="card">${renderCashTill()}</div>`;
   return orgNav + _renderOngoingBillsContent(CASHFLOW_ORG);
 }
 
