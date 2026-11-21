@@ -11978,6 +11978,7 @@ let MANAGER_U4W_SUBTAB = 'nonprofit';
 let ANALYTICS_TAB = 'shows';
 let CASHFLOW_ORG  = 'mtk'; // 'mtk' | 'u4w'
 let FINANCIALS_SUB_TAB = 'income';
+let FINANCIALS_YEAR = new Date().getFullYear().toString();
 let SHOWS_YEAR_DRILL = null; // year string when drilling into a year's show types
 
 // Historical year data imported from Excel records (2021–2025)
@@ -12390,6 +12391,7 @@ function updateExpenseField(id, field, val){
   saveData();
 }
 function setFinancialsSubTab(t){ FINANCIALS_SUB_TAB=t; showTab(CURRENT_TAB||'analytics'); }
+function setFinancialsYear(y){ FINANCIALS_YEAR=y; showTab(CURRENT_TAB||'analytics'); }
 // ---- End expenses helpers ----
 
 // ---- Credit Cards ----
@@ -17122,6 +17124,9 @@ function renderManager(){
           </tr>`).join('');
         analyticsBody = `
           <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
+          <div style="margin-bottom:14px;padding:10px 14px;background:var(--hover);border-radius:8px;font-size:13px;color:var(--text-light);">
+            Expenses are recurring monthly subscriptions — not tied to specific years. The totals below reflect your current ongoing rates.
+          </div>
           <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
             <div class="stat-box" style="border-left:4px solid #d97706;">
               <div class="num" style="color:#c0392b;">${fmtE(totalMonthly)}</div>
@@ -17176,7 +17181,20 @@ function renderManager(){
             <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExpenseRow()">+ Add Row</button>
           </div>`;
       } else {
-      // ---- INCOME TAB (existing content wrapped) ----
+      // ---- INCOME TAB ----
+      // Year selector
+      const _incomeYears = [...new Set((DATA.shows||[]).map(s=>s.date?.slice(0,4)).filter(Boolean))].sort().reverse();
+      const _curYearStr = new Date().getFullYear().toString();
+      if(!_incomeYears.includes(_curYearStr)) _incomeYears.unshift(_curYearStr);
+      const _yearBtnStyle = (y) => FINANCIALS_YEAR===y
+        ? 'background:#1a5a8a;color:#fff;border-color:#1a5a8a;'
+        : 'background:var(--hover);color:var(--text);';
+      const yearSelectorHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+        <span style="font-size:13px;font-weight:600;color:var(--text-light);margin-right:4px;">Year:</span>
+        <button onclick="setFinancialsYear('all')" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;${_yearBtnStyle('all')}">All</button>
+        ${_incomeYears.map(y=>`<button onclick="setFinancialsYear('${y}')" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;${_yearBtnStyle(y)}">${y}</button>`).join('')}
+      </div>`;
+
       // Pricing table
       const SHOW_PRICES = {
         'Country':            { rate: 350,  perDay: false },
@@ -17211,7 +17229,7 @@ function renderManager(){
         return { total, days, breakdown };
       }
 
-      const allS = DATA.shows || [];
+      const allS = (DATA.shows || []).filter(s => FINANCIALS_YEAR === 'all' || (s.date && s.date.startsWith(FINANCIALS_YEAR)));
       const completedS  = allS.filter(s=>showStatus(s)==='completed');
       const paidDoneS   = completedS.filter(s=>s.paid);
       const unpaidDoneS = completedS.filter(s=>!s.paid);
@@ -17267,6 +17285,7 @@ function renderManager(){
 
       analyticsBody = `
         <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
+        ${yearSelectorHtml}
         <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div class="stat-box" style="border-left:4px solid #1a6b35;">
             <div class="num" style="color:#1a6b35;">${fmt(totalReceived)}</div>
@@ -17282,7 +17301,7 @@ function renderManager(){
           </div>
           <div class="stat-box" style="border-left:4px solid #e6a817;">
             <div class="num" style="color:#e6a817;">${fmt(totalEarned+totalUpcoming)}</div>
-            <div class="lbl">Total projected (all time)</div>
+            <div class="lbl">Total projected (${FINANCIALS_YEAR==='all'?'all time':FINANCIALS_YEAR})</div>
           </div>
         </div>
         <h3 style="margin:0 0 12px;">Revenue by show type</h3>
