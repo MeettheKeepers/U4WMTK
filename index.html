@@ -1045,6 +1045,40 @@ function normalizeData(d){
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(!d.dashDismissals) d.dashDismissals = {};
   if(!d.cashTill) d.cashTill = {counts:{}, rolled:{}};
+  if(!d.historicalIncome) d.historicalIncome = {
+    '2023': {
+      months: {
+        '2023-01':{country:897,   continent:1197,  custom:0},
+        '2023-02':{country:2392,  continent:399,   custom:0},
+        '2023-03':{country:1794,  continent:1995,  custom:1769.98},
+        '2023-04':{country:1196,  continent:1995,  custom:1098},
+        '2023-05':{country:1495,  continent:1197,  custom:0},
+        '2023-06':{country:2093,  continent:1197,  custom:4813.74},
+        '2023-07':{country:2392,  continent:5586,  custom:0},
+        '2023-08':{country:1495,  continent:2394,  custom:999},
+        '2023-09':{country:299,   continent:798,   custom:0},
+        '2023-10':{country:1495,  continent:798,   custom:320},
+        '2023-11':{country:3289,  continent:1197,  custom:1299},
+        '2023-12':{country:1495,  continent:1197,  custom:1300}
+      }
+    },
+    '2024': {
+      months: {
+        '2024-01':{country:3887,  continent:798,   custom:225},
+        '2024-02':{country:1196,  continent:1596,  custom:667.5},
+        '2024-03':{country:3289,  continent:1596,  custom:2176.5},
+        '2024-04':{country:299,   continent:3591,  custom:500},
+        '2024-05':{country:2093,  continent:399,   custom:0},
+        '2024-06':{country:2691,  continent:7189,  custom:750},
+        '2024-07':{country:4485,  continent:6783,  custom:0},
+        '2024-08':{country:4186,  continent:1995,  custom:2517},
+        '2024-09':{country:897,   continent:1596,  custom:176.99},
+        '2024-10':{country:1794,  continent:1596,  custom:1300},
+        '2024-11':{country:2093,  continent:1596,  custom:499},
+        '2024-12':{country:1196,  continent:399,   custom:1300}
+      }
+    }
+  };
   if(d.admin.hiringEnabled === undefined) d.admin.hiringEnabled = true;
   if(!Array.isArray(d.contracts)) d.contracts = [];
   d.contracts.forEach(c=>{
@@ -17182,18 +17216,89 @@ function renderManager(){
           </div>`;
       } else {
       // ---- INCOME TAB ----
-      // Year selector
-      const _incomeYears = [...new Set((DATA.shows||[]).map(s=>s.date?.slice(0,4)).filter(Boolean))].sort().reverse();
+      // Year selector — combines historical years + show years
+      const _histYears = Object.keys(DATA.historicalIncome||{}).sort().reverse();
+      const _showYears = [...new Set((DATA.shows||[]).map(s=>s.date?.slice(0,4)).filter(Boolean))].sort().reverse();
       const _curYearStr = new Date().getFullYear().toString();
-      if(!_incomeYears.includes(_curYearStr)) _incomeYears.unshift(_curYearStr);
+      const _allIncomeYears = [...new Set([..._showYears, ..._histYears])].sort().reverse();
+      if(!_allIncomeYears.includes(_curYearStr)) _allIncomeYears.unshift(_curYearStr);
       const _yearBtnStyle = (y) => FINANCIALS_YEAR===y
         ? 'background:#1a5a8a;color:#fff;border-color:#1a5a8a;'
         : 'background:var(--hover);color:var(--text);';
       const yearSelectorHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
         <span style="font-size:13px;font-weight:600;color:var(--text-light);margin-right:4px;">Year:</span>
         <button onclick="setFinancialsYear('all')" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;${_yearBtnStyle('all')}">All</button>
-        ${_incomeYears.map(y=>`<button onclick="setFinancialsYear('${y}')" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;${_yearBtnStyle(y)}">${y}</button>`).join('')}
+        ${_allIncomeYears.map(y=>`<button onclick="setFinancialsYear('${y}')" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;${_yearBtnStyle(y)}">${y}</button>`).join('')}
       </div>`;
+
+      // If historical year selected, render historical summary and skip show logic
+      const _histData = (DATA.historicalIncome||{})[FINANCIALS_YEAR];
+      if(_histData){
+        const _fmt = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+        const _fmtD = n => '$'+n.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+        const _months = _histData.months||{};
+        const _mKeys = Object.keys(_months).sort();
+        const _MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+        let hCountry=0, hContinent=0, hCustom=0;
+        _mKeys.forEach(mk=>{ hCountry+=_months[mk].country||0; hContinent+=_months[mk].continent||0; hCustom+=_months[mk].custom||0; });
+        const hTotal = hCountry+hContinent+hCustom;
+        const _mRows = _mKeys.map(mk=>{
+          const m=_months[mk]; const mn=parseInt(mk.slice(5));
+          const tot=(m.country||0)+(m.continent||0)+(m.custom||0);
+          if(!tot) return '';
+          return `<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:9px 12px;font-weight:600;">${_MONTH_NAMES[mn]}</td>
+            <td style="padding:9px 12px;color:#1a6b35;">${m.country?_fmtD(m.country):'—'}</td>
+            <td style="padding:9px 12px;color:#1a5a8a;">${m.continent?_fmtD(m.continent):'—'}</td>
+            <td style="padding:9px 12px;color:#7c3fad;">${m.custom?_fmtD(m.custom):'—'}</td>
+            <td style="padding:9px 12px;font-weight:700;">${_fmtD(tot)}</td>
+          </tr>`;
+        }).join('');
+        analyticsBody = `
+          <div style="margin-bottom:20px;">${finSubTabsHtml}</div>
+          ${yearSelectorHtml}
+          <div style="margin-bottom:14px;padding:10px 14px;background:var(--hover);border-radius:8px;font-size:13px;color:var(--text-light);">
+            Historical data imported from outreach income records. All amounts are pre-HST subtotals.
+          </div>
+          <div class="stat-row" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+            <div class="stat-box" style="border-left:4px solid #1a6b35;">
+              <div class="num" style="color:#1a6b35;">${_fmt(hTotal)}</div>
+              <div class="lbl">Total Income (${FINANCIALS_YEAR})</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #1a5a8a;">
+              <div class="num" style="color:#1a5a8a;">${_fmt(hCountry)}</div>
+              <div class="lbl">Country shows</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #7c3fad;">
+              <div class="num" style="color:#7c3fad;">${_fmt(hContinent)}</div>
+              <div class="lbl">Continent shows</div>
+            </div>
+            <div class="stat-box" style="border-left:4px solid #d97706;">
+              <div class="num" style="color:#d97706;">${_fmt(hCustom)}</div>
+              <div class="lbl">Custom shows</div>
+            </div>
+          </div>
+          <h3 style="margin:0 0 12px;">Monthly Breakdown</h3>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:14px;">
+              <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
+                <th style="padding:8px 12px 8px 0;">Month</th>
+                <th style="padding:8px 12px;color:#1a6b35;">Country</th>
+                <th style="padding:8px 12px;color:#1a5a8a;">Continent</th>
+                <th style="padding:8px 12px;color:#7c3fad;">Custom</th>
+                <th style="padding:8px 12px;">Total</th>
+              </tr></thead>
+              <tbody>${_mRows}</tbody>
+              <tfoot><tr style="border-top:2px solid var(--border);background:var(--hover);">
+                <td style="padding:10px 12px;font-weight:700;">Total</td>
+                <td style="padding:10px 12px;font-weight:700;color:#1a6b35;">${_fmtD(hCountry)}</td>
+                <td style="padding:10px 12px;font-weight:700;color:#1a5a8a;">${_fmtD(hContinent)}</td>
+                <td style="padding:10px 12px;font-weight:700;color:#7c3fad;">${_fmtD(hCustom)}</td>
+                <td style="padding:10px 12px;font-weight:700;">${_fmtD(hTotal)}</td>
+              </tr></tfoot>
+            </table>
+          </div>`;
+      } else {
 
       // Pricing table
       const SHOW_PRICES = {
@@ -17384,6 +17489,7 @@ function renderManager(){
               <button class="btn-small" style="margin-top:12px;background:#1a6b35;" onclick="addExtraIncomeRow()">+ Add Row</button>
             </div>`;
         })()}`;
+      } // end else live income
       } // end else income
     } else if(ANALYTICS_TAB === 'history'){
       const fmtH = n => n == null ? '—' : '$'+Math.round(n).toLocaleString('en-CA');
