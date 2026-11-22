@@ -6818,6 +6818,14 @@ function renderDashboard(){
     return pr.needsAck && !pr.employeeAckedAt ? {memberId:me.id, updatedAt:pr.updatedAt} : null;
   })();
   const managerProgressAcks = isManagerLogin() ? DATA.team.filter(m=>!m.archived&&m.evaluation&&m.evaluation.progressReport&&m.evaluation.progressReport.needsAck&&!m.evaluation.progressReport.managerAckedAt) : [];
+  // Unstaffed upcoming shows (manager/owner only, within 14 days)
+  const unstaffedShows = isManagerLogin() ? (DATA.shows||[]).filter(s=>{
+    if(showStatus(s)==='cancelled' || showStatus(s)==='completed') return false;
+    if(!isShowUpcoming(s)) return false;
+    if((s.staffNames||[]).length > 0) return false;
+    const daysAway = daysBetween(todayStr(), s.date);
+    return daysAway >= 0 && daysAway <= 14;
+  }).sort((a,b)=>a.date.localeCompare(b.date)) : [];
   // VSC renewal notifications
   const myVscExpiry = (() => {
     if(isManagerLogin() || !myName) return null;
@@ -6847,6 +6855,22 @@ function renderDashboard(){
     ${weatherProtocolCard()}
     ${accountantReminderCard()}
     ${paydayReminderCard()}
+    ${unstaffedShows.length ? `
+    <div class="card" style="border-left:5px solid #c0392b;">
+      <h2 style="margin-bottom:10px;">Upcoming Show${unstaffedShows.length>1?'s':''} With No Staff Assigned</h2>
+      ${unstaffedShows.map(s=>{
+        const daysAway = daysBetween(todayStr(), s.date);
+        const urgency = daysAway === 0 ? 'TODAY' : daysAway === 1 ? 'Tomorrow' : `in ${daysAway} day${daysAway!==1?'s':''}`;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <span style="font-weight:700;">${esc(s.title||'Untitled Show')}</span>
+            <span style="margin-left:8px;font-size:13px;color:#c0392b;font-weight:600;">${urgency}</span>
+            <span style="margin-left:8px;font-size:13px;color:var(--text-light);">${fmtShortDate(s.date)}${s.startTime?' · '+fmtTimeShort(s.startTime):''}</span>
+          </div>
+          <button class="btn-small" style="background:#c0392b;color:#fff;" onclick="showTab('shows')">Go to Shows →</button>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
     ${myOutstandingMileage.length ? `
     <div class="card" style="border-left:5px solid var(--green-dark,#1e6b2e);">
       <h2 style="margin-bottom:10px;"> Mileage Payment${myOutstandingMileage.length>1?'s':''} Outstanding</h2>
@@ -17990,8 +18014,22 @@ function renameStaffMember(id, newName){
 function archiveTeamMember(id){
   const m = DATA.team.find(x=>x.id===id);
   if(!m) return;
-  if(!confirm(`Archive ${m.name}? They will be blocked from logging in and hidden everywhere in the app. Their data is preserved and you can restore them later.`)) return;
+  // Count upcoming shows they're on
+  const upcomingWithThem = (DATA.shows||[]).filter(s=>{
+    if(showStatus(s)==='cancelled'||showStatus(s)==='completed') return false;
+    if(!isShowUpcoming(s)) return false;
+    return (s.staffNames||[]).includes(m.name);
+  });
+  const confirmMsg = upcomingWithThem.length
+    ? `Archive ${m.name}? They will be blocked from logging in and hidden everywhere in the app.\n\nThey are assigned to ${upcomingWithThem.length} upcoming show${upcomingWithThem.length>1?'s':''} — they will be removed from those shows automatically.\n\nTheir data is preserved and you can restore them later.`
+    : `Archive ${m.name}? They will be blocked from logging in and hidden everywhere in the app. Their data is preserved and you can restore them later.`;
+  if(!confirm(confirmMsg)) return;
   m.archived = true;
+  // Remove from all upcoming shows
+  upcomingWithThem.forEach(s=>{
+    const i = s.staffNames.indexOf(m.name);
+    if(i>=0) s.staffNames.splice(i,1);
+  });
   saveData();
   showTab('manager');
 }
