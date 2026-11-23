@@ -12207,7 +12207,7 @@ async function lookupTravelTimeMgr(showId){
 function toggleShowAddForm(){ SHOW_MGR_ADD_FORM = !SHOW_MGR_ADD_FORM; showTab('manager'); }
 let SHOW_MGR_VEHICLES_OPEN = false;
 function toggleVehiclesPanel(){ SHOW_MGR_VEHICLES_OPEN = !SHOW_MGR_VEHICLES_OPEN; showTab('manager'); }
-let COLLAPSED_SHOW_DATES = {};
+let COLLAPSED_SHOW_DATES = (() => { const obj = {}; (DATA.shows||[]).forEach(s=>{ if(s.date) obj[s.date] = true; }); return obj; })();
 function toggleShowDateGroup(date){
   COLLAPSED_SHOW_DATES[date] = !COLLAPSED_SHOW_DATES[date];
   showTab('manager');
@@ -13662,6 +13662,10 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       </div>` : ''}
       <div class="field-block">
         <label>Staff names${isContinuation?' (this day)':' (select all who are assigned)'}</label>
+        ${(()=>{
+          const archivedAssigned = dayStaffNames.filter(n=>!getShowStaffRoster().includes(n));
+          return archivedAssigned.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">${archivedAssigned.map(n=>`<span style="display:inline-flex;align-items:center;gap:5px;background:#fdecea;border:1px solid #c0392b;border-radius:14px;padding:3px 10px;font-size:13px;color:#c0392b;font-weight:600;">${esc(n)} <span style="font-size:10px;color:#888;">(archived)</span><button onclick="${isContinuation?`toggleDayStaff(${s.id},'${viewDate}','${n}',false)`:`toggleShowStaffAssign(${s.id},'${n}')`};showTab(CURRENT_TAB||'shows')" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;line-height:1;padding:0 2px;" title="Remove from show">&times;</button></span>`).join('')}</div>` : '';
+        })()}
         <div class="task-tags">
           ${getShowStaffRoster().map(name=>`<label class="checkbox-line" style="margin-right:4px;"><input type="checkbox" ${dayStaffNames.includes(name)?'checked':''} onchange="${isContinuation?`toggleDayStaff(${s.id},'${viewDate}','${name}',this.checked)`:`toggleShowStaffAssign(${s.id},'${name}')`}"> ${name}</label>`).join('')}
         </div>
@@ -13946,6 +13950,11 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
             </div>
             <div class="field-block" style="margin-top:8px;">
               <label style="font-size:12px;">Staff for this day</label>
+              ${(()=>{
+                const dayStaff2 = ov.staffNames || s.staffNames;
+                const archivedDay = dayStaff2.filter(n=>!getShowStaffRoster().includes(n));
+                return archivedDay.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">${archivedDay.map(n=>`<span style="display:inline-flex;align-items:center;gap:5px;background:#fdecea;border:1px solid #c0392b;border-radius:14px;padding:3px 10px;font-size:13px;color:#c0392b;font-weight:600;">${esc(n)} <span style="font-size:10px;color:#888;">(archived)</span><button onclick="toggleDayStaff(${s.id},'${d}','${n}',false);showTab(CURRENT_TAB||'shows')" style="background:none;border:none;cursor:pointer;color:#c0392b;font-size:15px;line-height:1;padding:0 2px;" title="Remove from show">&times;</button></span>`).join('')}</div>` : '';
+              })()}
               <div class="task-tags">
                 ${getShowStaffRoster().map(name=>{
                   const dayStaff = ov.staffNames || s.staffNames;
