@@ -8439,6 +8439,58 @@ function calcDayProfit(instances){
   const profit = revenue - totalKnownCost;
   return {revenue, staffLines, totalStaffCost:knownStaffCost, totalKm, kmRate, mileageCost, totalKnownCost, profit, showCount:outreachShows.length};
 }
+
+// Profit calculation for a single show that may share a day with other outreach shows.
+// If this show is the only outreach show that day, falls back to calcShowProfit.
+// If multiple outreach shows share the day, uses calcDayProfit for accurate total costs
+// then allocates those costs proportionally by revenue share so individual profits sum
+// to the day-header total.
+function calcShowProfitAllocated(s){
+  const isOutreach = (s.showTypes||[]).some(t=>OUTREACH_PRICES[t]);
+  if(!isOutreach) return calcShowProfit(s);
+
+  // Find all outreach shows on the same date (including this one)
+  const sameDayShows = (DATA.shows||[]).filter(x=>
+    x.date === s.date && (x.showTypes||[]).some(t=>OUTREACH_PRICES[t])
+  );
+
+  // Single show on this day — use full naive breakdown (no sharing needed)
+  if(sameDayShows.length <= 1) return calcShowProfit(s);
+
+  // Multiple shows — use day-level accurate costs and allocate proportionally
+  const dayInstances = sameDayShows.map(x=>({s:x}));
+  const day = calcDayProfit(dayInstances);
+  if(!day) return calcShowProfit(s);
+
+  const myRevenue = outreachShowRevenue(s) + (parseFloat(s.mileageCharge)||0);
+  const revShare = day.revenue > 0 ? myRevenue / day.revenue : 1 / sameDayShows.length;
+
+  const allocatedStaffCost  = day.totalStaffCost  * revShare;
+  const allocatedMileageCost = day.mileageCost    * revShare;
+  const allocatedTotalCost  = day.totalKnownCost  * revShare;
+  const allocatedProfit     = myRevenue - allocatedTotalCost;
+
+  // Get base info for display (type label, revenue lines, etc.)
+  const base = calcShowProfit(s);
+  if(!base) return null;
+
+  return {
+    ...base,
+    isAllocated: true,
+    dayShowCount: sameDayShows.length,
+    revShare,
+    allocatedStaffCost,
+    allocatedMileageCost,
+    allocatedTotalCost,
+    profit: allocatedProfit,
+    // day staff lines for display (whole day, not per-show)
+    dayStaffLines: day.staffLines,
+    dayTotalKm: day.totalKm,
+    dayKmRate: day.kmRate,
+    dayMileageCost: day.mileageCost
+  };
+}
+
 function timesOverlap(aStart, aEnd, bStart, bEnd){
   return timeToMin(aStart) < timeToMin(bEnd) && timeToMin(bStart) < timeToMin(aEnd);
 }
@@ -13967,12 +14019,42 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       </div>` : ''}
       ${(()=>{
         if(!isOwnerOrManager()) return '';
-        const prof = calcShowProfit(s);
+        const prof = calcShowProfitAllocated(s);
         if(!prof) return '';
         const fmtC = v => '$'+v.toFixed(2);
         const profitColor = prof.profit >= 0 ? '#1a6b2e' : '#c0392b';
         const profitBg    = prof.profit >= 0 ? '#edfaf2' : '#fff0f0';
         const vehicleLabel = (s.vehicle||'').toLowerCase().includes('personal') ? 'personal vehicle' : 'company vehicle';
+        if(prof.isAllocated){
+          // Multi-show day: show proportionally allocated costs so this card's profit
+          // matches the day-header total when summed across all shows.
+          const pct = Math.round(prof.revShare * 100);
+          return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:6px;">Show Profit Breakdown</div>
+            <div style="font-size:11px;color:#1a5a8a;background:#edf4fb;border-radius:5px;padding:5px 8px;margin-bottom:8px;">Shared day: costs split across ${prof.dayShowCount} shows (this show = ${pct}% of day revenue)</div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+              <span style="color:#555;">Show price (${prof.typeLabel})${s.discountPrice!=null?' — discounted':''}</span>
+              <span style="font-weight:600;">${fmtC(prof.baseRevenue)}</span>
+            </div>
+            ${prof.mileageCharge > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+              <span style="color:#1a6b2e;">Mileage charge (billed to client)</span>
+              <span style="font-weight:600;color:#1a6b2e;">+${fmtC(prof.mileageCharge)}</span>
+            </div>` : ''}
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+              <span style="color:#555;">Staff cost — day total × ${pct}% (allocated)</span>
+              <span style="color:#c0392b;">−${fmtC(prof.allocatedStaffCost)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
+              <span style="color:#555;">Mileage — day total × ${pct}% (allocated)</span>
+              <span style="color:#c0392b;">−${fmtC(prof.allocatedMileageCost)}</span>
+            </div>
+            ${prof.missingRates.length ? `<div style="font-size:12px;color:#c08000;padding:4px 0;">No hourly rate set for: ${prof.missingRates.map(l=>esc(l.name)).join(', ')}</div>` : ''}
+            <div style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-top:6px;background:${profitBg};">
+              <span style="font-weight:700;font-size:14px;">Estimated Profit</span>
+              <span style="font-weight:800;font-size:15px;color:${profitColor};">${prof.profit>=0?'+':''}${fmtC(prof.profit)}</span>
+            </div>
+          </div>`;
+        }
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:10px;">Show Profit Breakdown</div>
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
