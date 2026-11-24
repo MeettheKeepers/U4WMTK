@@ -2923,6 +2923,7 @@ function renderAdmin(){
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openInterviewTool()"> Video Interview</button>
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openInPersonInterviewTool()"> In Person Interview</button>
+            <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="goToReferenceEmailTab()"> Reference Email</button>
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openWorkingInterviewTool()"> Working Interview</button>
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openProsConsTool()"> Pros &amp; Cons</button>
             <button class="btn" style="background:var(--green-dark,#2f4a2f);color:#fff;display:inline-flex;align-items:center;gap:8px;font-size:14px;" onclick="openFounderInterviewTool()"> Final Interview</button>
@@ -18475,6 +18476,18 @@ function resetStaffQuiz(memberId){
 
 // === INTERVIEW TOOL ===
 let IV_ACTIVE = false;
+
+function goToReferenceEmailTab(){
+  // Navigate to the custom Admin tab named "Reference Email" (case-insensitive match)
+  const customTabs = (DATA.admin && DATA.admin.customTabs) || [];
+  const refTab = customTabs.find(t=>(t.title||'').toLowerCase().trim() === 'reference email');
+  if(refTab){
+    ADMIN_TAB = 'custom_' + refTab.id;
+    showTab('admin');
+  } else {
+    alert('No "Reference Email" tab found in Admin. Ask a manager to create a custom tab with that name in Manager → Admin.');
+  }
+}
 
 function openInterviewTool(){
   const overlay = document.getElementById('iv-overlay');
