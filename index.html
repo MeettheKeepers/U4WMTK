@@ -611,7 +611,7 @@
     <div class="field-label">Password</div>
     <input class="field-input" id="login-pass" type="password" placeholder="Password">
     <div class="login-error" id="login-error">Incorrect login or password.</div>
-    <div class="notice" id="login-loading" style="display:none;">Loading the latest staff logins… one second.</div>
+    <div class="notice" id="login-loading" style="display:none;">Connecting to server — this can take up to 15 seconds on first load. Please wait…</div>
     <div id="login-diag" style="display:block; font-size:11px; color:#999; margin-top:6px; line-height:1.4;"></div>
     <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
   </div>
@@ -1932,9 +1932,9 @@ function markLoginReady(status, err){
   const loading = document.getElementById('login-loading');
   if(btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
   if(loading) loading.style.display = 'block';
-  // Safety net: never block someone out for more than a few seconds, even
-  // on a slow connection — fall back to whatever logins are available.
-  setTimeout(()=>{ if(!LOGIN_READY) markLoginReady('timeout'); }, 4000);
+  // Safety net: never block someone out too long, even on a slow connection.
+  // 14 seconds gives Supabase free-tier time to wake from a cold start.
+  setTimeout(()=>{ if(!LOGIN_READY) markLoginReady('timeout'); }, 14000);
 })();
 
 let DATA = loadData();
