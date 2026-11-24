@@ -2181,7 +2181,7 @@ function buildTabs(){
   }).join('');
 }
 let CURRENT_TAB = 'dashboard';
-let HOURS_SECTION_OPEN = true; // collapse toggle for My Hours / Hours-Payroll
+let HOURS_SECTION_OPEN = false; // collapse toggle for My Hours / Hours-Payroll
 let VIEWING_STAFF_FILE_ID = null; // manager previewing a staff member's read-only file from Team tab
 function toggleHoursSection(){ HOURS_SECTION_OPEN = !HOURS_SECTION_OPEN; showTab(CURRENT_TAB); }
 // Sub-tab state for Animals and Team
@@ -4513,21 +4513,127 @@ function renderWelcomeOrgChart(editable){
 let SCRIPT_SEARCH = '';
 const SCRIPT_OPEN_IDS = new Set();
 let SCRIPT_TAB = {}; // id -> 'script'|'info'|'facts'
+let SCRIPT_PRACTICE_MODE = false;  // show checkboxes + order controls
+let SCRIPT_PRACTICE_ORDER = [];    // array of script ids in chosen order
+let SCRIPT_PRACTICE_VIEW = false;  // showing the combined reading view
 function toggleScriptOpen(id){ if(SCRIPT_OPEN_IDS.has(id)) SCRIPT_OPEN_IDS.delete(id); else SCRIPT_OPEN_IDS.add(id); showTab('animals'); }
 function setScriptTab(id, tab){ SCRIPT_TAB[id]=tab; showTab('animals'); }
+function toggleScriptPracticeMode(){
+  SCRIPT_PRACTICE_MODE = !SCRIPT_PRACTICE_MODE;
+  SCRIPT_PRACTICE_ORDER = [];
+  SCRIPT_PRACTICE_VIEW = false;
+  showTab('animals');
+}
+function toggleScriptPracticeSelect(id){
+  const idx = SCRIPT_PRACTICE_ORDER.indexOf(id);
+  if(idx === -1) SCRIPT_PRACTICE_ORDER.push(id);
+  else SCRIPT_PRACTICE_ORDER.splice(idx,1);
+  showTab('animals');
+}
+function moveScriptPractice(id, dir){
+  const idx = SCRIPT_PRACTICE_ORDER.indexOf(id);
+  if(idx === -1) return;
+  const newIdx = idx + dir;
+  if(newIdx < 0 || newIdx >= SCRIPT_PRACTICE_ORDER.length) return;
+  SCRIPT_PRACTICE_ORDER.splice(idx,1);
+  SCRIPT_PRACTICE_ORDER.splice(newIdx,0,id);
+  showTab('animals');
+}
+function startScriptPractice(){
+  if(!SCRIPT_PRACTICE_ORDER.length){ alert('Select at least one script to practice.'); return; }
+  SCRIPT_PRACTICE_VIEW = true;
+  showTab('animals');
+  window.scrollTo(0,0);
+}
+function exitScriptPractice(){
+  SCRIPT_PRACTICE_VIEW = false;
+  showTab('animals');
+}
 function renderScripts(){
   const scripts = (DATA.animalScripts||[]).filter(s=>!s.archived);
+
+  // ── COMBINED PRACTICE READING VIEW ──────────────────────────────────────
+  if(SCRIPT_PRACTICE_VIEW){
+    const ordered = SCRIPT_PRACTICE_ORDER.map(id=>scripts.find(s=>s.id===id)).filter(Boolean);
+    return `
+      <div class="card" style="border-left:4px solid var(--green-dark);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+          <h2 style="margin:0;">Practice Run — ${ordered.length} script${ordered.length!==1?'s':''}</h2>
+          <button class="btn-ghost" onclick="exitScriptPractice()">✕ Exit Practice</button>
+        </div>
+        <div class="sub">Read through in order. Tap Exit Practice when done.</div>
+      </div>
+      ${ordered.map((s,i)=>`
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="background:var(--green-dark);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:700;background:rgba(255,255,255,0.2);border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
+            <span style="font-size:17px;font-weight:700;">${esc(s.species)}</span>
+          </div>
+          <div style="padding:16px;font-size:15px;line-height:1.75;color:var(--text);">
+            ${s.content && s.content.trim() ? s.content : '<span style="color:var(--text-light);font-style:italic;">No script content yet.</span>'}
+          </div>
+        </div>`).join('')}
+      <div class="card" style="text-align:center;">
+        <button class="btn" onclick="exitScriptPractice()">✕ Exit Practice</button>
+      </div>`;
+  }
+
+  // ── NORMAL / PRACTICE-SELECTION VIEW ────────────────────────────────────
   const search = SCRIPT_SEARCH.toLowerCase().trim();
   const filtered = search ? scripts.filter(s=>s.species.toLowerCase().includes(search)) : scripts;
+
+  // Practice selection queue card (shown when in practice mode and something selected)
+  const queueCard = SCRIPT_PRACTICE_MODE && SCRIPT_PRACTICE_ORDER.length ? `
+    <div class="card" style="border-left:4px solid var(--green-dark);margin-bottom:0;">
+      <div style="font-size:13px;font-weight:700;color:var(--green-dark);margin-bottom:8px;">Practice order:</div>
+      ${SCRIPT_PRACTICE_ORDER.map((id,i)=>{
+        const s = scripts.find(x=>x.id===id);
+        if(!s) return '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:12px;font-weight:700;color:var(--green-dark);width:18px;text-align:right;">${i+1}.</span>
+          <span style="flex:1;font-size:14px;">${esc(s.species)}</span>
+          <button onclick="moveScriptPractice(${id},-1)" ${i===0?'disabled':''} style="font-size:12px;background:none;border:1px solid var(--border);border-radius:4px;padding:1px 6px;cursor:pointer;color:var(--text-light);">▲</button>
+          <button onclick="moveScriptPractice(${id},1)" ${i===SCRIPT_PRACTICE_ORDER.length-1?'disabled':''} style="font-size:12px;background:none;border:1px solid var(--border);border-radius:4px;padding:1px 6px;cursor:pointer;color:var(--text-light);">▼</button>
+          <button onclick="toggleScriptPracticeSelect(${id})" style="font-size:11px;background:rgba(200,50,50,0.1);color:#c0392b;border:1px solid rgba(200,50,50,0.3);border-radius:4px;padding:1px 7px;cursor:pointer;">✕</button>
+        </div>`;
+      }).join('')}
+      <div style="margin-top:10px;">
+        <button class="btn" onclick="startScriptPractice()" style="width:100%;">Start Practice →</button>
+      </div>
+    </div>` : '';
+
   return `
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
         <h2 style="margin:0;">Scripts</h2>
+        <button class="btn${SCRIPT_PRACTICE_MODE?'':'-ghost'}" onclick="toggleScriptPracticeMode()" style="${SCRIPT_PRACTICE_MODE?'background:var(--green-dark);':''}">
+          ${SCRIPT_PRACTICE_MODE ? '✕ Cancel Practice' : 'Practice Mode'}
+        </button>
       </div>
-      <input type="text" id="script-search-input" placeholder="Search species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('animals');setTimeout(()=>{const e=document.getElementById('script-search-input');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}},0)" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:4px;">
+      ${SCRIPT_PRACTICE_MODE
+        ? `<div class="sub" style="margin-bottom:10px;">Check off the scripts you want to practice, set the order, then tap <strong>Start Practice</strong>.</div>`
+        : `<input type="text" id="script-search-input" placeholder="Search species…" value="${esc(SCRIPT_SEARCH)}" oninput="SCRIPT_SEARCH=this.value;showTab('animals');setTimeout(()=>{const e=document.getElementById('script-search-input');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}},0)" style="width:100%;padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:4px;">`
+      }
     </div>
+    ${queueCard}
     ${filtered.length === 0 ? `<div class="card"><div class="empty">${scripts.length===0?'No scripts have been added yet. Managers can add them under Manager → Animals → Scripts.':'No scripts match your search.'}</div></div>` :
       filtered.map(s=>{
+        // ── PRACTICE SELECTION MODE ──
+        if(SCRIPT_PRACTICE_MODE){
+          const selIdx = SCRIPT_PRACTICE_ORDER.indexOf(s.id);
+          const selected = selIdx !== -1;
+          return `<div class="card" style="padding:0;overflow:hidden;border:2px solid ${selected?'var(--green-dark)':'var(--border)'};cursor:pointer;" onclick="toggleScriptPracticeSelect(${s.id})">
+            <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;">
+              <div style="width:22px;height:22px;border-radius:50%;border:2px solid ${selected?'var(--green-dark)':'var(--border)'};background:${selected?'var(--green-dark)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                ${selected?`<span style="color:#fff;font-size:12px;font-weight:700;">${selIdx+1}</span>`:''}
+              </div>
+              <span style="font-size:16px;font-weight:700;flex:1;">${esc(s.species)}</span>
+              ${selected?`<span style="font-size:12px;color:var(--green-dark);font-weight:600;">Selected</span>`:''}
+            </div>
+          </div>`;
+        }
+
+        // ── NORMAL VIEW ──
         const open = SCRIPT_OPEN_IDS.has(s.id);
         const tab = SCRIPT_TAB[s.id] || 'script';
         let tabContent = '';
@@ -4539,7 +4645,6 @@ function renderScripts(){
             if(!assigned.length){
               tabContent = '<span style="color:var(--text-light);font-style:italic;">No animals assigned to this script yet.</span>';
             } else {
-              // Group by species
               const speciesMap = {};
               assigned.forEach(a=>{
                 const key = (a.species||'Unknown').trim();
@@ -4558,12 +4663,8 @@ function renderScripts(){
                 }).join('');
                 return `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);">
                   <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${esc(species)}</div>
-                  <ul style="margin:0 0 6px;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
-                    ${sharedInfo}
-                  </ul>
-                  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">
-                    ${individualLines}
-                  </ul>
+                  <ul style="margin:0 0 6px;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">${sharedInfo}</ul>
+                  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.85;color:var(--text);">${individualLines}</ul>
                 </div>`;
               }).join('');
             }
