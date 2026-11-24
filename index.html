@@ -1142,6 +1142,7 @@ function normalizeData(d){
   if(d.welcome && d.welcome.orgChart){
     if(!Array.isArray(d.welcome.orgChart.nodes)) d.welcome.orgChart.nodes=[];
     if(!d.welcome.orgChart.bottomBox) d.welcome.orgChart.bottomBox={title:'',subtitle:'',description:''};
+    if(d.welcome.orgChart.autoStaffRow===undefined) d.welcome.orgChart.autoStaffRow=true;
     d.welcome.orgChart.nodes.forEach(n=>{ if(!n.id) n.id=Date.now()+Math.random(); if(!n.responsibilities) n.responsibilities=[]; });
   }
   if(d.welcome && d.welcome.soundsystems===undefined) d.welcome.soundsystems='';
@@ -3382,8 +3383,27 @@ function renderWelcome(){
       ${renderQuizWelcomeTab()}`;
   }
 
-  // Org chart tab
+  // Org chart tab — always view-only here; editing is in Manager tab
   if(WELCOME_TAB === 'orgchart'){
+    // Build acknowledgment for the org chart section
+    const ocMember = DATA.team.find(m=>m.name===staffName);
+    const ocAckDate = ocMember && ocMember.welcomeAck ? (ocMember.welcomeAck['orgchart'] || null) : null;
+    let ocAckHtml;
+    if(!staffName){
+      ocAckHtml = `<div class="notice">Your login isn't linked to a staff profile yet, so acknowledgments can't be recorded. Ask a manager to link your login to your name.</div>`;
+    } else if(isManagerLogin()){
+      ocAckHtml = '';
+    } else if(ocAckDate){
+      ocAckHtml = `<div class="notice" style="background:var(--green-light);color:var(--green-dark);"> Acknowledged by ${esc(staffName)} on ${fmtShortDate(ocAckDate.slice(0,10))}.</div>`;
+    } else {
+      ocAckHtml = `
+        <label class="checkbox-line">
+          <input type="checkbox" onchange="if(this.checked) ackWelcomeSection('orgchart');">
+          I, ${esc(staffName)}, have read and understood "Org Chart."
+        </label>
+        <div class="sub" style="margin-top:6px;">This is a one-time acknowledgment and will be recorded in your employee file.</div>
+      `;
+    }
     return `
       <div class="card">
         <h2>Welcome</h2>
@@ -3392,7 +3412,8 @@ function renderWelcome(){
       </div>
       <div class="card">
         <h2 style="margin-bottom:4px;">Organizational Chart</h2>
-        ${renderWelcomeOrgChart()}
+        ${renderWelcomeOrgChart(false)}
+        ${ocAckHtml ? `<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">${ocAckHtml}</div>` : ''}
       </div>`;
   }
 
@@ -4224,11 +4245,12 @@ function removeOrgChartNode(id){
   DATA.welcome.orgChart.nodes = DATA.welcome.orgChart.nodes.filter(n=>n.id!==id);
   saveData(); showTab('welcome');
 }
-function renderWelcomeOrgChart(){
+function renderWelcomeOrgChart(editable){
   const oc = DATA.welcome.orgChart||{nodes:[],bottomBox:{}};
   const nodes = oc.nodes||[];
   const bottom = oc.bottomBox||{};
-  const isMgr = isManagerLogin();
+  // editable explicitly passed overrides role check; used so the main Welcome tab is always read-only
+  const isMgr = editable !== undefined ? editable : isManagerLogin();
   const activeMembers = (DATA.team||[]).filter(m=>!m.archived).map(m=>m.name);
 
   // Group nodes by tier
@@ -4313,7 +4335,36 @@ function renderWelcomeOrgChart(){
     <button onclick="addOrgChartNode(${tierKeys.length>0?Math.max(...tierKeys)+1:0})" style="font-size:12px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:4px 14px;cursor:pointer;">+ Add new row</button>
   </div>`;
 
-  // Bottom box
+  // Auto staff row: all active non-archived staff rendered as a live row
+  let autoStaffHtml = '';
+  if(oc.autoStaffRow !== false){
+    const opsStaff = (DATA.team||[]).filter(m=>!m.archived);
+    if(opsStaff.length){
+      const staffCards = opsStaff.map(m=>{
+        const roles = (m.specialties||[]).join(', ') || m.role || '';
+        return `<div style="flex:1;min-width:120px;max-width:200px;background:#4a7c5a;border-radius:10px;padding:12px 10px;text-align:center;">
+          <div style="font-size:14px;font-weight:800;color:#fff;">${esc(m.name)}</div>
+          ${roles ? `<div style="font-size:11px;color:rgba(255,255,255,0.8);margin-top:4px;">${esc(roles)}</div>` : ''}
+        </div>`;
+      }).join('');
+      const toggleBtn = isMgr ? `<div style="text-align:center;margin-top:8px;">
+        <button onclick="DATA.welcome.orgChart.autoStaffRow=false;saveData();showTab('manager')" style="font-size:11px;background:#fbe8e8;color:#c0392b;border:1px dashed #e09898;border-radius:4px;padding:2px 10px;cursor:pointer;">Hide auto staff row</button>
+      </div>` : '';
+      autoStaffHtml = `
+        <div style="display:flex;justify-content:center;height:30px;"><div style="border-left:2px solid #ccc;width:2px;"></div></div>
+        <div style="border:2px dashed #9ab49a;border-radius:12px;padding:14px;background:#f4faf5;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#4a7c5a;text-align:center;margin-bottom:10px;">Operational Employees</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">${staffCards}</div>
+          ${toggleBtn}
+        </div>`;
+    }
+  } else if(isMgr){
+    autoStaffHtml = `<div style="text-align:center;margin-top:12px;">
+      <button onclick="DATA.welcome.orgChart.autoStaffRow=true;saveData();showTab('manager')" style="font-size:11px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:2px 10px;cursor:pointer;">+ Show auto operational staff row</button>
+    </div>`;
+  }
+
+  // Bottom description box (optional label/notes)
   const bTitle = isMgr
     ? `<div contenteditable="true" spellcheck="false" style="font-weight:800;font-size:16px;text-align:center;outline:none;" onblur="saveOrgChartBottomField('title',this.textContent.trim())">${esc(bottom.title||'')}</div>`
     : `<div style="font-weight:800;font-size:16px;text-align:center;">${esc(bottom.title||'')}</div>`;
@@ -4324,14 +4375,16 @@ function renderWelcomeOrgChart(){
     ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:#666;text-align:center;margin-top:4px;outline:none;" onblur="saveOrgChartBottomField('description',this.textContent.trim())">${esc(bottom.description||'')}</div>`
     : `<div style="font-size:13px;color:#666;text-align:center;margin-top:4px;">${esc(bottom.description||'')}</div>`;
 
-  const bottomHtml = `
+  const hasBottomContent = (bottom.title||'').trim() || (bottom.subtitle||'').trim() || (bottom.description||'').trim();
+  const bottomHtml = (hasBottomContent || isMgr) ? `
     <div style="display:flex;justify-content:center;height:30px;"><div style="border-left:2px solid #ccc;width:2px;"></div></div>
     <div style="border:2px solid #ddd;border-radius:12px;padding:16px;background:#f9f9f9;">
       ${bTitle}${bSub}${bDesc}
-    </div>`;
+      ${isMgr && !hasBottomContent ? '<div style="font-size:12px;color:#aaa;text-align:center;">Click fields above to add description text, or leave blank to hide.</div>' : ''}
+    </div>` : '';
 
   const hint = isMgr ? `<div style="font-size:12px;color:#999;text-align:center;margin-bottom:10px;">Click any text to edit • Changes save automatically</div>` : '';
-  return `<div style="max-width:900px;margin:0 auto;">${hint}${chartHtml}${bottomHtml}</div>`;
+  return `<div style="max-width:900px;margin:0 auto;">${hint}${chartHtml}${autoStaffHtml}${bottomHtml}</div>`;
 }
 
 /* ---------- SCRIPTS TAB ---------- */
@@ -15927,6 +15980,11 @@ function renderManager(){
           <input type="text" id="new-welcome-tab-title" placeholder="Tab title (e.g. Code of Conduct)">
           <button class="btn-small" onclick="addWelcomeCustomTab()">Add Tab</button>
         </div>
+      </div>
+      <div class="card">
+        <h2>Org Chart</h2>
+        <div class="sub" style="margin-bottom:14px;">This is what staff see on the Org Chart tab (view-only for them). Edit boxes and tiers here — changes save automatically.</div>
+        ${renderWelcomeOrgChart(true)}
       </div>
       ${renderSupervisorAccessPanel('welcome')}
     `;
