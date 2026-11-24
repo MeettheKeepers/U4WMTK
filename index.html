@@ -613,6 +613,7 @@
     <div class="login-error" id="login-error">Incorrect login or password.</div>
     <div class="notice" id="login-loading" style="display:none;">Connecting to server — this can take up to 15 seconds on first load. Please wait…</div>
     <div id="login-diag" style="display:block; font-size:11px; color:#999; margin-top:6px; line-height:1.4;"></div>
+    <button id="login-retry-btn" onclick="retryCloudConnection()" style="display:none;width:100%;padding:10px;margin-bottom:8px;background:#e8ede8;border:1px solid #aaa;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;color:#333;">Retry Connection</button>
     <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
   </div>
 </div>
@@ -1916,7 +1917,9 @@ function markLoginReady(status, err){
       diag.textContent = `Connected to shared team data (${n} logins available).`;
     } else if(status === 'timeout'){
       diag.style.color = '#c77';
-      diag.textContent = `Taking longer than expected to connect — showing ${n} login(s) saved on this device. Try again on Wi‑Fi, or wait and retry.`;
+      diag.textContent = `Could not reach the server in time. Click "Retry Connection" to try again — your data is safe.`;
+      const retryBtn = document.getElementById('login-retry-btn');
+      if(retryBtn) retryBtn.style.display = 'block';
     } else if(status === 'no-client'){
       diag.style.color = '#c77';
       diag.textContent = `Could not set up the connection to the shared team data. Showing ${n} login(s) saved on this device only.`;
@@ -1926,6 +1929,33 @@ function markLoginReady(status, err){
       diag.textContent = `Couldn't reach the shared team data${msg ? ' (' + msg + ')' : ''}. Showing ${n} login(s) saved on this device only.`;
     }
   }
+}
+function retryCloudConnection(){
+  LOGIN_READY = false;
+  const btn = document.getElementById('login-btn');
+  const loading = document.getElementById('login-loading');
+  const diag = document.getElementById('login-diag');
+  const retryBtn = document.getElementById('login-retry-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
+  if(loading) loading.style.display = 'block';
+  if(diag) diag.textContent = '';
+  if(retryBtn) retryBtn.style.display = 'none';
+  // Re-attempt cloud fetch
+  if(typeof sb !== 'undefined' && sb){
+    sb.from('app_state').select('data').eq('id',1).single().then(({data:row, error})=>{
+      if(!error && row && row.data){
+        const fresh = normalizeData(row.data);
+        DATA = fresh;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+        markLoginReady('ok');
+      } else {
+        markLoginReady('error', error);
+      }
+    });
+  } else {
+    markLoginReady('no-client');
+  }
+  setTimeout(()=>{ if(!LOGIN_READY) markLoginReady('timeout'); }, 14000);
 }
 (function gateLoginUntilReady(){
   const btn = document.getElementById('login-btn');
