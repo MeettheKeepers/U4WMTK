@@ -1144,7 +1144,16 @@ function normalizeData(d){
     if(!d.welcome.orgChart.bottomBox) d.welcome.orgChart.bottomBox={title:'',subtitle:'',description:''};
     if(d.welcome.orgChart.autoStaffRow===undefined) d.welcome.orgChart.autoStaffRow=true;
     if(!Array.isArray(d.welcome.orgChart.autoStaffExcluded)) d.welcome.orgChart.autoStaffExcluded=[];
-    d.welcome.orgChart.nodes.forEach(n=>{ if(!n.id) n.id=Date.now()+Math.random(); if(!n.responsibilities) n.responsibilities=[]; });
+    d.welcome.orgChart.nodes.forEach(n=>{
+      if(!n.id) n.id=Date.now()+Math.random();
+      if(!n.responsibilities) n.responsibilities=[];
+      // Nodes using multi-assign pattern: ensure assignedMembers is an array
+      if(Array.isArray(n.assignedMembers) && n.assignedMember===undefined) {
+        // already correct
+      } else if(!Array.isArray(n.assignedMembers) && n.assignedMember===undefined) {
+        n.assignedMember=''; // single-assign default
+      }
+    });
   }
   if(d.welcome && d.welcome.soundsystems===undefined) d.welcome.soundsystems='';
   if(d.welcome && d.welcome.incidents===undefined) d.welcome.incidents='Log any injury or minor incident here. For major incidents, contact a supervisor immediately.';
@@ -4241,6 +4250,14 @@ function restoreOrgChartStaff(name){
   DATA.welcome.orgChart.autoStaffExcluded = DATA.welcome.orgChart.autoStaffExcluded.filter(n=>n!==name);
   saveData(); showTab('manager');
 }
+function saveOrgChartNodeMembers(nodeId, memberName, checked){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
+  if(!node) return;
+  if(!Array.isArray(node.assignedMembers)) node.assignedMembers=[];
+  if(checked){ if(!node.assignedMembers.includes(memberName)) node.assignedMembers.push(memberName); }
+  else { node.assignedMembers = node.assignedMembers.filter(m=>m!==memberName); }
+  saveData();
+}
 function saveOrgChartBottomField(field, value){
   if(!DATA.welcome.orgChart.bottomBox) DATA.welcome.orgChart.bottomBox={};
   DATA.welcome.orgChart.bottomBox[field] = value;
@@ -4261,7 +4278,7 @@ function renderWelcomeOrgChart(editable){
   const oc = DATA.welcome.orgChart||{nodes:[],bottomBox:{}};
   const nodes = oc.nodes||[];
   const bottom = oc.bottomBox||{};
-  // editable explicitly passed overrides role check; used so the main Welcome tab is always read-only
+  // editable explicitly passed overrides role check; Welcome tab always passes false
   const isMgr = editable !== undefined ? editable : isManagerLogin();
   const activeMembers = (DATA.team||[]).filter(m=>!m.archived).map(m=>m.name);
 
@@ -4272,37 +4289,70 @@ function renderWelcomeOrgChart(editable){
 
   function renderNode(n){
     const bg = n.color||'#3d4873';
+    // Nodes with assignedMembers[] support multi-person assignment; others use single assignedMember
+    const isMulti = Array.isArray(n.assignedMembers);
+
+    // Header: box label (editable in manager mode)
     const nameEl = isMgr
-      ? `<div contenteditable="true" spellcheck="false" style="font-size:22px;font-weight:800;color:#fff;text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'name',this.textContent.trim())">${esc(n.name)}</div>`
-      : `<div style="font-size:22px;font-weight:800;color:#fff;text-align:center;">${esc(n.assignedMember||n.name)}</div>`;
-    const memberDropdown = isMgr ? `
-      <select onchange="saveOrgChartNodeField(${n.id},'assignedMember',this.value)" style="width:100%;margin-top:5px;padding:3px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:#fff;font-size:12px;cursor:pointer;">
-        <option value="">— assign team member —</option>
-        ${activeMembers.map(m=>`<option value="${esc(m)}" ${n.assignedMember===m?'selected':''}>${esc(m)}</option>`).join('')}
-      </select>` : '';
+      ? `<div contenteditable="true" spellcheck="false" style="font-size:20px;font-weight:800;color:#fff;text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'name',this.textContent.trim())">${esc(n.name)}</div>`
+      : `<div style="font-size:20px;font-weight:800;color:#fff;text-align:center;">${esc(n.name)}</div>`;
+
+    // Member assignment section
+    let memberSection = '';
+    if(isMulti){
+      // Multi-assign: checkboxes in manager mode, name list in view mode
+      const assigned = n.assignedMembers||[];
+      if(isMgr){
+        memberSection = `<div style="margin-top:6px;">
+          ${activeMembers.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:rgba(255,255,255,0.9);cursor:pointer;padding:2px 0;">
+            <input type="checkbox" ${assigned.includes(m)?'checked':''} onchange="saveOrgChartNodeMembers(${n.id},'${m.replace(/'/g,"\\'")}',this.checked)" style="cursor:pointer;">
+            ${esc(m)}
+          </label>`).join('')}
+        </div>`;
+      } else if(assigned.length){
+        memberSection = `<div style="margin-top:6px;">${assigned.map(m=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(m)}</div>`).join('')}</div>`;
+      }
+    } else {
+      // Single-assign dropdown (manager) or name display (staff)
+      if(isMgr){
+        memberSection = `<select onchange="saveOrgChartNodeField(${n.id},'assignedMember',this.value)" style="width:100%;margin-top:5px;padding:3px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:#fff;font-size:12px;cursor:pointer;">
+          <option value="">— assign team member —</option>
+          ${activeMembers.map(m=>`<option value="${esc(m)}" ${n.assignedMember===m?'selected':''}>${esc(m)}</option>`).join('')}
+        </select>`;
+      } else if(n.assignedMember){
+        memberSection = `<div style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;margin-top:4px;">${esc(n.assignedMember)}</div>`;
+      }
+    }
+
+    // Title / role description (editable in manager mode)
     const titleEl = isMgr
-      ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'title',this.textContent.trim())">${esc(n.title||'')}</div>`
-      : `<div style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;">${esc(n.title||'')}</div>`;
+      ? `<div contenteditable="true" spellcheck="false" style="font-size:12px;color:rgba(255,255,255,0.85);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartNodeField(${n.id},'title',this.textContent.trim())">${esc(n.title||'')}</div>`
+      : (n.title ? `<div style="font-size:12px;color:rgba(255,255,255,0.85);text-align:center;">${esc(n.title)}</div>` : '');
+
+    // Responsibilities list (editable in manager mode)
     const respItems = isMgr
       ? (n.responsibilities||[]).map((r,i)=>`
           <div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:2px 0;">
-            <span contenteditable="true" spellcheck="false" style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartResponsibility(${n.id},${i},this.textContent.trim())">${esc(r)}</span>
-            <button onclick="removeOrgChartResponsibility(${n.id},${i})" style="font-size:11px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:3px;padding:0 5px;line-height:16px;cursor:pointer;">×</button>
+            <span contenteditable="true" spellcheck="false" style="font-size:12px;color:rgba(255,255,255,0.9);text-align:center;outline:none;min-width:20px;" onblur="saveOrgChartResponsibility(${n.id},${i},this.textContent.trim())">${esc(r)}</span>
+            <button onclick="removeOrgChartResponsibility(${n.id},${i})" style="font-size:10px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:3px;padding:0 4px;cursor:pointer;">×</button>
           </div>`).join('')
-        + `<button onclick="addOrgChartResponsibility(${n.id})" style="margin-top:6px;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;">+ Add</button>`
-      : (n.responsibilities||[]).map(r=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:2px 0;">${esc(r)}</div>`).join('');
+        + `<button onclick="addOrgChartResponsibility(${n.id})" style="margin-top:4px;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">+ Add item</button>`
+      : (n.responsibilities||[]).map(r=>`<div style="font-size:12px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(r)}</div>`).join('');
+
+    // Manager controls: color picker + remove button
     const mgmtRow = isMgr ? `
       <div style="margin-top:10px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;">
         <label style="font-size:11px;color:rgba(255,255,255,0.7);">Color:</label>
-        <input type="color" value="${esc(bg)}" onchange="saveOrgChartNodeField(${n.id},'color',this.value);showTab('welcome')" style="width:28px;height:20px;border:none;border-radius:3px;cursor:pointer;padding:0;background:none;">
+        <input type="color" value="${esc(bg)}" onchange="saveOrgChartNodeField(${n.id},'color',this.value);showTab('manager')" style="width:24px;height:18px;border:none;border-radius:3px;cursor:pointer;padding:0;background:none;">
         <button onclick="removeOrgChartNode(${n.id})" style="font-size:11px;background:rgba(255,0,0,0.25);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">Remove</button>
       </div>` : '';
-    return `<div style="flex:1;background:${bg};border-radius:12px;padding:20px 16px 16px;min-width:0;display:flex;flex-direction:column;">
+
+    return `<div style="flex:1;background:${bg};border-radius:12px;padding:18px 14px 14px;min-width:0;display:flex;flex-direction:column;">
       ${nameEl}
-      ${memberDropdown}
+      ${memberSection}
       <div style="border-top:1px solid rgba(255,255,255,0.3);margin:10px 0 8px;"></div>
       ${titleEl}
-      <div style="border-top:1px solid rgba(255,255,255,0.3);margin:8px 0 10px;"></div>
+      ${(n.title&&(n.responsibilities||[]).length)?'<div style="border-top:1px solid rgba(255,255,255,0.2);margin:6px 0 8px;"></div>':''}
       <div style="display:flex;flex-direction:column;align-items:center;">${respItems}</div>
       ${mgmtRow}
     </div>`;
@@ -4312,15 +4362,12 @@ function renderWelcomeOrgChart(editable){
     if(!topNodes.length||!bottomNodes.length) return '';
     const tc=topNodes.length, bc=bottomNodes.length;
     const lines=[];
-    // Verticals from top nodes down to crossbar
     for(let i=0;i<tc;i++){
       const pct=(2*i+1)/(2*tc)*100;
       lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:0;width:2px;height:30px;background:#ccc;"></div>`);
     }
-    // Top horizontal bar
     const tl=1/(2*tc)*100, tr=(2*tc-1)/(2*tc)*100;
     if(tc>1) lines.push(`<div style="position:absolute;left:${tl}%;top:29px;width:${tr-tl}%;height:2px;background:#ccc;"></div>`);
-    // Center vertical down
     const mid=50;
     lines.push(`<div style="position:absolute;left:calc(${mid}% - 1px);top:29px;width:2px;height:${bc>1?31:60}px;background:#ccc;"></div>`);
     if(bc>1){
@@ -4334,74 +4381,20 @@ function renderWelcomeOrgChart(editable){
     return `<div style="position:relative;height:90px;">${lines.join('')}</div>`;
   }
 
-  // Inject auto-generated staff into the last tier so they appear side-by-side with
-  // any fixed nodes in that row (e.g. Office Administrator at tier 2).
-  const excluded = oc.autoStaffExcluded || [];
-  if(oc.autoStaffRow !== false && tierKeys.length > 0){
-    const lastTier = Math.max(...tierKeys);
-    const autoStaffMembers = (DATA.team||[]).filter(m=>!m.archived && !excluded.includes(m.name));
-    autoStaffMembers.forEach(m=>{
-      const title = (m.specialties||[])[0] || m.role || '';
-      tierMap[lastTier].push({
-        id: 'auto_' + m.name,
-        name: m.name,
-        title,
-        responsibilities: (m.specialties||[]).slice(1),
-        color: '#4a6b5a',
-        autoGenerated: true
-      });
-    });
-  }
-
-  // renderNode handles both fixed and auto-generated nodes
-  function renderNodeFull(n){
-    if(n.autoGenerated){
-      const bg = '#4a6b5a';
-      const nameDisplay = `<div style="font-size:18px;font-weight:800;color:#fff;text-align:center;">${esc(n.name)}</div>`;
-      const titleDisplay = n.title ? `<div style="font-size:12px;color:rgba(255,255,255,0.85);text-align:center;margin-top:2px;">${esc(n.title)}</div>` : '';
-      const respDisplay = (n.responsibilities||[]).length
-        ? `<div style="margin-top:6px;">${(n.responsibilities||[]).map(r=>`<div style="font-size:12px;color:rgba(255,255,255,0.85);text-align:center;">${esc(r)}</div>`).join('')}</div>` : '';
-      const removeBtn = isMgr ? `<div style="margin-top:8px;text-align:center;">
-        <button onclick="excludeOrgChartStaff('${n.name.replace(/'/g,"\\'")}')" style="font-size:11px;background:rgba(255,0,0,0.25);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">× Remove</button>
-      </div>` : '';
-      return `<div style="flex:1;background:${bg};border-radius:12px;padding:16px 12px;min-width:0;display:flex;flex-direction:column;min-width:120px;">
-        ${nameDisplay}
-        <div style="border-top:1px solid rgba(255,255,255,0.3);margin:8px 0 6px;"></div>
-        ${titleDisplay}${respDisplay}
-        ${removeBtn}
-      </div>`;
-    }
-    return renderNode(n);
-  }
-
   let chartHtml = '';
   for(let ti=0;ti<tierKeys.length;ti++){
     const tier=tierKeys[ti];
-    chartHtml += `<div style="display:flex;gap:12px;flex-wrap:wrap;">${tierMap[tier].map(n=>renderNodeFull(n)).join('')}</div>`;
-    if(isMgr && !tierMap[tier].some(n=>n.autoGenerated)) chartHtml += `<div style="text-align:center;margin:4px 0;">
+    chartHtml += `<div style="display:flex;gap:12px;">${tierMap[tier].map(n=>renderNode(n)).join('')}</div>`;
+    if(isMgr) chartHtml += `<div style="text-align:center;margin:4px 0;">
       <button onclick="addOrgChartNode(${tier})" style="font-size:11px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:2px 10px;cursor:pointer;">+ Add box to this row</button>
     </div>`;
     if(ti<tierKeys.length-1) chartHtml += renderConnector(tierMap[tier], tierMap[tierKeys[ti+1]]);
   }
-  if(isMgr) chartHtml += `<div style="text-align:center;margin:12px 0 0;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+  if(isMgr) chartHtml += `<div style="text-align:center;margin:12px 0 0;">
     <button onclick="addOrgChartNode(${tierKeys.length>0?Math.max(...tierKeys)+1:0})" style="font-size:12px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:4px 14px;cursor:pointer;">+ Add new row</button>
-    ${oc.autoStaffRow!==false
-      ? `<button onclick="DATA.welcome.orgChart.autoStaffRow=false;saveData();showTab('manager')" style="font-size:12px;background:#fbe8e8;color:#c0392b;border:1px dashed #e09898;border-radius:4px;padding:4px 14px;cursor:pointer;">Hide auto staff</button>`
-      : `<button onclick="DATA.welcome.orgChart.autoStaffRow=true;saveData();showTab('manager')" style="font-size:12px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:4px 14px;cursor:pointer;">+ Show auto staff</button>`}
   </div>`;
 
-  // Show excluded staff list in manager mode so they can be re-added
-  let excludedHtml = '';
-  if(isMgr && excluded.length){
-    excludedHtml = `<div style="margin-top:10px;padding:8px 12px;background:#f9f4ee;border:1px dashed #d4a470;border-radius:8px;">
-      <div style="font-size:11px;font-weight:700;color:#8a5a00;margin-bottom:6px;">Removed from auto row (click to restore):</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${excluded.map(name=>`<button onclick="restoreOrgChartStaff('${name.replace(/'/g,"\\'")}')" style="font-size:12px;background:#fff;border:1px solid #d4a470;border-radius:5px;padding:3px 10px;cursor:pointer;color:#8a5a00;">+ ${esc(name)}</button>`).join('')}
-      </div>
-    </div>`;
-  }
-
-  // Bottom description box (optional notes — hidden when empty on staff view)
+  // Bottom description box — only shown when it has content (or in manager edit mode)
   const bTitle = isMgr
     ? `<div contenteditable="true" spellcheck="false" style="font-weight:800;font-size:16px;text-align:center;outline:none;" onblur="saveOrgChartBottomField('title',this.textContent.trim())">${esc(bottom.title||'')}</div>`
     : `<div style="font-weight:800;font-size:16px;text-align:center;">${esc(bottom.title||'')}</div>`;
@@ -4411,20 +4404,13 @@ function renderWelcomeOrgChart(editable){
   const bDesc = isMgr
     ? `<div contenteditable="true" spellcheck="false" style="font-size:13px;color:#666;text-align:center;margin-top:4px;outline:none;" onblur="saveOrgChartBottomField('description',this.textContent.trim())">${esc(bottom.description||'')}</div>`
     : `<div style="font-size:13px;color:#666;text-align:center;margin-top:4px;">${esc(bottom.description||'')}</div>`;
-
   const hasBottomContent = (bottom.title||'').trim() || (bottom.subtitle||'').trim() || (bottom.description||'').trim();
   const bottomHtml = hasBottomContent ? `
     <div style="display:flex;justify-content:center;height:20px;"><div style="border-left:2px solid #ccc;width:2px;"></div></div>
-    <div style="border:2px solid #ddd;border-radius:12px;padding:16px;background:#f9f9f9;">
-      ${bTitle}${bSub}${bDesc}
-    </div>` : (isMgr ? `
-    <div style="border:1px dashed #ddd;border-radius:12px;padding:12px;background:#fafafa;margin-top:10px;">
-      <div style="font-size:11px;color:#aaa;text-align:center;margin-bottom:6px;">Optional notes box (shown to staff when filled in):</div>
-      ${bTitle}${bSub}${bDesc}
-    </div>` : '');
+    <div style="border:2px solid #ddd;border-radius:12px;padding:16px;background:#f9f9f9;">${bTitle}${bSub}${bDesc}</div>` : '';
 
   const hint = isMgr ? `<div style="font-size:12px;color:#999;text-align:center;margin-bottom:10px;">Click any text to edit • Changes save automatically</div>` : '';
-  return `<div style="max-width:900px;margin:0 auto;">${hint}${chartHtml}${excludedHtml}${bottomHtml}</div>`;
+  return `<div style="max-width:900px;margin:0 auto;">${hint}${chartHtml}${bottomHtml}</div>`;
 }
 
 /* ---------- SCRIPTS TAB ---------- */
