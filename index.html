@@ -1248,6 +1248,7 @@ function normalizeData(d){
   if(!Array.isArray(d.wildlifeShow.access)) d.wildlifeShow.access = [];
   if(!Array.isArray(d.wildlifeShow.videos)) d.wildlifeShow.videos = [];
   if(!Array.isArray(d.vehicleFiles)) d.vehicleFiles = [];
+  if(!d.fleetInsurance) d.fleetInsurance = {}; // shared across all vehicles
   if(!d.mtkRacing) d.mtkRacing = {
     editAccess: [],
     subtabs: [
@@ -1274,6 +1275,7 @@ function normalizeData(d){
     if(v.notes===undefined) v.notes = '';
     if(!v.ownership) v.ownership = {};
     if(!v.insurance) v.insurance = {};
+    if(!v.category) v.category = 'vehicle'; // 'vehicle' | 'trailer' | 'other'
   });
   return d;
 }
@@ -11468,66 +11470,69 @@ function renderInventory(){
 function renderVehicles(){
   const vehicles = DATA.vehicleFiles || [];
   const canEdit = isManagerLogin();
+
   if(!vehicles.length){
     return `
       <div class="card">
         <h2>Vehicles</h2>
         <div class="sub">Vehicle information, notes, ownership and insurance documents. ${canEdit ? 'Add vehicles from Manager → Vehicles.' : 'No vehicles added yet.'}</div>
-        ${canEdit ? `<button class="btn" onclick="showTab('manager');setTimeout(()=>{ MANAGER_TAB='vehicles'; showTab('manager'); },50)">Go to Manager → Vehicles</button>` : ''}
+        ${canEdit ? `<button class="btn" onclick="MANAGER_TAB='vehicles';showTab('manager')">Go to Manager → Vehicles</button>` : ''}
         <div class="empty" style="margin-top:16px;">No vehicles added yet.</div>
       </div>`;
   }
-  if(!VEHICLES_SUB || !vehicles.find(v=>v.id===VEHICLES_SUB)) VEHICLES_SUB = vehicles[0].id;
-  const active = vehicles.find(v=>v.id===VEHICLES_SUB) || vehicles[0];
-  const vid = active.id; // safe string id like 'v1234567890'
-  const tabBtns = vehicles.map(v=>`
-    <button class="detail-tab-btn ${v.id===VEHICLES_SUB?'active':''}" onclick="VEHICLES_SUB='${v.id}';showTab('vehicles')">${esc(v.name||'Unnamed')}</button>
-  `).join('');
-  function docSlot(label, slot, docType){
-    if(slot && slot.fileUrl){
-      return `
-        <div style="margin-top:12px;">
-          <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <a href="${slot.fileUrl}" target="_blank" style="color:var(--accent);font-size:14px;">View ${label}</a>
-            ${canEdit ? `
-              <button class="btn-ghost" onclick="deleteVehicleDoc('${vid}','${docType}')">Remove</button>
-              <label class="btn-ghost" style="cursor:pointer;font-size:13px;">Replace
-                <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
-              </label>
-            ` : ''}
-          </div>
-        </div>`;
-    }
-    if(!canEdit) return `<div style="margin-top:12px;color:#999;font-size:14px;">${label}: not uploaded</div>`;
+
+  const fleetIns = DATA.fleetInsurance || {};
+
+  function vehicleCard(v){
+    const hasOwnership = v.ownership && v.ownership.fileUrl;
+    const noteLines = (v.notes||'').trim().split('\n').filter(Boolean);
     return `
-      <div style="margin-top:12px;">
-        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">${label}</div>
-        <label class="btn" style="cursor:pointer;font-size:14px;">Upload ${label}
-          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadVehicleDoc('${vid}','${docType}',this)">
-        </label>
-        <span id="vdoc-status-${vid}-${docType}" style="font-size:13px;color:#666;margin-left:8px;"></span>
+      <div style="background:var(--bg-card,#fff);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:2px;">${esc(v.name||'Unnamed')}</div>
+        ${noteLines.length ? `
+          <div style="font-size:13px;color:var(--text-light);line-height:1.55;white-space:pre-wrap;word-break:break-word;">${esc(noteLines.join('\n'))}</div>
+        ` : `<div style="font-size:13px;color:#bbb;font-style:italic;">No notes.</div>`}
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;">
+          ${hasOwnership
+            ? `<a href="${v.ownership.fileUrl}" target="_blank" style="font-size:12px;font-weight:700;color:var(--green-dark);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;text-decoration:none;">📄 Ownership</a>`
+            : `<span style="font-size:12px;color:#bbb;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;">📄 No Ownership</span>`}
+        </div>
       </div>`;
   }
-  return `
-    <div class="card">
-      <h2>Vehicles</h2>
-      <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;">
-        ${tabBtns}
-        ${canEdit ? `<button class="detail-tab-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="MANAGER_TAB='vehicles';showTab('manager')">Manage Vehicles</button>` : ''}
+
+  function section(title, cat){
+    const list = vehicles.filter(v=>v.category===cat);
+    if(!list.length) return '';
+    return `
+      <div class="card">
+        <h2 style="margin-bottom:14px;">${title}</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
+          ${list.map(vehicleCard).join('')}
+        </div>
+      </div>`;
+  }
+
+  const fleetInsCard = `
+    <div class="card" style="border-left:4px solid var(--green-dark);">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="margin:0 0 4px;">🛡 Fleet Insurance</h2>
+          <div class="sub" style="margin:0;">Applies to all vehicles. Updated annually by a manager.</div>
+        </div>
+        ${fleetIns.fileUrl
+          ? `<a href="${fleetIns.fileUrl}" target="_blank" class="btn" style="white-space:nowrap;">View Insurance Slip</a>`
+          : `<span style="font-size:13px;color:#999;font-style:italic;">Not uploaded yet.</span>`}
       </div>
-    </div>
-    <div class="card">
-      <h2>${esc(active.name||'Unnamed Vehicle')}</h2>
-      ${docSlot('Ownership Document', active.ownership, 'ownership')}
-      ${docSlot('Insurance Slip', active.insurance, 'insurance')}
-      <div style="margin-top:20px;">
-        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
-        ${canEdit ? `
-          <textarea style="width:100%;min-height:260px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues…" oninput="saveVehicleNotes('${vid}',this.value)">${esc(active.notes||'')}</textarea>
-        ` : (active.notes ? `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:15px;margin:0;line-height:1.6;">${esc(active.notes)}</pre>` : '<div class="empty">No notes added yet.</div>')}
-      </div>
+      ${fleetIns.uploadedAt ? `<div style="font-size:12px;color:var(--text-light);margin-top:6px;">Last updated: ${fleetIns.uploadedAt}</div>` : ''}
     </div>`;
+
+  return `
+    ${fleetInsCard}
+    ${section('Vehicles','vehicle')}
+    ${section('Trailers','trailer')}
+    ${section('Other Equipment','other')}
+    ${canEdit ? `<div class="card" style="text-align:center;"><button class="btn" onclick="MANAGER_TAB='vehicles';showTab('manager')">Manage Vehicles</button></div>` : ''}
+  `;
 }
 function renderVehiclesManager(){
   const vehicles = DATA.vehicleFiles || [];
@@ -11564,20 +11569,45 @@ function renderVehiclesManager(){
   return `
     <div class="card">
       <h2>Vehicles</h2>
-      <div class="sub">Manage vehicle records. Add or remove vehicles, update notes, and upload ownership and insurance documents.</div>
+      <div class="sub">Manage vehicle records. Add or remove vehicles, update notes, and upload ownership documents.</div>
       <div class="detail-tabs" style="flex-wrap:wrap;gap:6px;">
         ${tabBtns}
         <button class="detail-tab-btn" onclick="addVehicleFile()">+ Add Vehicle</button>
       </div>
     </div>
+    <div class="card" style="border-left:4px solid var(--green-dark);">
+      <h2 style="margin-bottom:6px;">🛡 Fleet Insurance</h2>
+      <div class="sub" style="margin-bottom:12px;">One insurance slip applies to all vehicles. Upload here to update for everyone.</div>
+      ${(DATA.fleetInsurance && DATA.fleetInsurance.fileUrl) ? `
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+          <a href="${DATA.fleetInsurance.fileUrl}" target="_blank" class="btn">View Current Insurance</a>
+          <button class="btn-ghost" onclick="deleteFleetInsurance()">Remove</button>
+        </div>
+        ${DATA.fleetInsurance.uploadedAt ? `<div style="font-size:12px;color:var(--text-light);">Last updated: ${DATA.fleetInsurance.uploadedAt}</div>` : ''}
+        <div style="margin-top:10px;">
+          <label class="btn-ghost" style="cursor:pointer;">Replace Insurance Slip
+            <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadFleetInsurance(this)">
+          </label>
+        </div>
+      ` : `
+        <label class="btn" style="cursor:pointer;">Upload Insurance Slip
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadFleetInsurance(this)">
+        </label>
+        <span id="fleet-ins-status" style="font-size:13px;color:#666;margin-left:10px;"></span>
+      `}
+    </div>
     ${active ? `
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
         <input type="text" value="${esc(active.name||'')}" style="font-size:17px;font-weight:700;border:none;border-bottom:2px solid var(--border);background:transparent;padding:2px 4px;flex:1;" placeholder="Vehicle name…" onchange="renameVehicleFile('${vid}',this.value)">
+        <select onchange="saveVehicleField('${vid}','category',this.value)" style="font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
+          <option value="vehicle" ${(active.category||'vehicle')==='vehicle'?'selected':''}>Vehicle</option>
+          <option value="trailer" ${active.category==='trailer'?'selected':''}>Trailer</option>
+          <option value="other" ${active.category==='other'?'selected':''}>Other</option>
+        </select>
         <button class="btn-ghost" onclick="deleteVehicleFile('${vid}')">Delete Vehicle</button>
       </div>
       ${docSlotMgr('Ownership Document', active.ownership, 'ownership')}
-      ${docSlotMgr('Insurance Slip', active.insurance, 'insurance')}
       <div style="margin-top:20px;">
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;">Vehicle Notes</div>
         <textarea style="width:100%;min-height:300px;padding:10px;box-sizing:border-box;font-family:inherit;font-size:15px;border:1px solid var(--border);border-radius:8px;resize:vertical;" placeholder="Plate number, insurance details, maintenance log, known issues, inspection dates…" oninput="saveVehicleNotes('${vid}',this.value)">${esc(active.notes||'')}</textarea>
@@ -11598,6 +11628,37 @@ function renameVehicleFile(id, name){
   if(!v) return;
   v.name = name;
   saveData();
+}
+function saveVehicleField(id, field, value){
+  const v = (DATA.vehicleFiles||[]).find(x=>x.id===id);
+  if(!v) return;
+  v[field] = value;
+  saveData();
+  showTab(CURRENT_TAB);
+}
+async function uploadFleetInsurance(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('fleet-ins-status');
+  if(statusEl) statusEl.textContent = 'Uploading…';
+  try {
+    const url = await uploadFileToSupabase(file, 'vehicle-docs');
+    if(!DATA.fleetInsurance) DATA.fleetInsurance = {};
+    DATA.fleetInsurance.fileUrl = url;
+    DATA.fleetInsurance.fileName = file.name;
+    DATA.fleetInsurance.uploadedAt = new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
+    saveData();
+    showTab(CURRENT_TAB);
+  } catch(e) {
+    if(statusEl) statusEl.textContent = 'Upload failed.';
+    alert('Upload failed: ' + e.message);
+  }
+}
+function deleteFleetInsurance(){
+  if(!confirm('Remove the fleet insurance document?')) return;
+  DATA.fleetInsurance = {};
+  saveData();
+  showTab(CURRENT_TAB);
 }
 function deleteVehicleFile(id){
   if(!confirm('Delete this vehicle record? This cannot be undone.')) return;
