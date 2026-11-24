@@ -1044,6 +1044,7 @@ function normalizeData(d){
   if(!d.admin.training._savedAt) d.admin.training._savedAt = 0;
   if(!d.accountantReminderDismissed) d.accountantReminderDismissed = null;
   if(!d.dashDismissals) d.dashDismissals = {};
+  if(!Array.isArray(d.orgChartInterestNotifications)) d.orgChartInterestNotifications = [];
   if(!d.cashTill) d.cashTill = {counts:{}, rolled:{}};
   if(!d.historicalIncome) d.historicalIncome = {
     '2023': {
@@ -1148,11 +1149,12 @@ function normalizeData(d){
       if(!n.id) n.id=Date.now()+Math.random();
       if(!n.responsibilities) n.responsibilities=[];
       if(n.hidden===undefined) n.hidden=false;
-      // Nodes using multi-assign pattern: ensure assignedMembers is an array
-      if(Array.isArray(n.assignedMembers) && n.assignedMember===undefined) {
-        // already correct
-      } else if(!Array.isArray(n.assignedMembers) && n.assignedMember===undefined) {
-        n.assignedMember=''; // single-assign default
+      if(!n.interests) n.interests={};
+      // All nodes use multi-assign (checkboxes). Migrate legacy single-assign nodes.
+      if(!Array.isArray(n.assignedMembers)){
+        const existing = n.assignedMember;
+        n.assignedMembers = (existing && existing.trim()) ? [existing.trim()] : [];
+        delete n.assignedMember;
       }
     });
   }
@@ -4267,7 +4269,7 @@ function saveOrgChartBottomField(field, value){
 function addOrgChartNode(tier){
   if(!DATA.welcome.orgChart.nodes) DATA.welcome.orgChart.nodes=[];
   const maxId = Math.max(0,...DATA.welcome.orgChart.nodes.map(n=>n.id||0));
-  DATA.welcome.orgChart.nodes.push({id:maxId+1,name:'New Role',title:'Title',responsibilities:[],color:'#3d4873',tier:parseInt(tier),assignedMember:''});
+  DATA.welcome.orgChart.nodes.push({id:maxId+1,name:'New Role',title:'Title',responsibilities:[],color:'#3d4873',tier:parseInt(tier),assignedMembers:[]});
   saveData(); showTab('manager');
 }
 function removeOrgChartNode(id){
@@ -4280,6 +4282,39 @@ function toggleOrgChartNodeHidden(id){
   if(!node) return;
   node.hidden = !node.hidden;
   saveData(); showTab('manager');
+}
+function saveOrgChartInterest(nodeId, type){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
+  if(!node) return;
+  if(!node.interests) node.interests={};
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : null;
+  if(!myName) return;
+  const prev = node.interests[myName];
+  if(prev === type){
+    // clicking same button again clears it
+    delete node.interests[myName];
+  } else {
+    node.interests[myName] = type;
+    // Add dashboard notification for elevated roles
+    if(!Array.isArray(DATA.orgChartInterestNotifications)) DATA.orgChartInterestNotifications=[];
+    DATA.orgChartInterestNotifications.push({
+      id: Date.now()+'_'+Math.random().toString(36).slice(2),
+      nodeId: nodeId,
+      nodeName: node.name,
+      staffName: myName,
+      type: type,
+      at: new Date().toISOString(),
+      dismissedBy: []
+    });
+  }
+  saveData(); showTab(CURRENT_TAB);
+}
+function dismissOrgChartInterestNotification(notifId){
+  const notif = (DATA.orgChartInterestNotifications||[]).find(n=>n.id===notifId);
+  if(!notif) return;
+  const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : '__guest';
+  if(!notif.dismissedBy.includes(myName)) notif.dismissedBy.push(myName);
+  saveData(); showTab('dashboard');
 }
 function renderWelcomeOrgChart(editable){
   const oc = DATA.welcome.orgChart||{nodes:[],bottomBox:{}};
@@ -4320,6 +4355,8 @@ function renderWelcomeOrgChart(editable){
         </div>`;
       } else if(assigned.length){
         memberSection = `<div style="margin-top:6px;">${assigned.map(m=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(m)}</div>`).join('')}</div>`;
+      } else {
+        memberSection = `<div style="margin-top:6px;font-size:12px;font-style:italic;color:rgba(255,255,255,0.45);text-align:center;">Open Position</div>`;
       }
     } else {
       // Single-assign dropdown (manager) or name display (staff)
@@ -4330,6 +4367,50 @@ function renderWelcomeOrgChart(editable){
         </select>`;
       } else if(n.assignedMember){
         memberSection = `<div style="font-size:13px;color:rgba(255,255,255,0.85);text-align:center;margin-top:4px;">${esc(n.assignedMember)}</div>`;
+      }
+    }
+
+    // Interest section
+    const myName = CURRENT_LOGIN ? CURRENT_LOGIN.name : null;
+    const myLevel = getLoginLevel(); // 'owner','manager','supervisor','staff'
+    const isElevated = myLevel==='owner'||myLevel==='manager'||myLevel==='supervisor';
+    const interests = n.interests||{};
+    let interestSection = '';
+    if(!isMgr){
+      if(isElevated){
+        // Show full breakdown: interested, not interested, no response
+        const interested = Object.keys(interests).filter(k=>interests[k]==='interested');
+        const notInterested = Object.keys(interests).filter(k=>interests[k]==='not_interested');
+        if(interested.length||notInterested.length){
+          interestSection = `<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.2);padding-top:6px;">
+            ${interested.length?`<div style="font-size:11px;color:rgba(150,255,150,0.9);margin-bottom:2px;">Interested: ${interested.map(m=>esc(m)).join(', ')}</div>`:''}
+            ${notInterested.length?`<div style="font-size:11px;color:rgba(255,150,150,0.9);">Not interested: ${notInterested.map(m=>esc(m)).join(', ')}</div>`:''}
+          </div>`;
+        }
+      } else if(myName){
+        // Staff: show only their own interest buttons
+        const myChoice = interests[myName];
+        const intStyle = myChoice==='interested'
+          ? 'background:rgba(80,200,120,0.5);color:#fff;border:1px solid rgba(80,200,120,0.8);'
+          : 'background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);';
+        const notStyle = myChoice==='not_interested'
+          ? 'background:rgba(220,80,80,0.5);color:#fff;border:1px solid rgba(220,80,80,0.8);'
+          : 'background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);';
+        interestSection = `<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.15);padding-top:6px;display:flex;gap:6px;justify-content:center;">
+          <button onclick="saveOrgChartInterest(${n.id},'interested')" style="font-size:11px;border-radius:4px;padding:3px 8px;cursor:pointer;${intStyle}">I'm Interested</button>
+          <button onclick="saveOrgChartInterest(${n.id},'not_interested')" style="font-size:11px;border-radius:4px;padding:3px 8px;cursor:pointer;${notStyle}">Not My Role</button>
+        </div>`;
+      }
+    } else {
+      // Manager edit view: show interest breakdown
+      const interested = Object.keys(interests).filter(k=>interests[k]==='interested');
+      const notInterested = Object.keys(interests).filter(k=>interests[k]==='not_interested');
+      if(interested.length||notInterested.length){
+        interestSection = `<div style="margin-top:6px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:6px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">Staff Interest</div>
+          ${interested.length?`<div style="font-size:11px;color:rgba(150,255,150,0.9);margin-bottom:2px;">Interested: ${interested.map(m=>esc(m)).join(', ')}</div>`:''}
+          ${notInterested.length?`<div style="font-size:11px;color:rgba(255,150,150,0.9);">Not interested: ${notInterested.map(m=>esc(m)).join(', ')}</div>`:''}
+        </div>`;
       }
     }
 
@@ -4362,6 +4443,7 @@ function renderWelcomeOrgChart(editable){
       ${hiddenBadge}
       ${nameEl}
       ${memberSection}
+      ${interestSection}
       <div style="border-top:1px solid rgba(255,255,255,0.3);margin:10px 0 8px;"></div>
       ${titleEl}
       ${(n.title&&(n.responsibilities||[]).length)?'<div style="border-top:1px solid rgba(255,255,255,0.2);margin:6px 0 8px;"></div>':''}
@@ -6936,6 +7018,11 @@ function renderDashboard(){
     const renewal = vscRenewalDate(v); if(!renewal) return false;
     return daysBetween(todayStr(), renewal) <= 30;
   }).map(m=>({ m, daysLeft: daysBetween(todayStr(), vscRenewalDate(m.vsc)) })) : [];
+  // Org chart interest notifications (owners, managers, supervisors)
+  const myLevel = getLoginLevel();
+  const interestNotifs = (myLevel==='owner'||myLevel==='manager'||myLevel==='supervisor') && myName
+    ? (DATA.orgChartInterestNotifications||[]).filter(n=>!(n.dismissedBy||[]).includes(myName))
+    : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! </span>
@@ -7014,6 +7101,19 @@ function renderDashboard(){
             ${m.evaluation.progressReport.updatedAt?`<span style="margin-left:8px;font-size:13px;color:var(--text-light);">Updated ${m.evaluation.progressReport.updatedAt}</span>`:''}
           </div>
           <button class="btn-small" onclick="EVAL_STAFF_ID=${m.id};EVAL_TAB='progress';TEAM_SUBTAB='evaluations';showTab('team')">Review &amp; Acknowledge →</button>
+        </div>`).join('')}
+    </div>` : ''}
+    ${interestNotifs.length ? `
+    <div class="card" style="border-left:5px solid #2d6a4f;">
+      <h2 style="margin-bottom:10px;">Role Interest Updates</h2>
+      ${interestNotifs.map(notif=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(notif.staffName)}</div>
+            <div style="font-size:13px;color:var(--text-light);">${notif.type==='interested'?'Expressed interest in':'Marked not interested in'} <strong>${esc(notif.nodeName)}</strong></div>
+            <div style="font-size:11px;color:var(--text-light);margin-top:2px;">${new Date(notif.at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+          <button class="btn-small" onclick="dismissOrgChartInterestNotification('${notif.id}')">Dismiss</button>
         </div>`).join('')}
     </div>` : ''}
     ${myVscExpiry ? `
