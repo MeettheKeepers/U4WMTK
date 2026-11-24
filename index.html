@@ -4782,6 +4782,8 @@ let _preshowMusic = null; // Audio object for the 20-min pre-show track
 let _preshowMusicTimer = null; // timer to auto-start music at the 20-min mark
 const PRESHOW_TRACK_DURATION = 20 * 60; // 20 minutes in seconds
 let _outroMusic = null; // Audio object for the outro track
+let _individualTrack = null;    // Audio object for individually-played songs
+let _individualTrackFile = null; // filename of currently playing track
 
 function _startPreshowMusic(minsRemaining){
   if(!_preshowMusic) _preshowMusic = new Audio('./Keepers Pre-Show.mp3');
@@ -4818,6 +4820,47 @@ function _updatePreshowMusicBtn(){
   btn.style.background = _preshowMusic.paused ? '#e67e22' : '#27ae60';
 }
 
+const PRESHOW_INDIVIDUAL_TRACKS = [
+  { title: 'Animal Mystery Dance Party',         file: 'Animal Mystery Dance Party.mp3' },
+  { title: 'Around the World with The Keepers',  file: 'Around the World with The Keepers.mp3' },
+  { title: 'Come On In Animal Friends',          file: 'Come On In Animal Friends.mp3' },
+  { title: 'Crunch Munch Groove',                file: 'Crunch Munch Groove.mp3' },
+  { title: 'Ears Up Eyes Open',                  file: 'Ears Up Eyes Open.mp3' },
+  { title: 'Jungle Beats Keepers Unite',         file: 'Jungle Beats Keepers Unite.mp3' },
+  { title: 'Keepers Rescue Boogie',              file: 'Keepers Rescue Boogie.mp3' },
+  { title: 'Welcome Home Party',                 file: 'Welcome Home Party.mp3' },
+  { title: "What's On the Menu",                 file: "What's On the Menu.mp3" },
+];
+function playIndividualTrack(file){
+  // Stop any currently playing individual track
+  if(_individualTrack){ _individualTrack.pause(); _individualTrack.currentTime = 0; _individualTrack = null; }
+  if(_individualTrackFile === file){
+    // Clicking the same track again = stop
+    _individualTrackFile = null;
+    _refreshIndividualTrackBtns();
+    return;
+  }
+  _individualTrackFile = file;
+  _individualTrack = new Audio('./music/preshow/en/' + encodeURIComponent(file));
+  _individualTrack.volume = 1;
+  _individualTrack.play().catch(()=>{});
+  _individualTrack.onended = () => { _individualTrackFile = null; _individualTrack = null; _refreshIndividualTrackBtns(); };
+  _refreshIndividualTrackBtns();
+}
+function stopIndividualTrack(){
+  if(_individualTrack){ _individualTrack.pause(); _individualTrack.currentTime = 0; _individualTrack = null; }
+  _individualTrackFile = null;
+  _refreshIndividualTrackBtns();
+}
+function _refreshIndividualTrackBtns(){
+  PRESHOW_INDIVIDUAL_TRACKS.forEach(t=>{
+    const btn = document.getElementById('track-btn-' + t.file.replace(/[^a-z0-9]/gi,'_'));
+    if(!btn) return;
+    const playing = _individualTrackFile === t.file;
+    btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    btn.style.background = playing ? '#27ae60' : '#8e44ad';
+  });
+}
 function startOutro(){
   if(_outroMusic){ _outroMusic.pause(); _outroMusic.currentTime = 0; }
   _outroMusic = new Audio('./Keepers Outro.mp3');
@@ -5020,6 +5063,24 @@ function _keepersSongContent(){
         </div>
         <div id="pre-show-countdown" style="margin-top:12px;font-size:22px;font-weight:800;color:var(--green-dark);"></div>
         <button id="preshow-music-toggle" onclick="togglePreshowMusic()" style="display:none;margin-top:12px;padding:8px 20px;border-radius:20px;border:none;background:#27ae60;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9208; Pause Music</button>
+      </div>
+
+      <div style="background:#f0f7f0;border:1px solid #b8d8b8;border-radius:12px;padding:16px;margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:4px;">&#127925; Individual Songs — English</div>
+        <div style="font-size:13px;color:#555;margin-bottom:12px;">Play any song on its own. Tap again to stop.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${PRESHOW_INDIVIDUAL_TRACKS.map(t=>{
+            const btnId = 'track-btn-' + t.file.replace(/[^a-z0-9]/gi,'_');
+            const playing = _individualTrackFile === t.file;
+            return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+              <span style="font-size:14px;font-weight:600;color:var(--text);">${esc(t.title)}</span>
+              <button id="${btnId}" onclick="playIndividualTrack('${t.file.replace(/'/g,"\\'")}')" style="padding:5px 16px;border-radius:16px;border:none;background:${playing?'#27ae60':'#8e44ad'};color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">${playing?'⏸ Pause':'▶ Play'}</button>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:10px;">
+          <button onclick="stopIndividualTrack()" style="padding:6px 18px;border-radius:16px;border:none;background:#888;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">&#9632; Stop All</button>
+        </div>
       </div>
 
       <div style="background:#f5f0fa;border:1px solid #d4b8e8;border-radius:12px;padding:16px;margin-bottom:24px;">
