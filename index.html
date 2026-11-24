@@ -4820,6 +4820,37 @@ function _updatePreshowMusicBtn(){
   btn.style.background = _preshowMusic.paused ? '#e67e22' : '#27ae60';
 }
 
+const OUTRO_INDIVIDUAL_TRACKS = [
+  { title: 'Clean Hands Kind Hearts',    file: '(Outro) Clean Hands Kind Hearts.mp3' },
+  { title: 'Moments of Wonder and Care', file: '(Outro) Moments of Wonder and Care.mp3' },
+  { title: 'Thanks for Coming Along',    file: '(Outro) Thanks for Coming Along.mp3' },
+];
+let _outroIndTrack = null;
+let _outroIndTrackFile = null;
+function playOutroIndTrack(file){
+  if(_outroIndTrack){ _outroIndTrack.pause(); _outroIndTrack.currentTime = 0; _outroIndTrack = null; }
+  if(_outroIndTrackFile === file){ _outroIndTrackFile = null; _refreshOutroIndBtns(); return; }
+  _outroIndTrackFile = file;
+  _outroIndTrack = new Audio('./music/outro/en/' + encodeURIComponent(file));
+  _outroIndTrack.volume = 1;
+  _outroIndTrack.play().catch(()=>{});
+  _outroIndTrack.onended = () => { _outroIndTrackFile = null; _outroIndTrack = null; _refreshOutroIndBtns(); };
+  _refreshOutroIndBtns();
+}
+function stopOutroIndTrack(){
+  if(_outroIndTrack){ _outroIndTrack.pause(); _outroIndTrack.currentTime = 0; _outroIndTrack = null; }
+  _outroIndTrackFile = null;
+  _refreshOutroIndBtns();
+}
+function _refreshOutroIndBtns(){
+  OUTRO_INDIVIDUAL_TRACKS.forEach(t=>{
+    const btn = document.getElementById('outro-track-btn-' + t.file.replace(/[^a-z0-9]/gi,'_'));
+    if(!btn) return;
+    const playing = _outroIndTrackFile === t.file;
+    btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    btn.style.background = playing ? '#27ae60' : '#8e44ad';
+  });
+}
 const PRESHOW_INDIVIDUAL_TRACKS = [
   { title: 'Animal Mystery Dance Party',         file: 'Animal Mystery Dance Party.mp3' },
   { title: 'Around the World with The Keepers',  file: 'Around the World with The Keepers.mp3' },
@@ -5065,8 +5096,35 @@ function _keepersSongContent(){
         <button id="preshow-music-toggle" onclick="togglePreshowMusic()" style="display:none;margin-top:12px;padding:8px 20px;border-radius:20px;border:none;background:#27ae60;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9208; Pause Music</button>
       </div>
 
+      <div style="background:#f5f0fa;border:1px solid #d4b8e8;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="font-size:14px;font-weight:700;color:#8e44ad;margin-bottom:8px;">&#127926; Outro</div>
+        <div style="font-size:13px;color:#555;margin-bottom:12px;">Play after the show wraps up. 10 minutes — thank you song then instrumental.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button id="outro-toggle-btn" onclick="startOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#8e44ad;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Start Outro</button>
+          <button onclick="stopOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#888;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9632; Stop</button>
+        </div>
+      </div>
+
+      <div style="background:#f5f0fa;border:1px solid #d4b8e8;border-radius:12px;padding:16px;margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:#8e44ad;margin-bottom:4px;">&#127926; Individual Outro Songs</div>
+        <div style="font-size:13px;color:#555;margin-bottom:12px;">Play a single outro song on its own.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${OUTRO_INDIVIDUAL_TRACKS.map(t=>{
+            const btnId = 'outro-track-btn-' + t.file.replace(/[^a-z0-9]/gi,'_');
+            const playing = _outroIndTrackFile === t.file;
+            return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+              <span style="font-size:14px;font-weight:600;color:var(--text);">${esc(t.title)}</span>
+              <button id="${btnId}" onclick="playOutroIndTrack('${t.file.replace(/'/g,"\\'")}')" style="padding:5px 16px;border-radius:16px;border:none;background:${playing?'#27ae60':'#8e44ad'};color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">${playing?'⏸ Pause':'▶ Play'}</button>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:10px;">
+          <button onclick="stopOutroIndTrack()" style="padding:6px 18px;border-radius:16px;border:none;background:#888;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">&#9632; Stop All</button>
+        </div>
+      </div>
+
       <div style="background:#f0f7f0;border:1px solid #b8d8b8;border-radius:12px;padding:16px;margin-bottom:24px;">
-        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:4px;">&#127925; Individual Songs — English</div>
+        <div style="font-size:14px;font-weight:700;color:var(--green-dark);margin-bottom:4px;">&#127925; Individual Pre-Show Songs — English</div>
         <div style="font-size:13px;color:#555;margin-bottom:12px;">Play any song on its own. Tap again to stop.</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           ${PRESHOW_INDIVIDUAL_TRACKS.map(t=>{
@@ -5080,15 +5138,6 @@ function _keepersSongContent(){
         </div>
         <div style="margin-top:10px;">
           <button onclick="stopIndividualTrack()" style="padding:6px 18px;border-radius:16px;border:none;background:#888;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">&#9632; Stop All</button>
-        </div>
-      </div>
-
-      <div style="background:#f5f0fa;border:1px solid #d4b8e8;border-radius:12px;padding:16px;margin-bottom:24px;">
-        <div style="font-size:14px;font-weight:700;color:#8e44ad;margin-bottom:8px;">&#127926; Outro</div>
-        <div style="font-size:13px;color:#555;margin-bottom:12px;">Play after the show wraps up. 10 minutes — thank you song then instrumental.</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button id="outro-toggle-btn" onclick="startOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#8e44ad;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9654; Start Outro</button>
-          <button onclick="stopOutro()" style="padding:8px 20px;border-radius:20px;border:none;background:#888;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">&#9632; Stop</button>
         </div>
       </div>
 
