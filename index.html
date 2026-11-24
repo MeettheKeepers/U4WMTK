@@ -1147,6 +1147,7 @@ function normalizeData(d){
     d.welcome.orgChart.nodes.forEach(n=>{
       if(!n.id) n.id=Date.now()+Math.random();
       if(!n.responsibilities) n.responsibilities=[];
+      if(n.hidden===undefined) n.hidden=false;
       // Nodes using multi-assign pattern: ensure assignedMembers is an array
       if(Array.isArray(n.assignedMembers) && n.assignedMember===undefined) {
         // already correct
@@ -4231,13 +4232,13 @@ function addOrgChartResponsibility(nodeId){
   const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
   if(!node) return;
   node.responsibilities.push('New item');
-  saveData(); showTab('welcome');
+  saveData(); showTab('manager');
 }
 function removeOrgChartResponsibility(nodeId, idx){
   const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===nodeId);
   if(!node) return;
   node.responsibilities.splice(idx, 1);
-  saveData(); showTab('welcome');
+  saveData(); showTab('manager');
 }
 function excludeOrgChartStaff(name){
   if(!DATA.welcome.orgChart) return;
@@ -4267,12 +4268,18 @@ function addOrgChartNode(tier){
   if(!DATA.welcome.orgChart.nodes) DATA.welcome.orgChart.nodes=[];
   const maxId = Math.max(0,...DATA.welcome.orgChart.nodes.map(n=>n.id||0));
   DATA.welcome.orgChart.nodes.push({id:maxId+1,name:'New Role',title:'Title',responsibilities:[],color:'#3d4873',tier:parseInt(tier),assignedMember:''});
-  saveData(); showTab('welcome');
+  saveData(); showTab('manager');
 }
 function removeOrgChartNode(id){
   if(!confirm('Remove this position from the org chart?')) return;
   DATA.welcome.orgChart.nodes = DATA.welcome.orgChart.nodes.filter(n=>n.id!==id);
-  saveData(); showTab('welcome');
+  saveData(); showTab('manager');
+}
+function toggleOrgChartNodeHidden(id){
+  const node = ((DATA.welcome.orgChart||{}).nodes||[]).find(n=>n.id===id);
+  if(!node) return;
+  node.hidden = !node.hidden;
+  saveData(); showTab('manager');
 }
 function renderWelcomeOrgChart(editable){
   const oc = DATA.welcome.orgChart||{nodes:[],bottomBox:{}};
@@ -4291,6 +4298,8 @@ function renderWelcomeOrgChart(editable){
     const bg = n.color||'#3d4873';
     // Nodes with assignedMembers[] support multi-person assignment; others use single assignedMember
     const isMulti = Array.isArray(n.assignedMembers);
+    // Hidden badge for manager — shown with reduced opacity and a toggle button
+    const hiddenBadge = (isMgr && n.hidden) ? `<div style="font-size:10px;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.7);text-align:center;border-radius:4px;padding:2px 6px;margin-bottom:6px;">Hidden from staff</div>` : '';
 
     // Header: box label (editable in manager mode)
     const nameEl = isMgr
@@ -4339,15 +4348,18 @@ function renderWelcomeOrgChart(editable){
         + `<button onclick="addOrgChartResponsibility(${n.id})" style="margin-top:4px;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">+ Add item</button>`
       : (n.responsibilities||[]).map(r=>`<div style="font-size:12px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(r)}</div>`).join('');
 
-    // Manager controls: color picker + remove button
+    // Manager controls: hide toggle + color picker + remove button
     const mgmtRow = isMgr ? `
       <div style="margin-top:10px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button onclick="toggleOrgChartNodeHidden(${n.id})" style="font-size:11px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">${n.hidden?'Show to staff':'Hide from staff'}</button>
         <label style="font-size:11px;color:rgba(255,255,255,0.7);">Color:</label>
         <input type="color" value="${esc(bg)}" onchange="saveOrgChartNodeField(${n.id},'color',this.value);showTab('manager')" style="width:24px;height:18px;border:none;border-radius:3px;cursor:pointer;padding:0;background:none;">
         <button onclick="removeOrgChartNode(${n.id})" style="font-size:11px;background:rgba(255,0,0,0.25);color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">Remove</button>
       </div>` : '';
 
-    return `<div style="flex:1;background:${bg};border-radius:12px;padding:18px 14px 14px;min-width:0;display:flex;flex-direction:column;">
+    const opacity = (isMgr && n.hidden) ? 'opacity:0.6;' : '';
+    return `<div style="flex:1;background:${bg};border-radius:12px;padding:18px 14px 14px;min-width:0;display:flex;flex-direction:column;${opacity}">
+      ${hiddenBadge}
       ${nameEl}
       ${memberSection}
       <div style="border-top:1px solid rgba(255,255,255,0.3);margin:10px 0 8px;"></div>
@@ -4384,7 +4396,9 @@ function renderWelcomeOrgChart(editable){
   let chartHtml = '';
   for(let ti=0;ti<tierKeys.length;ti++){
     const tier=tierKeys[ti];
-    chartHtml += `<div style="display:flex;gap:12px;">${tierMap[tier].map(n=>renderNode(n)).join('')}</div>`;
+    const visibleTierNodes = isMgr ? tierMap[tier] : tierMap[tier].filter(n=>!n.hidden);
+    if(!isMgr && !visibleTierNodes.length) continue;
+    chartHtml += `<div style="display:flex;gap:12px;">${visibleTierNodes.map(n=>renderNode(n)).join('')}</div>`;
     if(isMgr) chartHtml += `<div style="text-align:center;margin:4px 0;">
       <button onclick="addOrgChartNode(${tier})" style="font-size:11px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:2px 10px;cursor:pointer;">+ Add box to this row</button>
     </div>`;
