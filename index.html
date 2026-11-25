@@ -4386,7 +4386,13 @@ function renderWelcomeOrgChart(editable){
           </label>`).join('')}
         </div>`;
       } else if(assigned.length){
-        memberSection = `<div style="margin-top:6px;">${assigned.map(m=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(m)}</div>`).join('')}</div>`;
+        const activeNames = new Set((DATA.team||[]).filter(t=>!t.archived).map(t=>t.name));
+        const visibleAssigned = assigned.filter(m=>activeNames.has(m));
+        if(visibleAssigned.length){
+          memberSection = `<div style="margin-top:6px;">${visibleAssigned.map(m=>`<div style="font-size:13px;color:rgba(255,255,255,0.9);text-align:center;padding:1px 0;">${esc(m)}</div>`).join('')}</div>`;
+        } else {
+          memberSection = `<div style="margin-top:6px;font-size:12px;font-style:italic;color:rgba(255,255,255,0.45);text-align:center;">Open Position</div>`;
+        }
       } else {
         memberSection = `<div style="margin-top:6px;font-size:12px;font-style:italic;color:rgba(255,255,255,0.45);text-align:center;">Open Position</div>`;
       }
