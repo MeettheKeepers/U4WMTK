@@ -17401,7 +17401,7 @@ function renderManager(){
             {id:'continent',           label:'Continent',            multiDay:false},
             {id:'science',             label:'Science',              multiDay:false},
             {id:'archeology',          label:'Archeology',           multiDay:false},
-            {id:'battleMatch',         label:'Battle Match',         multiDay:false},
+            {id:'battleMatch',         label:'Battle Match',         multiDay:false, staffCount:2},
             {id:'characterWalkaround', label:'Character Walkaround', multiDay:true,  charOptions:true},
             {id:'wildPresentations',   label:'Wild Presentations',   multiDay:true},
             {id:'display',             label:'Display',              multiDay:true,  staffTravelDouble:true},
@@ -17412,32 +17412,41 @@ function renderManager(){
           const profitColor = v=>v>=0?'var(--green-dark)':'#c0453a';
           const profitBg    = v=>v>=0?'#e8f5ed':'#fce8e8';
           // Section divider between outreach and fair/event types
-          const dividerRow = `<tr><td colspan="6" style="padding:0;"><div style="border-top:2px solid var(--border);margin:4px 0;"></div></td></tr>
-            <tr><td colspan="6" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Fair &amp; Event Types</td></tr>`;
+          const dividerRow = `<tr><td colspan="8" style="padding:0;"><div style="border-top:2px solid var(--border);margin:4px 0;"></div></td></tr>
+            <tr><td colspan="8" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Fair &amp; Event Types</td></tr>`;
           const rows = ALL_SHOW_TYPES.map((t,i)=>{
             const costs = (DATA.showCosts||{})[t.id]||{};
             let revenue, cost, note;
+            let staffCost, fuelCost, uniteCost;
             if(!t.multiDay){
               // Single-day outreach: 1-show pricing (showPrice1 − showDiscount1)
               const price = parseFloat(costs.showPrice1)||0;
               const disc  = parseFloat(costs.showDiscount1)||0;
               revenue = price - disc;
+              staffCost = parseFloat(costs.staff)||0;
+              fuelCost  = parseFloat(costs.fuel)||0;
+              uniteCost = parseFloat(costs.u4wAgreement)||0;
               cost = SINGLE_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f])||0), 0);
-              note = '1 show · 1 staff';
+              const sc = t.staffCount || 1;
+              note = `1 show · ${sc} staff`;
             } else {
               const tripDays  = Math.max(1, parseInt(costs.tripDays)||1);
               const travelDays= Math.max(0, parseInt(costs.travelSetupDays)||0);
               const travelCost= parseFloat(costs.travelCostTrip)||0;
               const u4wCost   = t.noU4W ? 0 : (parseFloat(costs.u4wAgreement)||0);
               const perDayTotal = MULTI_FIELDS.reduce((s,f)=>s+(parseFloat(costs[f])||0), 0);
+              const staffPerDay = parseFloat(costs.staff)||0;
               if(t.staffTravelDouble){
                 const effectiveTravelDays = travelDays*2;
-                const staffPerDay    = parseFloat(costs.staff)||0;
                 const nonStaffPerDay = perDayTotal - staffPerDay;
                 cost = travelCost + u4wCost*tripDays + nonStaffPerDay*tripDays + staffPerDay*(tripDays+effectiveTravelDays);
+                staffCost = staffPerDay*(tripDays+effectiveTravelDays);
               } else {
                 cost = travelCost + u4wCost*tripDays + perDayTotal*tripDays;
+                staffCost = staffPerDay*tripDays;
               }
+              fuelCost  = travelCost;
+              uniteCost = u4wCost*tripDays;
               const disc = parseFloat(costs.pricingDiscount1)||0;
               if(t.charOptions){
                 const rate = parseFloat(costs.charPrice1)||500;
@@ -17462,6 +17471,9 @@ function renderManager(){
                 <div style="font-size:11px;color:var(--text-light);margin-top:1px;">${note}</div>
               </td>
               <td style="padding:10px 12px;text-align:right;font-size:14px;">$${revenue.toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:#888;">$${(staffCost||0).toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:#888;">$${(fuelCost||0).toFixed(2)}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:#888;">$${(uniteCost||0).toFixed(2)}</td>
               <td style="padding:10px 12px;text-align:right;font-size:14px;color:#c0453a;">$${cost.toFixed(2)}</td>
               <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px;color:${pc};">${pSign}${Math.abs(profit).toFixed(2)}</td>
               <td style="padding:10px 12px;text-align:right;">
@@ -17554,13 +17566,16 @@ function renderManager(){
             <h3 style="margin:0 0 4px;">Profit / Loss by Show Type</h3>
             <div class="sub" style="margin-bottom:12px;">Based on configured settings from Average Cost per Show above. Revenue shown at base pricing (1 show / 1 staff / 1 character).</div>
             <div style="overflow-x:auto;">
-              <table style="width:100%;border-collapse:collapse;min-width:450px;">
+              <table style="width:100%;border-collapse:collapse;min-width:600px;">
                 <thead>
-                  <tr><td colspan="6" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Outreach Types</td></tr>
+                  <tr><td colspan="8" style="padding:2px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-light);">Outreach Types</td></tr>
                   <tr style="border-bottom:2px solid var(--border);">
                     <th style="padding:8px 12px 8px 0;font-size:12px;color:var(--text-light);text-align:left;">Type</th>
                     <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Revenue</th>
-                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Cost</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Staff</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Fuel</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Unite</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Total Cost</th>
                     <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Profit</th>
                     <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Margin</th>
                   </tr>
