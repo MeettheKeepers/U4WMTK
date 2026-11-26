@@ -17476,13 +17476,14 @@ function renderManager(){
           actual2026.forEach(s => {
             const p = calcShowProfitAllocated(s);
             if(!p) return;
-            (s.showTypes||[]).forEach(t => {
-              if(!actualByType[t]) actualByType[t] = {count:0, revenue:0, cost:0, profit:0};
-              actualByType[t].count++;
-              actualByType[t].revenue += p.revenue||0;
-              actualByType[t].cost    += p.totalKnownCost||0;
-              actualByType[t].profit  += p.profit||0;
-            });
+            // Assign each show to its first show type only to avoid double-counting
+            const primaryType = (s.showTypes||[])[0];
+            if(!primaryType) return;
+            if(!actualByType[primaryType]) actualByType[primaryType] = {count:0, revenue:0, cost:0, profit:0};
+            actualByType[primaryType].count++;
+            actualByType[primaryType].revenue += p.revenue||0;
+            actualByType[primaryType].cost    += p.totalKnownCost||0;
+            actualByType[primaryType].profit  += p.profit||0;
           });
           const typeLabels = {country:'Country',continent:'Continent',science:'Science',archeology:'Archeology',battleMatch:'Battle Match',characterWalkaround:'Character Walkaround',wildPresentations:'Wild Presentations',display:'Display',mtkRacing:'MTK Racing'};
           const actualRows = Object.entries(actualByType)
@@ -17534,7 +17535,7 @@ function renderManager(){
           const actualSection = allActual.length ? `
             <hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
             <h3 style="margin:0 0 4px;">Actual Average per Show — 2026</h3>
-            <div class="sub" style="margin-bottom:12px;">Based on real show data from 2026 past shows. Per-show averages using actual pricing and costs.</div>
+            <div class="sub" style="margin-bottom:12px;">Based on real show data from 2026 past shows. Revenue reflects actual charged amounts — higher than base price when shows have multiple presentations or a mileage charge. Each show counted under its primary type only.</div>
             <div style="overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;min-width:450px;">
                 <thead>
