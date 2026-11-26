@@ -17469,6 +17469,86 @@ function renderManager(){
               </td>
             </tr>`;
           }).join('');
+          // Actual average from 2026+ shows
+          const today = todayStr();
+          const actual2026 = (DATA.shows||[]).filter(s => (s.date||'') >= '2026-01-01' && s.date <= today && showStatus(s) !== 'cancelled');
+          const actualByType = {};
+          actual2026.forEach(s => {
+            const p = calcShowProfitAllocated(s);
+            if(!p) return;
+            (s.showTypes||[]).forEach(t => {
+              if(!actualByType[t]) actualByType[t] = {count:0, revenue:0, cost:0, profit:0};
+              actualByType[t].count++;
+              actualByType[t].revenue += p.revenue||0;
+              actualByType[t].cost    += p.cost||0;
+              actualByType[t].profit  += p.profit||0;
+            });
+          });
+          const typeLabels = {country:'Country',continent:'Continent',science:'Science',archeology:'Archeology',battleMatch:'Battle Match',characterWalkaround:'Character Walkaround',wildPresentations:'Wild Presentations',display:'Display',mtkRacing:'MTK Racing'};
+          const actualRows = Object.entries(actualByType)
+            .sort((a,b) => b[1].count - a[1].count)
+            .map(([t, d]) => {
+              const avgRev  = d.revenue / d.count;
+              const avgCost = d.cost    / d.count;
+              const avgProf = d.profit  / d.count;
+              const margin  = avgRev > 0 ? Math.round(avgProf/avgRev*100) : 0;
+              const pc = profitColor(avgProf);
+              const pb = profitBg(avgProf);
+              const pSign = avgProf>=0?'+$':'-$';
+              return `<tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:10px 12px;">
+                  <div style="font-weight:700;font-size:14px;">${typeLabels[t]||t}</div>
+                  <div style="font-size:11px;color:var(--text-light);margin-top:1px;">${d.count} show${d.count===1?'':'s'}</div>
+                </td>
+                <td style="padding:10px 12px;text-align:right;font-size:14px;">$${avgRev.toFixed(2)}</td>
+                <td style="padding:10px 12px;text-align:right;font-size:14px;color:#c0453a;">$${avgCost.toFixed(2)}</td>
+                <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px;color:${pc};">${pSign}${Math.abs(avgProf).toFixed(2)}</td>
+                <td style="padding:10px 12px;text-align:right;">
+                  <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:${pb};color:${pc};">${margin}%</span>
+                </td>
+              </tr>`;
+            }).join('');
+          const allActual = actual2026.map(s => calcShowProfitAllocated(s)).filter(Boolean);
+          const totRev  = allActual.reduce((s,p)=>s+(p.revenue||0),0);
+          const totCost = allActual.reduce((s,p)=>s+(p.cost||0),0);
+          const totProf = allActual.reduce((s,p)=>s+(p.profit||0),0);
+          const avgRev  = allActual.length ? totRev/allActual.length : 0;
+          const avgCost = allActual.length ? totCost/allActual.length : 0;
+          const avgProf = allActual.length ? totProf/allActual.length : 0;
+          const avgMarg = avgRev > 0 ? Math.round(avgProf/avgRev*100) : 0;
+          const apc = profitColor(avgProf);
+          const apb = profitBg(avgProf);
+          const apSign = avgProf>=0?'+$':'-$';
+          const overallRow = `<tr style="border-top:2px solid var(--border);background:#f5f5f5;">
+            <td style="padding:10px 12px;">
+              <div style="font-weight:700;font-size:14px;">Overall Average</div>
+              <div style="font-size:11px;color:var(--text-light);margin-top:1px;">${allActual.length} shows</div>
+            </td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;">$${avgRev.toFixed(2)}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#c0453a;">$${avgCost.toFixed(2)}</td>
+            <td style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px;color:${apc};">${apSign}${Math.abs(avgProf).toFixed(2)}</td>
+            <td style="padding:10px 12px;text-align:right;">
+              <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:${apb};color:${apc};">${avgMarg}%</span>
+            </td>
+          </tr>`;
+          const actualSection = allActual.length ? `
+            <hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
+            <h3 style="margin:0 0 4px;">Actual Average per Show — 2026</h3>
+            <div class="sub" style="margin-bottom:12px;">Based on real show data from 2026 past shows. Per-show averages using actual pricing and costs.</div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;min-width:450px;">
+                <thead>
+                  <tr style="border-bottom:2px solid var(--border);">
+                    <th style="padding:8px 12px 8px 0;font-size:12px;color:var(--text-light);text-align:left;">Type</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Revenue</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Cost</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Avg Profit</th>
+                    <th style="padding:8px 12px;font-size:12px;color:var(--text-light);text-align:right;">Margin</th>
+                  </tr>
+                </thead>
+                <tbody>${actualRows}${overallRow}</tbody>
+              </table>
+            </div>` : '';
           return `<hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px;">
             <h3 style="margin:0 0 4px;">Profit / Loss by Show Type</h3>
             <div class="sub" style="margin-bottom:12px;">Based on configured settings from Average Cost per Show above. Revenue shown at base pricing (1 show / 1 staff / 1 character).</div>
@@ -17486,7 +17566,7 @@ function renderManager(){
                 </thead>
                 <tbody>${rows}</tbody>
               </table>
-            </div>`;
+            </div>${actualSection}`;
         })() : ''}`;
 
     } else if(ANALYTICS_TAB === 'clients'){
