@@ -12731,15 +12731,15 @@ async function lookupTravelTime(address, onResult, onStatus){
   if(!address || address.trim().length < 5){ onStatus(''); return; }
   onStatus('Looking up travel time…');
   try {
-    // Geocode destination via Nominatim
+    // Geocode destination via Photon (CORS-compatible)
     const destRes = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=ca&email=meetthekeepers@gmail.com`,
-      { headers: { 'Accept': 'application/json' } }
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=en`
     );
     if(!destRes.ok) throw new Error(`Geocoder error ${destRes.status}`);
     const destData = await destRes.json();
-    if(!destData.length) throw new Error(`Address not found: "${address}"`);
-    const dest = {lat: parseFloat(destData[0].lat), lon: parseFloat(destData[0].lon)};
+    if(!destData.features || !destData.features.length) throw new Error(`Address not found: "${address}"`);
+    const [destLon, destLat] = destData.features[0].geometry.coordinates;
+    const dest = {lat: destLat, lon: destLon};
     // Route via OSRM
     const routeRes = await fetch(
       `https://router.project-osrm.org/route/v1/driving/${CENTRE_LON},${CENTRE_LAT};${dest.lon},${dest.lat}?overview=false`
