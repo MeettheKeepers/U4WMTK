@@ -17480,7 +17480,7 @@ function renderManager(){
               if(!actualByType[t]) actualByType[t] = {count:0, revenue:0, cost:0, profit:0};
               actualByType[t].count++;
               actualByType[t].revenue += p.revenue||0;
-              actualByType[t].cost    += p.cost||0;
+              actualByType[t].cost    += p.totalKnownCost||0;
               actualByType[t].profit  += p.profit||0;
             });
           });
@@ -17510,7 +17510,7 @@ function renderManager(){
             }).join('');
           const allActual = actual2026.map(s => calcShowProfitAllocated(s)).filter(Boolean);
           const totRev  = allActual.reduce((s,p)=>s+(p.revenue||0),0);
-          const totCost = allActual.reduce((s,p)=>s+(p.cost||0),0);
+          const totCost = allActual.reduce((s,p)=>s+(p.totalKnownCost||0),0);
           const totProf = allActual.reduce((s,p)=>s+(p.profit||0),0);
           const avgRev  = allActual.length ? totRev/allActual.length : 0;
           const avgCost = allActual.length ? totCost/allActual.length : 0;
