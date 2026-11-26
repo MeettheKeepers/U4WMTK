@@ -12690,7 +12690,7 @@ function _archiveShowMatchesFilter(s, f){
   if(f==='unpaid')           return !s.paid;
   if(f==='missing_contact')  return !s.clientPhone || !s.clientEmail;
   if(f==='missing_occasion') return needsOcc && (!s.occasion || s.occasion==='Unknown');
-  if(f==='not_completed')    return showStatus(s)!=='completed';
+  if(f==='not_completed')    return showStatus(s)!=='completed' && showStatus(s)!=='cancelled';
   if(f==='conflicts')        return !s.staffNames.length || !s.showTypes.length
                                  || (needsOcc && (!s.occasion||s.occasion==='Unknown'))
                                  || !s.paid
@@ -14546,6 +14546,7 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       </div>` : ''}
       ${(()=>{
         if(!isOwnerOrManager()) return '';
+        if(st === 'cancelled') return '';
         const prof = calcShowProfitAllocated(s);
         if(!prof) return '';
         const fmtC = v => '$'+v.toFixed(2);
