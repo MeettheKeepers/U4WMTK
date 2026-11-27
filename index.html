@@ -14570,7 +14570,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
         const isLastOfDay = sameDayShows.length === 0 || String(sameDayShows[sameDayShows.length-1].id) === String(s.id);
         const legMultiplier = (sameDayShows.length <= 1 || isLastOfDay) ? 2 : 1;
         const legMileageCost = s.skipMileage ? 0 : prof.km * legMultiplier * prof.kmRate;
-        const legProfit = prof.revenue - prof.totalStaffCost - legMileageCost - (prof.travelDayStaffCost||0) - (prof.perDiemTotal||0);
+        const legStaffCost = prof.staffLines.filter(l=>l.cost!=null).reduce((a,l)=>a+l.cost, 0);
+        const legProfit = prof.revenue - legStaffCost - legMileageCost - (prof.travelDayStaffCost||0) - (prof.perDiemTotal||0);
         const legProfitColor = legProfit >= 0 ? '#1a6b2e' : '#c0392b';
         const legProfitBg    = legProfit >= 0 ? '#edfaf2' : '#fff0f0';
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
