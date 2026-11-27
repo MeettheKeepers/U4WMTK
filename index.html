@@ -14557,42 +14557,22 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
       ${(()=>{
         if(!isOwnerOrManager()) return '';
         if(st === 'cancelled') return '';
-        const prof = calcShowProfitAllocated(s);
+        const prof = calcShowProfit(s);
         if(!prof) return '';
         const fmtC = v => '$'+v.toFixed(2);
         const profitColor = prof.profit >= 0 ? '#1a6b2e' : '#c0392b';
         const profitBg    = prof.profit >= 0 ? '#edfaf2' : '#fff0f0';
         const vehicleLabel = (s.vehicle||'').toLowerCase().includes('personal') ? 'personal vehicle' : 'company vehicle';
-        if(prof.isAllocated){
-          // Multi-show day: show proportionally allocated costs so this card's profit
-          // matches the day-header total when summed across all shows.
-          const pct = Math.round(prof.revShare * 100);
-          return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:6px;">Show Profit Breakdown</div>
-            <div style="font-size:11px;color:#1a5a8a;background:#edf4fb;border-radius:5px;padding:5px 8px;margin-bottom:8px;">Shared day: costs split across ${prof.dayShowCount} shows (this show = ${pct}% of day revenue)</div>
-            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-              <span style="color:#555;">Show price (${prof.typeLabel})${s.discountPrice!=null?' — discounted':''}</span>
-              <span style="font-weight:600;">${fmtC(prof.baseRevenue)}</span>
-            </div>
-            ${prof.mileageCharge > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-              <span style="color:#1a6b2e;">Mileage charge (billed to client)</span>
-              <span style="font-weight:600;color:#1a6b2e;">+${fmtC(prof.mileageCharge)}</span>
-            </div>` : ''}
-            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-              <span style="color:#555;">Staff cost — day total × ${pct}% (allocated)</span>
-              <span style="color:#c0392b;">−${fmtC(prof.allocatedStaffCost)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-              <span style="color:#555;">Mileage — day total × ${pct}% (allocated)</span>
-              <span style="color:#c0392b;">−${fmtC(prof.allocatedMileageCost)}</span>
-            </div>
-            ${prof.missingRates.length ? `<div style="font-size:12px;color:#c08000;padding:4px 0;">No hourly rate set for: ${prof.missingRates.map(l=>esc(l.name)).join(', ')}</div>` : ''}
-            <div style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-top:6px;background:${profitBg};">
-              <span style="font-weight:700;font-size:14px;">Estimated Profit</span>
-              <span style="font-weight:800;font-size:15px;color:${profitColor};">${prof.profit>=0?'+':''}${fmtC(prof.profit)}</span>
-            </div>
-          </div>`;
-        }
+        // For multi-show days: each show is a leg of the route (center→show1→show2→center).
+        // Non-last shows: km×1 (one-way). Last show (or solo): km×2 (one-way + return).
+        const sameDayShows = DATA.shows.filter(x => x.date === s.date && showStatus(x) !== 'cancelled' && calcShowProfit(x));
+        sameDayShows.sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+        const isLastOfDay = sameDayShows.length === 0 || String(sameDayShows[sameDayShows.length-1].id) === String(s.id);
+        const legMultiplier = (sameDayShows.length <= 1 || isLastOfDay) ? 2 : 1;
+        const legMileageCost = s.skipMileage ? 0 : prof.km * legMultiplier * prof.kmRate;
+        const legProfit = prof.revenue - prof.totalStaffCost - legMileageCost - (prof.travelDayStaffCost||0) - (prof.perDiemTotal||0);
+        const legProfitColor = legProfit >= 0 ? '#1a6b2e' : '#c0392b';
+        const legProfitBg    = legProfit >= 0 ? '#edfaf2' : '#fff0f0';
         return `<div style="margin-top:16px;border-top:2px solid #e0e0d0;padding-top:14px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:10px;">Show Profit Breakdown</div>
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
@@ -14609,8 +14589,8 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
             <span style="color:#c0392b;">${l.cost!=null?'−'+fmtC(l.cost):'—'}</span>
           </div>`).join('')}
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ece3;font-size:13px;">
-            <span style="color:#555;">Mileage — ${s.skipMileage ? '<em style="color:#888;">skipped (multi-day event)</em>' : `${prof.km} km × 2 @ ${fmtC(prof.kmRate)}/km (${vehicleLabel})`}</span>
-            <span style="color:#c0392b;">${s.skipMileage ? '—' : '−'+fmtC(prof.mileageCost)}</span>
+            <span style="color:#555;">Mileage — ${s.skipMileage ? '<em style="color:#888;">skipped (multi-day event)</em>' : `${prof.km} km × ${legMultiplier} @ ${fmtC(prof.kmRate)}/km${legMultiplier===1?' (one-way leg)':' (there + back)'}`}</span>
+            <span style="color:#c0392b;">${s.skipMileage ? '—' : '−'+fmtC(legMileageCost)}</span>
           </div>
           ${prof.travelDay ? `
           <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-bottom:1px solid #f0ece3;font-size:12px;color:#8a5a00;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">
@@ -14626,9 +14606,9 @@ function renderShowManagerCard(s, viewDate, dayNum, totalDays){
             <span style="color:#c0392b;">−${fmtC(prof.perDiemTotal)}</span>
           </div>` : ''}
           ${prof.missingRates.length ? `<div style="font-size:12px;color:#c08000;padding:4px 0;">No hourly rate set for: ${prof.missingRates.map(l=>esc(l.name)).join(', ')}</div>` : ''}
-          <div style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-top:6px;background:${profitBg};">
+          <div style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-top:6px;background:${legProfitBg};">
             <span style="font-weight:700;font-size:14px;">Estimated Profit</span>
-            <span style="font-weight:800;font-size:15px;color:${profitColor};">${prof.profit>=0?'+':''}${fmtC(prof.profit)}</span>
+            <span style="font-weight:800;font-size:15px;color:${legProfitColor};">${legProfit>=0?'+':''}${fmtC(legProfit)}</span>
           </div>
         </div>`;
       })()}
