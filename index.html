@@ -33,6 +33,11 @@
     --gray:#6b6b66;
     --border:#e3ddcd;
     --white:#ffffff;
+    --text:#222222;
+    --text-light:#666666;
+    --surface:#f8faf8;
+    --hover:#f0f4f0;
+    --accent:#2d6e2d;
   }
   *{box-sizing:border-box;}
   body{
@@ -424,7 +429,7 @@
   }
   .pill-btn:hover{ background:#d9e3d4; }
   .animal-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:18px; margin-top:18px; }
-  .animal-card{ border:1px solid var(--border); border-radius:14px; padding:18px 20px; }
+  .animal-card{ border:1px solid var(--border); border-radius:14px; padding:18px 20px; background:#fff; }
   .animal-card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px; }
   .animal-card-top h3{ margin:0; font-size:18px; line-height:1.25; }
   .animal-count-pill{ background:var(--green-light); color:var(--green-dark); font-weight:700; font-size:12.5px; padding:4px 10px; border-radius:10px; white-space:nowrap; }
@@ -4525,8 +4530,14 @@ function renderWelcomeOrgChart(editable){
       </div>` : '';
 
     const opacity = (isMgr && n.hidden) ? 'opacity:0.6;' : '';
+    // "Reports to" badge for nodes that bypass the standard chain
+    const reportsToNode = n.reportsTo ? nodes.find(x=>x.id===n.reportsTo) : null;
+    const reportsToLabel = reportsToNode && !isMgr
+      ? `<div style="font-size:10px;background:rgba(255,255,255,0.2);color:rgba(255,255,255,0.9);text-align:center;border-radius:4px;padding:2px 7px;margin-bottom:6px;border:1px solid rgba(255,255,255,0.35);">→ ${esc(reportsToNode.name)}</div>`
+      : (isMgr && n.reportsTo ? `<div style="font-size:10px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.75);text-align:center;border-radius:4px;padding:2px 7px;margin-bottom:6px;">→ direct report to ${esc(reportsToNode?reportsToNode.name:'node '+n.reportsTo)}</div>` : '');
     return `<div style="flex:1;background:${bg};border-radius:12px;padding:18px 14px 14px;min-width:0;display:flex;flex-direction:column;${opacity}">
       ${hiddenBadge}
+      ${reportsToLabel}
       ${nameEl}
       ${memberSection}
       ${interestSection}
@@ -4542,6 +4553,37 @@ function renderWelcomeOrgChart(editable){
     if(!topNodes.length||!bottomNodes.length) return '';
     const tc=topNodes.length, bc=bottomNodes.length;
     const lines=[];
+
+    // Check if bottom nodes use reportsToNodes (connect from specific top nodes only)
+    const hasSpecific = bottomNodes.some(n=>n.reportsToNodes&&n.reportsToNodes.length);
+    if(hasSpecific){
+      // Collect all parent node IDs referenced by bottom nodes
+      const parentIds = new Set(bottomNodes.flatMap(n=>n.reportsToNodes||[]));
+      const parentIndices = topNodes.map((n,i)=>({n,i})).filter(({n})=>parentIds.has(n.id)).map(({i})=>i);
+      if(!parentIndices.length) parentIndices.push(Math.floor(tc/2));
+      // Drop from each parent top node
+      parentIndices.forEach(pi=>{
+        const pct=(2*pi+1)/(2*tc)*100;
+        lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:0;width:2px;height:30px;background:#ccc;"></div>`);
+      });
+      // Horizontal bar spanning parents
+      const pLeft=(2*Math.min(...parentIndices)+1)/(2*tc)*100;
+      const pRight=(2*Math.max(...parentIndices)+1)/(2*tc)*100;
+      if(parentIndices.length>1) lines.push(`<div style="position:absolute;left:${pLeft}%;top:29px;width:${pRight-pLeft}%;height:2px;background:#ccc;"></div>`);
+      const pMid=(pLeft+pRight)/2;
+      lines.push(`<div style="position:absolute;left:calc(${pMid}% - 1px);top:29px;width:2px;height:${bc>1?31:60}px;background:#ccc;"></div>`);
+      if(bc>1){
+        const bl=1/(2*bc)*100, br=(2*bc-1)/(2*bc)*100;
+        lines.push(`<div style="position:absolute;left:${bl}%;top:59px;width:${br-bl}%;height:2px;background:#ccc;"></div>`);
+        for(let i=0;i<bc;i++){
+          const pct=(2*i+1)/(2*bc)*100;
+          lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:59px;width:2px;height:31px;background:#ccc;"></div>`);
+        }
+      }
+      return `<div style="position:relative;height:90px;">${lines.join('')}</div>`;
+    }
+
+    // Generic connector
     for(let i=0;i<tc;i++){
       const pct=(2*i+1)/(2*tc)*100;
       lines.push(`<div style="position:absolute;left:calc(${pct}% - 1px);top:0;width:2px;height:30px;background:#ccc;"></div>`);
@@ -4570,7 +4612,12 @@ function renderWelcomeOrgChart(editable){
     if(isMgr) chartHtml += `<div style="text-align:center;margin:4px 0;">
       <button onclick="addOrgChartNode(${tier})" style="font-size:11px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:2px 10px;cursor:pointer;">+ Add box to this row</button>
     </div>`;
-    if(ti<tierKeys.length-1) chartHtml += renderConnector(tierMap[tier], tierMap[tierKeys[ti+1]]);
+    if(ti<tierKeys.length-1){
+      // Exclude nodes that report directly to a specific node (they bypass the standard chain)
+      const nextTierNodes = isMgr ? tierMap[tierKeys[ti+1]] : tierMap[tierKeys[ti+1]].filter(n=>!n.hidden);
+      const genericNextTier = nextTierNodes.filter(n=>!n.reportsTo);
+      if(genericNextTier.length) chartHtml += renderConnector(tierMap[tier], genericNextTier);
+    }
   }
   if(isMgr) chartHtml += `<div style="text-align:center;margin:12px 0 0;">
     <button onclick="addOrgChartNode(${tierKeys.length>0?Math.max(...tierKeys)+1:0})" style="font-size:12px;background:#e8ede8;color:#2d4a2d;border:1px dashed #9ab49a;border-radius:4px;padding:4px 14px;cursor:pointer;">+ Add new row</button>
