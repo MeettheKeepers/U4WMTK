@@ -10156,7 +10156,7 @@ function renderPersonalDashCard(){
         ${sharedEntry
           ? `<span style="font-size:12px;color:#27ae60;padding:3px 10px;background:#eafaf1;border-radius:12px;border:1px solid #a9dfbf;">Shared${sharedEntry.includeJanie?' + '+otherLabel:''} ✓</span>
              <button class="btn-ghost" style="font-size:12px;" onclick="clearPersonalShare('${myName}')">Clear</button>`
-          : `<button class="btn" style="font-size:13px;background:${myCol.bg};" onclick="openShareTodayModal()">Share Today</button>`
+          : `<button class="btn" style="font-size:14px;font-weight:700;background:#1a7a3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.18);letter-spacing:.02em;" onclick="openShareTodayModal()">Share Today</button>`
         }
         <button class="btn-ghost" style="font-size:13px;" onclick="showTab('personal')">Personal</button>
       </div>
@@ -10659,7 +10659,7 @@ function renderPersonal(){
         ${sharedEntry
           ? `<span style="font-size:12px;color:#27ae60;padding:3px 10px;background:#eafaf1;border-radius:14px;border:1px solid #a9dfbf;">Shared${sharedEntry.includeJanie?' + Janie':''} ✓</span>
              <button class="btn-ghost" style="font-size:12px;" onclick="clearPersonalShare('${myName}')">Clear</button>`
-          : `<button class="btn" style="background:${myCol.bg};font-size:13px;" onclick="openShareTodayModal()">Share Today</button>`
+          : `<button class="btn" style="font-size:14px;font-weight:700;background:#1a7a3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.18);letter-spacing:.02em;" onclick="openShareTodayModal()">Share Today</button>`
         }
         <button class="btn-ghost" style="font-size:13px;" onclick="if(!PERSONAL_FORM_OPEN){PERSONAL_FORM_TYPE='recurring';PERSONAL_FORM_RECURRING=true;}PERSONAL_FORM_OPEN=!PERSONAL_FORM_OPEN;showTab('personal')">${PERSONAL_FORM_OPEN?'− Cancel':'+ Add'}</button>
       </div>
