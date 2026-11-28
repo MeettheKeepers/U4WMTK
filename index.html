@@ -21,8 +21,8 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
-    --cream:#f5f0e6;
-    --cream-light:#faf7f0;
+    --cream:#1a3a2a;
+    --cream-light:#1f4232;
     --paid-green:#2fa84f;
     --green-dark:#2f4a2f;
     --green:#3f5e3f;
@@ -266,7 +266,7 @@
     background:var(--green-dark);
     color:#fff;
   }
-  nav.tabs button:hover:not(.active){ background:#d9e3d4; }
+  nav.tabs button:hover:not(.active){ background:#c8d9c4; }
 
   main{ padding:24px 28px 60px; max-width:1300px; margin:0 auto; }
   .card{
@@ -7298,9 +7298,9 @@ function renderDashboard(){
     : [];
   return `
     <div style="padding:10px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <span style="font-size:22px;font-weight:600;color:var(--text);">${_greet}${myName ? ', '+myName : ''}! </span>
+      <span style="font-size:22px;font-weight:600;color:#fff;">${_greet}${myName ? ', '+myName : ''}! </span>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span style="font-size:15px;color:var(--text-light);font-weight:500;">${_dateStr}</span>
+        <span style="font-size:15px;color:rgba(255,255,255,0.75);font-weight:500;">${_dateStr}</span>
         <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--bg-card,#fff);border:1px solid var(--border);border-radius:20px;">${weatherChipHtml()}</span>
         ${myName ? `<button class="btn" style="font-size:13px;" onclick="openTimeOffModal()">+ Request Time Off</button>` : ''}
       </div>
