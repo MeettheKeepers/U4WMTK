@@ -206,13 +206,16 @@
   /* ---------- APP SHELL ---------- */
   #app{ display:none; }
   header.topbar{
-    background:var(--cream);
-    border-bottom:3px solid var(--brown);
+    background:linear-gradient(135deg,#5cb800 0%,#6dd400 50%,#5cb800 100%);
+    border:3px solid rgba(255,255,255,0.7);
+    border-radius:12px;
     padding:18px 28px;
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:20px;
+    position:relative;
+    overflow:hidden;
   }
   .topbar-logo-box{
     background:#fff;
