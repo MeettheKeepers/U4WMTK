@@ -6457,7 +6457,7 @@ function renderTeamSubNav(){
     }
   }
   return `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;">
-    ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';EVAL_STAFF_ID=null;showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'#666'};margin-bottom:-2px;">${t.label}</button>`).join('')}
+    ${tabs.map(t=>`<button onclick="TEAM_SUBTAB='${t.id}';EVAL_STAFF_ID=null;showTab('team')" style="padding:7px 18px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:${TEAM_SUBTAB===t.id?'2px solid var(--accent)':'2px solid transparent'};color:${TEAM_SUBTAB===t.id?'var(--accent)':'rgba(255,255,255,0.8)'};margin-bottom:-2px;">${t.label}</button>`).join('')}
   </div>`;
 }
 function renderTeam(){
@@ -9965,9 +9965,9 @@ function renderShowCalendar(){
   const navL=isMonth?`<button class="btn-small" onclick="calSetMonth(${CAL_YEAR},${CAL_MONTH-1})">◀</button>`:`<button class="btn-small" onclick="calGoDay('${prevD}')">◀</button>`;
   const navR=isMonth?`<button class="btn-small" onclick="calSetMonth(${CAL_YEAR},${CAL_MONTH+1})">▶</button>`:`<button class="btn-small" onclick="calGoDay('${nextD}')">▶</button>`;
   const titleStr=isMonth?`${MONTH_NAMES[CAL_MONTH]} ${CAL_YEAR}`:new Date(dy,dm-1,dd).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  return `<div style="padding:16px;max-width:1100px;">
+  return `<div style="padding:16px;max-width:1100px;background:#fff;border-radius:12px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-      <strong style="font-size:18px;flex:1;min-width:160px;">${titleStr}</strong>
+      <strong style="font-size:18px;flex:1;min-width:160px;color:#222;">${titleStr}</strong>
       <div style="display:flex;gap:4px;">${navL}${navR}</div>
       <button class="btn-small" onclick="calGoToday()" style="margin-left:4px;">Today</button>
       <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-left:6px;">
@@ -10698,10 +10698,10 @@ function renderPersonal(){
 
   const isDay=PERSONAL_VIEW==='day', isWeek=PERSONAL_VIEW==='week', isMonth=PERSONAL_VIEW==='month';
 
-  return `<div style="padding:16px;max-width:1050px;">
+  return `<div style="padding:16px;max-width:1050px;background:#fff;border-radius:12px;">
     <!-- Top bar -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-      <strong style="font-size:20px;">${viewData.title}</strong>
+      <strong style="font-size:20px;color:#222;">${viewData.title}</strong>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         ${sharedEntry
           ? `<span style="font-size:12px;color:#27ae60;padding:3px 10px;background:#eafaf1;border-radius:14px;border:1px solid #a9dfbf;">Shared${sharedEntry.includeJanie?' + Janie':''} ✓</span>
